@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    全局「正在接收投屏」悬浮横幅（overlay）：
+    - 通过 Activity.addContentView 附加到 android.R.id.content 顶层，任意 Tab 均可覆盖显示；
+    - 全链路禁用可聚焦 / 可点击，绝不参与 D-pad 焦点分发（不干扰 Dock/内容区遥控器交互）；
+    - 默认 visibility=gone，收到投屏请求时短暂显示，播放器起来或超时后自动隐藏。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/bannerCastReceiving"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_cast_banner"
+    android:clickable="false"
+    android:duplicateParentState="false"
+    android:elevation="14dp"
+    android:focusable="false"
+    android:focusableInTouchMode="false"
+    android:gravity="center_vertical"
+    android:orientation="horizontal"
+    android:paddingLeft="24dp"
+    android:paddingTop="14dp"
+    android:paddingRight="24dp"
+    android:paddingBottom="14dp"
+    android:visibility="gone">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="10dp"
+        android:focusable="false"
+        android:text="📡"
+        android:textSize="22sp" />
+
+    <TextView
+        android:id="@+id/bannerText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:focusable="false"
+        android:letterSpacing="0.02"
+        android:text="@string/cast_receiving_banner"
+        android:textColor="#F2FFFFFF"
+        android:textSize="16sp"
+        android:textStyle="bold" />
+</LinearLayout>

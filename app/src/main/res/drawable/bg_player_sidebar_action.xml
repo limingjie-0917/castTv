@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 播放器侧边栏 收藏/稍后播放 按钮背景：默认态与仅选中态保持白色边框；
+     焦点态边框变为暖黄色，选中视觉由图标/文字暖黄色体现（见 player_sidebar_action_tint）。 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#331B1F26" />
+            <corners android:radius="18dp" />
+            <stroke android:width="2dp" android:color="@color/crayon_yellow" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#331B1F26" />
+            <corners android:radius="18dp" />
+            <stroke android:width="2dp" android:color="#99FFFFFF" />
+        </shape>
+    </item>
+</selector>

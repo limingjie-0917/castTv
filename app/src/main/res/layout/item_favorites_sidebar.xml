@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    收藏弹窗左侧侧边栏的 Tab 单项。
+    - 焦点/选中：白色圆角背景 + 深色字（由 bg_sidebar_item / sidebar_item_text 提供 selector）。
+    - 普通态：透明背景 + 浅灰字。
+
+    v1.1.69 tab-layout「百分比宽度」：
+    - 宽度 match_parent，tab 宽度 = 父容器 sidebarPanel 内边距外剩余宽度 = 80%
+      （200dp 父 × 80% = 160dp 视觉基准），改父容器宽度即等比扩缩。
+      不再写死 160dp / minWidth / maxWidth，也不需要 layout_gravity=center_horizontal。
+    - 文字 gravity=center，光晕走默认 center 模式：不再在 GlowUnderlineView 上
+      设置 glowAlign=start / glowOffsetX=18dp，让椭圆光晕自然落在 tab 中央（即文字中央下方）。
+    - GlowUnderlineView 的横向椭圆扩展与 glowAlign 属性 API 保留，仅本 item 不再启用 start 模式。
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="3dp"
+    android:layout_marginBottom="3dp"
+    android:background="@drawable/bg_sidebar_item"
+    android:clickable="true"
+    android:focusable="true">
+
+    <com.bd.casttv.ui.GlowUnderlineView
+        android:id="@+id/sidebarGlowUnderline"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <TextView
+        android:id="@+id/sidebarItemText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:duplicateParentState="true"
+        android:ellipsize="end"
+        android:gravity="center"
+        android:maxLines="1"
+        android:singleLine="true"
+        android:paddingLeft="6dp"
+        android:paddingTop="7dp"
+        android:paddingRight="24dp"
+        android:paddingBottom="7dp"
+        android:textColor="@color/sidebar_item_text"
+        android:textSize="12sp" />
+
+    <ImageView
+        android:id="@+id/sidebarItemSticker"
+        android:layout_width="16dp"
+        android:layout_height="16dp"
+        android:layout_gravity="end|center_vertical"
+        android:layout_marginEnd="8dp"
+        android:alpha="0.85"
+        android:contentDescription="@null"
+        android:rotation="-10"
+        android:src="@drawable/ic_crayon_sticker" />
+
+</FrameLayout>

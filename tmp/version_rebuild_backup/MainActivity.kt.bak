@@ -1,0 +1,746 @@
+package com.aime.casttv.ui
+
+import android.Manifest
+import android.app.AlertDialog
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.text.InputType
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.EditText
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import com.aime.casttv.R
+import com.aime.casttv.databinding.ActivityMainBinding
+import com.aime.casttv.databinding.DialogFavoriteAddBinding
+import com.aime.casttv.databinding.DialogFavoritesBinding
+import com.aime.casttv.databinding.DialogHelpBinding
+import com.aime.casttv.databinding.DialogHistoryBinding
+import com.aime.casttv.databinding.DialogSettingsBinding
+import com.aime.casttv.databinding.ItemFavoriteBinding
+import com.aime.casttv.databinding.ItemFavoriteMiniBinding
+import com.aime.casttv.databinding.ItemHistoryBinding
+import com.aime.casttv.dlna.DlnaRendererService
+import com.aime.casttv.dlna.PlaybackController
+import com.aime.casttv.favorites.FavoritesStore
+import com.aime.casttv.player.PlayerActivity
+import com.aime.casttv.settings.DeviceNames
+import com.aime.casttv.settings.Settings
+import com.aime.casttv.util.LocalCrashLog
+import com.aime.casttv.util.NetworkUtils
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+/**
+ * Standby / status screen. Starts the renderer service, shows connection info,
+ * rotates cast tutorials, and reacts to incoming cast requests by launching
+ * [PlayerActivity] (optionally behind a confirm/password dialog).
+ */
+class MainActivity : AppCompatActivity(), PlaybackController.StateObserver {
+
+    companion object {
+        private const val TAG = "MainActivity"
+        /** Set by the renderer service's full-screen intent to signal that a
+         *  cast is pending and should be launched using the latest controller state. */
+        const val EXTRA_CAST_PENDING = "extra_cast_pending"
+    }
+
+    private lateinit var binding: ActivityMainBinding
+    private lateinit var settings: Settings
+    private lateinit var favoritesStore: FavoritesStore
+    private var favoritesDialogAdapter: FavoriteAdapter? = null
+    private val ui = Handler(Looper.getMainLooper())
+
+    private var tutorialIndex = 0
+    @Volatile private var tutorialRunning = false
+
+    /** 历史播放列表适配器（数据来自 PlaybackController.history()）。 */
+    private val historyAdapter = HistoryAdapter { item ->
+        launchPlayer(item.uri, item.title, item.source)
+    }
+
+    private val notifPermLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* non-fatal */ }
+
+    private fun logD(message: String) {
+        android.util.Log.d(TAG, message)
+        LocalCrashLog.d(this, TAG, message)
+    }
+
+    private fun logE(message: String, throwable: Throwable) {
+        android.util.Log.e(TAG, message, throwable)
+        LocalCrashLog.e(this, TAG, message, throwable)
+    }
+
+    private val tutorialRunnable = object : Runnable {
+        override fun run() {
+            logD("tutorialRunnable.run: index=$tutorialIndex running=$tutorialRunning finishing=$isFinishing destroyed=$isDestroyed")
+            if (!tutorialRunning || isFinishing || isDestroyed) return
+            try {
+                rotateTutorial()
+            } catch (t: Throwable) {
+                logE("rotateTutorial failed", t)
+                tutorialRunning = false
+                ui.removeCallbacks(this)
+                forceShowTutorialFallback()
+                return
+            }
+            if (tutorialRunning && !isFinishing && !isDestroyed) {
+                ui.postDelayed(this, 4_000L)
+            }
+        }
+    }
+
+    private val startTutorialTask = Runnable {
+        logD("startTutorialTask.run: finishing=$isFinishing destroyed=$isDestroyed running=$tutorialRunning")
+        if (isFinishing || isDestroyed) return@Runnable
+        startTutorialRotationSafely()
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        logD("onCreate: savedInstanceState=$savedInstanceState")
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+        forceShowTutorialFallback()
+
+        // 用户从桌面手动重新打开 App 时，优先清理上一轮投屏残留状态，
+        // 避免 singleTask 任务复用 / 旧播放状态干扰首页启动。
+        if (isManualLauncherOpen(intent) && intent?.getBooleanExtra(EXTRA_CAST_PENDING, false) != true) {
+            PlaybackController.clearMedia()
+        }
+
+        settings = Settings(this)
+        favoritesStore = FavoritesStore(this)
+
+        requestNotificationPermission()
+        startRendererServiceSafely()
+
+        binding.btnHistory.setOnClickListener { showHistoryDialog() }
+        binding.btnSettings.setOnClickListener { showSettingsDialog() }
+        binding.btnHelp.setOnClickListener { showHelpDialog() }
+
+        binding.favoritesCard.setOnClickListener { showFavoritesDialog() }
+
+        // 默认选中「历史」，遥控器左右键可在历史/设置/帮助之间切换。
+        // post 到首帧布局完成后再抢焦点，避免 onCreate 阶段焦点尚未就绪导致失效。
+        binding.btnHistory.post { binding.btnHistory.requestFocus() }
+
+        // Launched by the renderer service's full-screen intent for a cast that
+        // arrived while backgrounded.
+        maybeHandlePendingCast(intent)
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (isManualLauncherOpen(intent) && intent.getBooleanExtra(EXTRA_CAST_PENDING, false) != true) {
+            PlaybackController.clearMedia()
+        }
+        maybeHandlePendingCast(intent)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        logD("onResume: start tutorial scheduling")
+        PlaybackController.uiInForeground = true
+        PlaybackController.registerObserver(this)
+        refreshUi()
+        forceShowTutorialFallback()
+        binding.tutorialText.removeCallbacks(startTutorialTask)
+        binding.tutorialText.postDelayed(startTutorialTask, 300L)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        logD("onPause: removeCallbacks startTutorialTask+tutorialRunnable")
+        PlaybackController.uiInForeground = false
+        PlaybackController.unregisterObserver(this)
+        tutorialRunning = false
+        binding.tutorialText.removeCallbacks(startTutorialTask)
+        ui.removeCallbacks(tutorialRunnable)
+    }
+
+    override fun onStop() {
+        super.onStop()
+        logD("onStop: removeCallbacks startTutorialTask+tutorialRunnable")
+        tutorialRunning = false
+        binding.tutorialText.removeCallbacks(startTutorialTask)
+        ui.removeCallbacks(tutorialRunnable)
+    }
+
+    override fun onDestroy() {
+        logD("onDestroy: removeCallbacks startTutorialTask+tutorialRunnable+allMessages")
+        tutorialRunning = false
+        binding.tutorialText.removeCallbacks(startTutorialTask)
+        ui.removeCallbacks(tutorialRunnable)
+        ui.removeCallbacksAndMessages(null)
+        super.onDestroy()
+    }
+
+    /**
+     * When brought up by the service's cast-pending intent, replay the launch
+     * using the latest target held by the controller (which the full-screen
+     * intent could not carry). Honours password mode just like a live request.
+     */
+    private fun maybeHandlePendingCast(intent: android.content.Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_CAST_PENDING, false) != true) return
+        intent.removeExtra(EXTRA_CAST_PENDING)
+        val uri = PlaybackController.currentUri
+        if (uri.isBlank()) return
+        onNewCastRequest(uri, PlaybackController.currentTitle, PlaybackController.sourceHint)
+    }
+
+    /** 判断这次启动是否来自桌面图标点击（ACTION_MAIN + CATEGORY_LAUNCHER）。 */
+    private fun isManualLauncherOpen(intent: android.content.Intent?): Boolean {
+        if (intent == null) return false
+        return intent.action == android.content.Intent.ACTION_MAIN &&
+            intent.hasCategory(android.content.Intent.CATEGORY_LAUNCHER)
+    }
+
+    // ------------------------------------------------------------------
+    private fun startRendererServiceSafely() {
+        logD("startRendererServiceSafely: begin")
+        try {
+            startRendererService()
+        } catch (t: Throwable) {
+            // 首页稳态优先：服务重复启动或系统限制都不应把主页面带崩。
+            logE("startRendererService failed", t)
+        }
+    }
+
+    private fun startRendererService() {
+        val intent = android.content.Intent(this, DlnaRendererService::class.java)
+        ContextCompat.startForegroundService(this, intent)
+        // Start the AirPlay 1 mirroring receiver in parallel with DLNA.
+        com.aime.casttv.airplay.AirPlayService.start(this)
+    }
+
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED
+            ) {
+                notifPermLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+    }
+
+    private fun refreshUi() {
+        if (isFinishing || isDestroyed) {
+            logD("refreshUi: skipped because finishing=$isFinishing destroyed=$isDestroyed")
+            return
+        }
+        logD("refreshUi: deviceName=${settings.deviceName} currentUri=${PlaybackController.currentUri}")
+        try {
+            binding.textDeviceName.text = settings.deviceName
+            binding.textStatus.text = getString(R.string.status_running) + "\n" +
+                getString(R.string.airplay_state_on, settings.deviceName)
+            // 状态点使用带柔光的图层 drawable（dot_status_glow），颜色已在资源中定义，无需再 tint。
+            val ip = NetworkUtils.getLocalIpAddress()
+            binding.textIp.text = if (ip != null) getString(R.string.status_ip, ip)
+            else getString(R.string.status_ip, "—")
+            refreshCastState()
+            refreshHistory()
+            refreshFavoritesHome()
+        } catch (t: Throwable) {
+            logE("refreshUi failed", t)
+            // 兜底展示，保证首页至少能稳定停留。
+            binding.textDeviceName.text = settings.deviceName
+            binding.textStatus.text = getString(R.string.status_running)
+            binding.textIp.text = getString(R.string.status_ip, "—")
+            binding.textCastState.text = getString(R.string.cast_waiting)
+            binding.favoritesCount.text = "--"
+            binding.favoritesListContainer.visibility = View.GONE
+            binding.favoritesEmpty.visibility = View.VISIBLE
+        }
+    }
+
+    /** 首页收藏区域：展示最近 3 条收藏，异常时降级为空态，避免影响首页稳定性。 */
+    private fun refreshFavoritesHome() {
+        try {
+            val recent = favoritesStore.recent(3)
+            val total = favoritesStore.count()
+            binding.favoritesCount.text = total.toString()
+            binding.favoritesListContainer.removeAllViews()
+            if (recent.isEmpty()) {
+                binding.favoritesListContainer.visibility = View.GONE
+                binding.favoritesEmpty.visibility = View.VISIBLE
+            } else {
+                binding.favoritesListContainer.visibility = View.VISIBLE
+                binding.favoritesEmpty.visibility = View.GONE
+                val inflater = LayoutInflater.from(this)
+                recent.forEach { item ->
+                    val row = ItemFavoriteMiniBinding.inflate(inflater, binding.favoritesListContainer, false)
+                    row.favMiniTitle.text = item.title
+                    row.favMiniUri.text = item.uri
+                    binding.favoritesListContainer.addView(row.root)
+                }
+            }
+        } catch (t: Throwable) {
+            logE("refreshFavoritesHome failed", t)
+            binding.favoritesCount.text = "--"
+            binding.favoritesListContainer.removeAllViews()
+            binding.favoritesListContainer.visibility = View.GONE
+            binding.favoritesEmpty.visibility = View.VISIBLE
+        }
+    }
+
+    /** 刷新历史数据缓存，供历史弹窗直接复用。 */
+    private fun refreshHistory() {
+        historyAdapter.submit(PlaybackController.history())
+    }
+
+    /**
+     * 左侧卡片只反映投屏状态：待机显示「⏸ 等待投屏中…」；
+     * 若已有投屏目标（如后台切回时），显示当前来源/内容。
+     */
+    private fun refreshCastState() {
+        val uri = PlaybackController.currentUri
+        binding.textCastState.text = if (uri.isBlank()) {
+            getString(R.string.cast_waiting)
+        } else {
+            val title = PlaybackController.currentTitle
+            val src = PlaybackController.sourceHint
+            when {
+                title.isNotBlank() && src.isNotBlank() ->
+                    "▶ ${getString(R.string.player_source_from, src)} · $title"
+                title.isNotBlank() -> "▶ $title"
+                src.isNotBlank() -> "▶ ${getString(R.string.player_source_from, src)}"
+                else -> "▶ 投屏播放中"
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Tutorial rotation
+    // ------------------------------------------------------------------
+    private fun forceShowTutorialFallback() {
+        logD("forceShowTutorialFallback: begin")
+        try {
+            val name = try {
+                settings.deviceName.ifBlank { Settings.DEFAULT_DEVICE_NAME }
+            } catch (_: Throwable) {
+                Settings.DEFAULT_DEVICE_NAME
+            }
+            val fallback = getString(R.string.tutorial_static_with_name, name)
+            binding.tutorialText.text = fallback.ifBlank { getString(R.string.tutorial_static) }
+            binding.tutorialText.visibility = View.VISIBLE
+            binding.tutorialTitle.visibility = View.VISIBLE
+            binding.tutorialAccent.visibility = View.VISIBLE
+        } catch (t: Throwable) {
+            logE("forceShowTutorialFallback failed", t)
+            try {
+                binding.tutorialText.text = "通用方式：打开视频 → 点击 TV / 投屏 → 选择当前电视设备"
+                binding.tutorialText.visibility = View.VISIBLE
+            } catch (_: Throwable) {
+                // no-op：兜底中的兜底，绝不影响首页启动。
+            }
+        }
+    }
+
+    private fun startTutorialRotationSafely() {
+        logD("startTutorialRotationSafely: finishing=$isFinishing destroyed=$isDestroyed currentIndex=$tutorialIndex")
+        if (isFinishing || isDestroyed) return
+        ui.removeCallbacks(tutorialRunnable)
+        forceShowTutorialFallback()
+        val tutorials = buildTutorialMessages()
+        if (tutorials.isEmpty()) {
+            tutorialRunning = false
+            tutorialIndex = 0
+            forceShowTutorialFallback()
+            return
+        }
+        try {
+            binding.tutorialText.text = tutorials.first()
+            binding.tutorialText.visibility = View.VISIBLE
+        } catch (t: Throwable) {
+            logE("show first tutorial failed", t)
+            tutorialRunning = false
+            tutorialIndex = 0
+            forceShowTutorialFallback()
+            return
+        }
+        if (tutorials.size <= 1) {
+            tutorialRunning = false
+            tutorialIndex = 0
+            return
+        }
+        tutorialRunning = true
+        tutorialIndex = 1
+        ui.postDelayed(tutorialRunnable, 4_000L)
+    }
+
+    private fun buildTutorialMessages(): List<String> {
+        val name = try {
+            settings.deviceName.ifBlank { Settings.DEFAULT_DEVICE_NAME }
+        } catch (t: Throwable) {
+            logE("read device name for tutorial failed", t)
+            Settings.DEFAULT_DEVICE_NAME
+        }
+        val tutorials = listOfNotNull(
+            safeTutorialString(R.string.tutorial_iqiyi, name),
+            safeTutorialString(R.string.tutorial_bilibili, name),
+            safeTutorialString(R.string.tutorial_tencent, name),
+            safeTutorialString(R.string.tutorial_youku, name),
+            safeTutorialString(R.string.tutorial_static)
+        ).map { it.trim() }.filter { it.isNotBlank() }
+        logD("buildTutorialMessages: deviceName=$name count=${tutorials.size}")
+        return tutorials.distinct()
+    }
+
+    private fun safeTutorialString(resId: Int, vararg args: Any): String? {
+        return try {
+            if (args.isEmpty()) getString(resId) else getString(resId, *args)
+        } catch (t: Throwable) {
+            logE("read tutorial string failed: $resId", t)
+            null
+        }
+    }
+
+    private fun rotateTutorial() {
+        logD("rotateTutorial: before index=$tutorialIndex running=$tutorialRunning finishing=$isFinishing destroyed=$isDestroyed")
+        if (!tutorialRunning || isFinishing || isDestroyed) return
+        val tutorials = buildTutorialMessages()
+        if (tutorials.isEmpty()) {
+            tutorialRunning = false
+            forceShowTutorialFallback()
+            return
+        }
+        val safeIndex = ((tutorialIndex % tutorials.size) + tutorials.size) % tutorials.size
+        try {
+            binding.tutorialText.text = tutorials[safeIndex]
+        } catch (t: Throwable) {
+            logE("update tutorial text failed", t)
+            tutorialRunning = false
+            forceShowTutorialFallback()
+            return
+        }
+        tutorialIndex = (safeIndex + 1) % tutorials.size
+    }
+
+    // ------------------------------------------------------------------
+    // Incoming cast handling
+    // ------------------------------------------------------------------
+    override fun onNewCastRequest(uri: String, title: String, sourceHint: String) {
+        if (!settings.passwordMode) {
+            launchPlayer(uri, title, sourceHint)
+        } else {
+            showPasswordDialog(uri, title, sourceHint)
+        }
+    }
+
+    private fun launchPlayer(uri: String, title: String, sourceHint: String) {
+        val intent = android.content.Intent(this, PlayerActivity::class.java).apply {
+            addFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            putExtra(PlayerActivity.EXTRA_URI, uri)
+            putExtra(PlayerActivity.EXTRA_TITLE, title)
+            putExtra(PlayerActivity.EXTRA_SOURCE, sourceHint)
+        }
+        startActivity(intent)
+    }
+
+    private fun showPasswordDialog(uri: String, title: String, sourceHint: String) {
+        val input = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            hint = getString(R.string.password_title)
+        }
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.connect_request_title))
+            .setMessage(getString(R.string.connect_request_msg, sourceHint.ifBlank { title }))
+            .setView(input)
+            .setPositiveButton(R.string.btn_allow) { d, _ ->
+                if (input.text.toString() == settings.password || settings.password.isBlank()) {
+                    launchPlayer(uri, title, sourceHint)
+                } else {
+                    android.widget.Toast.makeText(this, R.string.password_wrong,
+                        android.widget.Toast.LENGTH_SHORT).show()
+                }
+                d.dismiss()
+            }
+            .setNegativeButton(R.string.btn_reject) { d, _ -> d.dismiss() }
+            .show()
+    }
+
+    // ------------------------------------------------------------------
+    // Settings / Help dialogs
+    // ------------------------------------------------------------------
+    private fun showSettingsDialog() {
+        try {
+            val dialogBinding = DialogSettingsBinding.inflate(layoutInflater)
+            dialogBinding.nameInput.setText(settings.deviceName)
+            dialogBinding.pwdMode.isChecked = settings.passwordMode
+            dialogBinding.pwdInput.setText(settings.password)
+            dialogBinding.pwdInput.inputType = InputType.TYPE_CLASS_NUMBER
+            dialogBinding.mute.isChecked = settings.muteOnCast
+            dialogBinding.randomBtn.setOnClickListener {
+                val next = DeviceNames.random(dialogBinding.nameInput.text.toString())
+                dialogBinding.nameInput.setText(next)
+                dialogBinding.nameInput.setSelection(next.length)
+            }
+
+            val dialog = AlertDialog.Builder(this)
+                .setView(dialogBinding.root)
+                .setPositiveButton(android.R.string.ok) { d, _ ->
+                    val newDeviceName = dialogBinding.nameInput.text.toString()
+                        .ifBlank { Settings.DEFAULT_DEVICE_NAME }
+                    logD("settings.confirm: newDeviceName=$newDeviceName passwordMode=${dialogBinding.pwdMode.isChecked}")
+                    settings.deviceName = newDeviceName
+                    settings.passwordMode = dialogBinding.pwdMode.isChecked
+                    settings.password = dialogBinding.pwdInput.text.toString()
+                    settings.muteOnCast = dialogBinding.mute.isChecked
+                    refreshUi()
+                    d.dismiss()
+                    ui.post {
+                        startRendererServiceSafely()
+                    }
+                }
+                .setNegativeButton(android.R.string.cancel) { d, _ -> d.dismiss() }
+                .create()
+            dialog.show()
+            dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+            dialogBinding.nameInput.requestFocus()
+        } catch (t: Throwable) {
+            android.util.Log.e("MainActivity", "showSettingsDialog failed", t)
+            android.widget.Toast.makeText(this, "设置弹窗打开失败", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun showHelpDialog() {
+        try {
+            val dialogBinding = DialogHelpBinding.inflate(layoutInflater)
+            val dialog = AlertDialog.Builder(this)
+                .setView(dialogBinding.root)
+                .setPositiveButton(android.R.string.ok) { d, _ -> d.dismiss() }
+                .create()
+            dialog.show()
+            dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        } catch (t: Throwable) {
+            android.util.Log.e("MainActivity", "showHelpDialog failed", t)
+            android.widget.Toast.makeText(this, "帮助弹窗打开失败", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun showHistoryDialog() {
+        try {
+            refreshHistory()
+            val dialogBinding = DialogHistoryBinding.inflate(layoutInflater)
+            dialogBinding.historyList.layoutManager = LinearLayoutManager(this)
+            dialogBinding.historyList.adapter = historyAdapter
+            syncHistoryDialogState(dialogBinding)
+
+            val dialog = AlertDialog.Builder(this)
+                .setView(dialogBinding.root)
+                .setNegativeButton(android.R.string.cancel) { d, _ -> d.dismiss() }
+                .create()
+
+            historyAdapter.onItemClick = { item ->
+                dialog.dismiss()
+                launchPlayer(item.uri, item.title, item.source)
+            }
+
+            dialog.setOnDismissListener {
+                historyAdapter.onItemClick = { item ->
+                    launchPlayer(item.uri, item.title, item.source)
+                }
+            }
+            dialog.show()
+            dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+            if (historyAdapter.itemCount > 0) {
+                dialogBinding.historyList.post { dialogBinding.historyList.requestFocus() }
+            }
+        } catch (t: Throwable) {
+            android.util.Log.e("MainActivity", "showHistoryDialog failed", t)
+            android.widget.Toast.makeText(this, "历史弹窗打开失败", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun syncHistoryDialogState(dialogBinding: DialogHistoryBinding) {
+        val hasItems = historyAdapter.itemCount > 0
+        dialogBinding.historyEmpty.visibility = if (hasItems) View.GONE else View.VISIBLE
+        dialogBinding.historyList.visibility = if (hasItems) View.VISIBLE else View.GONE
+        if (hasItems) {
+            dialogBinding.historyList.post { dialogBinding.historyList.requestFocus() }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // 历史播放列表适配器
+    // ------------------------------------------------------------------
+    private inner class HistoryAdapter(
+        var onItemClick: (PlaybackController.HistoryItem) -> Unit
+    ) : RecyclerView.Adapter<HistoryAdapter.VH>() {
+
+        private val items = mutableListOf<PlaybackController.HistoryItem>()
+        private val timeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
+
+        fun submit(newItems: List<PlaybackController.HistoryItem>) {
+            items.clear()
+            items.addAll(newItems)
+            notifyDataSetChanged()
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
+            val itemBinding = ItemHistoryBinding.inflate(
+                LayoutInflater.from(parent.context), parent, false
+            )
+            return VH(itemBinding)
+        }
+
+        override fun getItemCount(): Int = items.size
+
+        override fun onBindViewHolder(holder: VH, position: Int) {
+            val item = items[position]
+            holder.binding.itemTitle.text = item.title.ifBlank { item.uri }
+            val time = timeFmt.format(Date(item.time))
+            // "来源 · 时间"；来源为空时只显示时间。
+            holder.binding.itemMeta.text = if (item.source.isNotBlank()) {
+                getString(R.string.history_meta, item.source, time)
+            } else {
+                time
+            }
+            holder.binding.root.setOnClickListener {
+                onItemClick(item)
+            }
+        }
+
+        inner class VH(val binding: ItemHistoryBinding) :
+            RecyclerView.ViewHolder(binding.root)
+    }
+
+    private fun showFavoritesDialog() {
+        try {
+            val dialogBinding = DialogFavoritesBinding.inflate(layoutInflater)
+            val adapter = FavoriteAdapter(
+                onEdit = { item -> showFavoriteEditDialog(item) { reloadFavoritesDialog(dialogBinding) } },
+                onDelete = { item -> showFavoriteDeleteDialog(item) { reloadFavoritesDialog(dialogBinding) } }
+            )
+            dialogBinding.favoritesList.layoutManager = LinearLayoutManager(this)
+            dialogBinding.favoritesList.adapter = adapter
+            adapter.submit(favoritesStore.all())
+            favoritesDialogAdapter = adapter
+            syncFavoritesDialogState(dialogBinding)
+
+            val dialog = AlertDialog.Builder(this)
+                .setView(dialogBinding.root)
+                .setNegativeButton(android.R.string.cancel) { d, _ -> d.dismiss() }
+                .create()
+            dialog.setOnDismissListener { favoritesDialogAdapter = null }
+            dialog.show()
+            dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        } catch (t: Throwable) {
+            android.util.Log.e("MainActivity", "showFavoritesDialog failed", t)
+            android.widget.Toast.makeText(this, "收藏列表暂时无法打开", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun reloadFavoritesDialog(dialogBinding: DialogFavoritesBinding) {
+        try {
+            favoritesDialogAdapter?.submit(favoritesStore.all())
+            syncFavoritesDialogState(dialogBinding)
+            refreshFavoritesHome()
+        } catch (t: Throwable) {
+            android.util.Log.e("MainActivity", "reloadFavoritesDialog failed", t)
+        }
+    }
+
+    private fun syncFavoritesDialogState(dialogBinding: DialogFavoritesBinding) {
+        val hasItems = (favoritesDialogAdapter?.itemCount ?: 0) > 0
+        dialogBinding.favoritesDialogEmpty.visibility = if (hasItems) View.GONE else View.VISIBLE
+        dialogBinding.favoritesList.visibility = if (hasItems) View.VISIBLE else View.GONE
+    }
+
+    private fun showFavoriteEditDialog(item: FavoritesStore.FavoriteItem, onDone: () -> Unit) {
+        val dialogBinding = DialogFavoriteAddBinding.inflate(layoutInflater)
+        dialogBinding.favoriteAddHeader.setText(R.string.favorite_edit_header)
+        dialogBinding.inputFavoriteTitle.setText(item.title)
+        dialogBinding.inputFavoriteTitle.setSelection(item.title.length)
+        dialogBinding.textFavoriteUri.text = item.uri
+
+        val dialog = AlertDialog.Builder(this)
+            .setView(dialogBinding.root)
+            .setPositiveButton(R.string.btn_confirm, null)
+            .setNegativeButton(android.R.string.cancel) { d, _ -> d.dismiss() }
+            .create()
+        dialog.show()
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialogBinding.inputFavoriteTitle.requestFocus()
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val newTitle = dialogBinding.inputFavoriteTitle.text.toString().trim()
+            if (newTitle.isBlank()) {
+                android.widget.Toast.makeText(this, R.string.favorite_title_required,
+                    android.widget.Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            val ok = favoritesStore.updateTitle(item.uri, newTitle)
+            android.widget.Toast.makeText(
+                this,
+                if (ok) R.string.favorite_title_updated else R.string.favorite_save_failed,
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+            if (ok) {
+                dialog.dismiss()
+                onDone()
+            }
+        }
+    }
+
+    private fun showFavoriteDeleteDialog(item: FavoritesStore.FavoriteItem, onDone: () -> Unit) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.favorite_delete_header)
+            .setMessage(getString(R.string.favorite_delete_confirm, item.title.ifBlank { item.uri }))
+            .setPositiveButton(R.string.btn_delete) { d, _ ->
+                val ok = favoritesStore.remove(item.uri)
+                android.widget.Toast.makeText(
+                    this,
+                    if (ok) R.string.favorite_deleted else R.string.favorite_save_failed,
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+                d.dismiss()
+                if (ok) onDone()
+            }
+            .setNegativeButton(android.R.string.cancel) { d, _ -> d.dismiss() }
+            .show()
+    }
+
+    private inner class FavoriteAdapter(
+        val onEdit: (FavoritesStore.FavoriteItem) -> Unit,
+        val onDelete: (FavoritesStore.FavoriteItem) -> Unit
+    ) : RecyclerView.Adapter<FavoriteAdapter.VH>() {
+
+        private val items = mutableListOf<FavoritesStore.FavoriteItem>()
+
+        fun submit(newItems: List<FavoritesStore.FavoriteItem>) {
+            items.clear()
+            items.addAll(newItems)
+            notifyDataSetChanged()
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
+            val itemBinding = ItemFavoriteBinding.inflate(
+                LayoutInflater.from(parent.context), parent, false
+            )
+            return VH(itemBinding)
+        }
+
+        override fun getItemCount(): Int = items.size
+
+        override fun onBindViewHolder(holder: VH, position: Int) {
+            val item = items[position]
+            holder.binding.itemTitle.text = item.title.ifBlank { item.uri }
+            holder.binding.itemUri.text = item.uri
+            holder.binding.btnEditTitle.setOnClickListener { onEdit(item) }
+            holder.binding.btnDelete.setOnClickListener { onDelete(item) }
+        }
+
+        inner class VH(val binding: ItemFavoriteBinding) : RecyclerView.ViewHolder(binding.root)
+    }
+}

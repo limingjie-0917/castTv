@@ -1,0 +1,249 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  退出应用确认弹窗：暖色蜡笔主题，复用「新建合集」页同款贴纸装饰。
+  - 根用 bg_dialog_crayon_panel（暖色渐变+蜡笔黄描边）
+  - 贴纸层 z-order 在内容之下（先声明先绘制），全部禁用焦点/点击
+  - 两个按钮：取消(默认焦点) / 确认退出
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:clipChildren="false"
+    android:clipToPadding="false">
+
+    <FrameLayout
+        android:id="@+id/exitDialogCard"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:background="@drawable/bg_dialog_crayon_panel"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+            android:minWidth="440dp"
+            android:minHeight="250dp">
+
+        <!-- ============ 贴纸装饰层（内容之下） ============ -->
+        <FrameLayout
+            android:id="@+id/exitStickers"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipChildren="false"
+            android:clipToPadding="false">
+
+            <!-- 底部：复用新建合集页同款 5 张圆形贴纸，缩小后横向错落，位于按钮下方装饰区。 -->
+            <com.bd.casttv.ui.ClippedImageView
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:layout_gravity="bottom|start"
+                android:layout_marginStart="28dp"
+                android:layout_marginBottom="12dp"
+                android:alpha="0.90"
+                android:contentDescription="@null"
+                android:clickable="false"
+                android:duplicateParentState="false"
+                android:elevation="0dp"
+                android:focusable="false"
+                android:focusableInTouchMode="false"
+                android:foreground="@drawable/fg_sticker_circle_border"
+                android:importantForAccessibility="no"
+                android:rotation="-13"
+                android:scaleType="centerCrop"
+                android:src="@drawable/sticker_bochan"
+                app:civIsCircle="true" />
+
+            <com.bd.casttv.ui.ClippedImageView
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_gravity="bottom|start"
+                android:layout_marginStart="100dp"
+                android:layout_marginBottom="5dp"
+                android:alpha="0.88"
+                android:contentDescription="@null"
+                android:clickable="false"
+                android:duplicateParentState="false"
+                android:elevation="0dp"
+                android:focusable="false"
+                android:focusableInTouchMode="false"
+                android:foreground="@drawable/fg_sticker_circle_border"
+                android:importantForAccessibility="no"
+                android:rotation="8"
+                android:scaleType="centerCrop"
+                android:src="@drawable/sticker_nene_shiro"
+                app:civIsCircle="true" />
+
+            <com.bd.casttv.ui.ClippedImageView
+                android:layout_width="41dp"
+                android:layout_height="41dp"
+                android:layout_gravity="bottom|center_horizontal"
+                android:layout_marginBottom="13dp"
+                android:alpha="0.89"
+                android:contentDescription="@null"
+                android:clickable="false"
+                android:duplicateParentState="false"
+                android:elevation="0dp"
+                android:focusable="false"
+                android:focusableInTouchMode="false"
+                android:foreground="@drawable/fg_sticker_circle_border"
+                android:importantForAccessibility="no"
+                android:rotation="-6"
+                android:scaleType="centerCrop"
+                android:src="@drawable/sticker_masao"
+                app:civIsCircle="true" />
+
+            <com.bd.casttv.ui.ClippedImageView
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:layout_gravity="bottom|end"
+                android:layout_marginEnd="100dp"
+                android:layout_marginBottom="5dp"
+                android:alpha="0.92"
+                android:contentDescription="@null"
+                android:clickable="false"
+                android:duplicateParentState="false"
+                android:elevation="0dp"
+                android:focusable="false"
+                android:focusableInTouchMode="false"
+                android:foreground="@drawable/fg_sticker_circle_border"
+                android:importantForAccessibility="no"
+                android:rotation="-10"
+                android:scaleType="centerCrop"
+                android:src="@drawable/sticker_shinchan"
+                app:civIsCircle="true" />
+
+            <com.bd.casttv.ui.ClippedImageView
+                android:layout_width="39dp"
+                android:layout_height="39dp"
+                android:layout_gravity="bottom|end"
+                android:layout_marginEnd="28dp"
+                android:layout_marginBottom="12dp"
+                android:alpha="0.90"
+                android:contentDescription="@null"
+                android:clickable="false"
+                android:duplicateParentState="false"
+                android:elevation="0dp"
+                android:focusable="false"
+                android:focusableInTouchMode="false"
+                android:foreground="@drawable/fg_sticker_circle_border"
+                android:importantForAccessibility="no"
+                android:rotation="12"
+                android:scaleType="centerCrop"
+                android:src="@drawable/sticker_kazama"
+                app:civIsCircle="true" />
+        </FrameLayout>
+
+        <!-- ============ 内容层 ============ -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:orientation="vertical"
+            android:paddingLeft="28dp"
+            android:paddingTop="28dp"
+            android:paddingRight="28dp"
+            android:paddingBottom="70dp">
+
+            <FrameLayout
+                android:id="@+id/exitTitleArea"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:clipChildren="false"
+                android:clipToPadding="false">
+
+                <com.bd.casttv.ui.ClippedImageView
+                    android:id="@+id/ivExitTitleSticker"
+                    android:layout_width="96dp"
+                    android:layout_height="27dp"
+                    android:layout_gravity="center"
+                    android:alpha="0.92"
+                    android:contentDescription="@null"
+                    android:clickable="false"
+                    android:duplicateParentState="false"
+                    android:elevation="0dp"
+                    android:focusable="false"
+                    android:focusableInTouchMode="false"
+                    android:foreground="@drawable/fg_sticker_rounded_rect_border"
+                    android:importantForAccessibility="no"
+                    android:rotation="0"
+                    android:scaleType="centerCrop"
+                    android:src="@drawable/sticker_squad_wall"
+                    app:civCornerRadius="10dp"
+                    app:civIsCircle="false" />
+
+                <TextView
+                    android:id="@+id/tvExitTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:background="@android:color/transparent"
+                    android:gravity="center"
+                    android:paddingLeft="18dp"
+                    android:paddingTop="12dp"
+                    android:paddingRight="18dp"
+                    android:paddingBottom="12dp"
+                    android:text="退出应用"
+                    android:textColor="#FFD700"
+                    android:textSize="22sp"
+                    android:textStyle="bold" />
+            </FrameLayout>
+
+            <TextView
+                android:id="@+id/tvExitMessage"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:gravity="center"
+                android:text="确定要退出「小新的TV」吗？"
+                android:textColor="#F0F8FF"
+                android:textSize="17sp" />
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="26dp"
+                android:gravity="center"
+                android:layout_gravity="center_horizontal"
+                android:clipChildren="false"
+                android:clipToPadding="false"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/btnExitCancel"
+                    android:layout_width="140dp"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_dialog_focus_item"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:minHeight="40dp"
+                    android:paddingLeft="14dp"
+                    android:paddingTop="10dp"
+                    android:paddingRight="14dp"
+                    android:paddingBottom="10dp"
+                    android:text="取消"
+                    android:textColor="#F5F5F5"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/btnExitConfirm"
+                    android:layout_width="140dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="14dp"
+                    android:background="@drawable/bg_dialog_focus_item"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:minHeight="40dp"
+                    android:paddingLeft="14dp"
+                    android:paddingTop="10dp"
+                    android:paddingRight="14dp"
+                    android:paddingBottom="10dp"
+                    android:text="确认退出"
+                    android:textColor="#F5F5F5"
+                    android:textSize="14sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+    </FrameLayout>
+</FrameLayout>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    设置弹窗按钮通用文字/图标色 selector：
+    - 默认态：白色
+    - 选中态：暖黄
+    - 焦点态：暖黄
+    - 选中+焦点态：暖黄
+    与 @drawable/bg_dialog_focus_item 成对使用。
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_selected="true" android:state_focused="true" android:color="@color/crayon_yellow" />
+    <item android:state_focused="true" android:color="@color/crayon_yellow" />
+    <item android:state_pressed="true" android:color="@color/crayon_yellow" />
+    <item android:state_selected="true" android:color="@color/crayon_yellow" />
+    <item android:color="@color/text_primary" />
+</selector>

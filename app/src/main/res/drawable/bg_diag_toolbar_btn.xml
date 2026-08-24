@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    v1.1.120 网络诊断顶部工具栏按钮/搜索框统一三态背景：
+    - 默认态：灰色半透明背景 + 浅灰实线边框
+    - 焦点态（无选中）：灰色半透明背景 + 暖黄实线边框
+    - 选中态（无焦点）：灰色半透明背景 + 浅灰实线边框（文字/图标由 selector 变暖黄）
+    - 选中+焦点态：灰色半透明背景 + 暖黄实线边框
+    文字/图标暖黄由 @color/diag_toolbar_btn_text 配套控制，禁止引入 Material。
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 选中 + 焦点：灰底 + 暖黄实线边框 -->
+    <item android:state_focused="true" android:state_selected="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#33565C66" />
+            <corners android:radius="12dp" />
+            <stroke android:width="2dp" android:color="@color/crayon_yellow" />
+        </shape>
+    </item>
+
+    <!-- 焦点态：灰底 + 暖黄实线边框 -->
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#33565C66" />
+            <corners android:radius="12dp" />
+            <stroke android:width="2dp" android:color="@color/crayon_yellow" />
+        </shape>
+    </item>
+
+    <!-- 按下态：与焦点态一致 -->
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#33565C66" />
+            <corners android:radius="12dp" />
+            <stroke android:width="2dp" android:color="@color/crayon_yellow" />
+        </shape>
+    </item>
+
+    <!-- 选中态（无焦点）：灰底 + 浅灰实线边框（图标/文字变暖黄由文字 selector 承载） -->
+    <item android:state_selected="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#33565C66" />
+            <corners android:radius="12dp" />
+            <stroke android:width="1dp" android:color="#80AEB4BE" />
+        </shape>
+    </item>
+
+    <!-- 默认态：灰色半透明背景 + 浅灰实线边框 -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#33565C66" />
+            <corners android:radius="12dp" />
+            <stroke android:width="1dp" android:color="#80AEB4BE" />
+        </shape>
+    </item>
+
+</selector>

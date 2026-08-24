@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  批量操作弹窗内小视频卡片背景（四态）：
+  - 选中+焦点：暖黄实心加粗描边 + 高亮底色
+  - 仅焦点：暖黄描边
+  - 仅选中：暖黄描边 + 轻微高亮底色（选中态高亮）
+  - 默认：暗色底 + 细描边
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item android:state_selected="true" android:state_focused="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#33FFD700" />
+            <corners android:radius="12dp" />
+            <stroke android:width="3dp" android:color="#FFD700" />
+        </shape>
+    </item>
+
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#1FFFD700" />
+            <corners android:radius="12dp" />
+            <stroke android:width="3dp" android:color="#FFD700" />
+        </shape>
+    </item>
+
+    <item android:state_selected="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#26FFD700" />
+            <corners android:radius="12dp" />
+            <stroke android:width="3dp" android:color="#FFD700" />
+        </shape>
+    </item>
+
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#1AFFFFFF" />
+            <corners android:radius="12dp" />
+            <stroke android:width="1dp" android:color="#33FFFFFF" />
+        </shape>
+    </item>
+</selector>

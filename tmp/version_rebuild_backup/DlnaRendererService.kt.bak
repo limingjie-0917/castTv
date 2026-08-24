@@ -1,0 +1,229 @@
+package com.aime.casttv.dlna
+
+import android.app.Notification
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.net.wifi.WifiManager
+import android.os.Build
+import android.util.Log
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.lifecycle.LifecycleService
+import com.aime.casttv.CastApp
+import com.aime.casttv.R
+import com.aime.casttv.settings.Settings
+import com.aime.casttv.ui.MainActivity
+import com.aime.casttv.util.LocalCrashLog
+import com.aime.casttv.util.NetworkUtils
+
+/**
+ * Foreground service hosting the DLNA renderer core: the NanoHTTPD server and
+ * the SSDP discovery service. Holds a MulticastLock + WifiLock so multicast
+ * discovery keeps working while the screen is off.
+ *
+ * It also observes [PlaybackController] and, when a cast arrives while the app
+ * is NOT in the foreground, force-brings-up the player: a plain
+ * [startActivity] is silently blocked on Android 10+ from a background/service
+ * context, so we additionally post a high-priority notification carrying a
+ * `setFullScreenIntent`, which the system honours from background / lockscreen.
+ */
+class DlnaRendererService : LifecycleService() {
+
+    companion object {
+        private const val TAG = "DlnaRendererService"
+        const val HTTP_PORT = 8895
+        private const val NOTIF_ID = 0x0CA5
+        private const val CAST_NOTIF_ID = 0x0CA6
+    }
+
+    private var httpServer: DlnaHttpServer? = null
+    private var ssdp: SsdpService? = null
+    private var multicastLock: WifiManager.MulticastLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
+    private lateinit var settings: Settings
+
+    private fun logD(message: String) {
+        Log.d(TAG, message)
+        LocalCrashLog.d(this, TAG, message)
+    }
+
+    private fun logE(message: String, throwable: Throwable) {
+        Log.e(TAG, message, throwable)
+        LocalCrashLog.e(this, TAG, message, throwable)
+    }
+
+    /** Force-launches the player when a cast arrives and the UI is backgrounded. */
+    private val castObserver = object : PlaybackController.StateObserver {
+        override fun onNewCastRequest(uri: String, title: String, sourceHint: String) {
+            // When MainActivity is in the foreground it already handles this
+            // (including the optional password dialog); avoid a double launch.
+            if (PlaybackController.uiInForeground) return
+            bringUpPlayback(title, sourceHint)
+        }
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        logD("onCreate: begin")
+        settings = Settings(this)
+        acquireLocks()
+        try {
+            startForeground(NOTIF_ID, buildNotification())
+        } catch (t: Throwable) {
+            logE("startForeground failed", t)
+        }
+        try {
+            PlaybackController.registerObserver(castObserver)
+        } catch (t: Throwable) {
+            logE("registerObserver failed", t)
+        }
+        try {
+            startRenderer()
+        } catch (t: Throwable) {
+            logE("startRenderer failed", t)
+        }
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        super.onStartCommand(intent, flags, startId)
+        logD("onStartCommand: flags=$flags startId=$startId deviceName=${settings.deviceName}")
+        try {
+            startForeground(NOTIF_ID, buildNotification())
+        } catch (t: Throwable) {
+            logE("refresh foreground notification failed", t)
+        }
+        return START_STICKY
+    }
+
+    private fun startRenderer() {
+        logD("startRenderer: deviceName=${settings.deviceName}")
+        val udn = NetworkUtils.getDeviceUdn(this)
+        try {
+            val server = DlnaHttpServer(
+                port = HTTP_PORT,
+                friendlyNameProvider = { settings.deviceName },
+                udnProvider = { udn }
+            )
+            server.start(NanoTimeout.SOCKET_READ_TIMEOUT_MS, false)
+            httpServer = server
+            Log.i(TAG, "HTTP server started on $HTTP_PORT")
+            LocalCrashLog.d(this, TAG, "HTTP server started on $HTTP_PORT")
+        } catch (e: Exception) {
+            logE("Failed to start HTTP server", e)
+        }
+
+        try {
+            val ssdpService = SsdpService(
+                ipProvider = { NetworkUtils.getLocalIpAddress() },
+                httpPort = HTTP_PORT,
+                udnProvider = { udn }
+            )
+            ssdpService.start()
+            ssdp = ssdpService
+        } catch (t: Throwable) {
+            logE("Failed to start SSDP service", t)
+            ssdp = null
+        }
+    }
+
+    private fun acquireLocks() {
+        val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return
+        multicastLock = wifi.createMulticastLock("casttv:multicast").apply {
+            setReferenceCounted(false)
+            try { acquire() } catch (_: Exception) {}
+        }
+        wifiLock = wifi.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "casttv:wifi").apply {
+            setReferenceCounted(false)
+            try { acquire() } catch (_: Exception) {}
+        }
+    }
+
+    private fun releaseLocks() {
+        try { multicastLock?.let { if (it.isHeld) it.release() } } catch (_: Exception) {}
+        try { wifiLock?.let { if (it.isHeld) it.release() } } catch (_: Exception) {}
+        multicastLock = null
+        wifiLock = null
+    }
+
+    private fun buildNotification(): Notification {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        else PendingIntent.FLAG_UPDATE_CURRENT
+        val pi = PendingIntent.getActivity(this, 0, intent, flags)
+
+        return NotificationCompat.Builder(this, CastApp.CHANNEL_ID)
+            .setContentTitle(getString(R.string.notif_title))
+            .setContentText(getString(R.string.notif_text, settings.deviceName))
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentIntent(pi)
+            .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+    }
+
+    /**
+     * Brings the player to the foreground for a cast that arrived while the app
+     * was backgrounded. Routes through [MainActivity] (singleTask) with a
+     * cast-pending marker so the existing password / launch logic still applies;
+     * MainActivity reads the latest target from [PlaybackController].
+     *
+     * Two mechanisms are used together for reliability:
+     *  1. A direct [startActivity] (works pre-Android 10 and when the app still
+     *     has a background-start exemption).
+     *  2. A high-priority notification with a full-screen intent, which the
+     *     system honours from background / lockscreen when (1) is blocked.
+     */
+    private fun bringUpPlayback(title: String, sourceHint: String) {
+        val launch = Intent(this, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            putExtra(MainActivity.EXTRA_CAST_PENDING, true)
+        }
+        val piFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        else PendingIntent.FLAG_UPDATE_CURRENT
+        val pi = PendingIntent.getActivity(this, 1, launch, piFlags)
+
+        // (1) Best-effort direct launch.
+        try { startActivity(launch) } catch (e: Exception) {
+            Log.w(TAG, "Direct startActivity blocked; relying on full-screen intent", e)
+        }
+
+        // (2) Full-screen-intent notification fallback.
+        val label = title.ifBlank { sourceHint.ifBlank { getString(R.string.standby_ready) } }
+        val notif = NotificationCompat.Builder(this, CastApp.CAST_CHANNEL_ID)
+            .setContentTitle(getString(R.string.notif_cast_title))
+            .setContentText(getString(R.string.notif_cast_text, label))
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setContentIntent(pi)
+            .setFullScreenIntent(pi, true)
+            .setAutoCancel(true)
+            .build()
+        try {
+            NotificationManagerCompat.from(this).notify(CAST_NOTIF_ID, notif)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to post cast full-screen notification", e)
+        }
+    }
+
+    override fun onDestroy() {
+        logD("onDestroy: unregister observer and stop renderer services")
+        PlaybackController.unregisterObserver(castObserver)
+        try { ssdp?.stop() } catch (_: Exception) {}
+        try { httpServer?.stop() } catch (_: Exception) {}
+        ssdp = null
+        httpServer = null
+        releaseLocks()
+        super.onDestroy()
+    }
+
+    /** Socket read timeout constants for NanoHTTPD. */
+    private object NanoTimeout {
+        const val SOCKET_READ_TIMEOUT_MS = 15_000
+    }
+}

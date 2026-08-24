@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    收藏网格卡片内部小按钮背景（播放/改名/移动/删除）。
+    目标：在不破坏宝蓝主题的前提下，增加「手绘蜡笔」的活泼感。
+
+    - 焦点态：宝蓝色描边 + 轻微虚线（手绘感）
+    - 按下态：明黄描边 + 轻微虚线
+    - 普通态：深色底 + 轻微虚线描边
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#334089FD" />
+            <corners android:radius="10dp" />
+            <stroke
+                android:width="2dp"
+                android:color="#4089FD"
+                android:dashWidth="6dp"
+                android:dashGap="4dp" />
+        </shape>
+    </item>
+
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#44F6C445" />
+            <corners android:radius="10dp" />
+            <stroke
+                android:width="2dp"
+                android:color="@color/crayon_yellow"
+                android:dashWidth="6dp"
+                android:dashGap="4dp" />
+        </shape>
+    </item>
+
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#221E2330" />
+            <corners android:radius="10dp" />
+            <stroke
+                android:width="1dp"
+                android:color="#33FFFFFF"
+                android:dashWidth="6dp"
+                android:dashGap="4dp" />
+        </shape>
+    </item>
+
+</selector>

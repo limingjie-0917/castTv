@@ -1,0 +1,22 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1024" height="1024" rx="220" fill="#000000"/>
+
+  <!-- Safe-area content: triangle stand removed, TV/phone shifted slightly downward -->
+  <g transform="translate(512 512) scale(0.60) translate(-512 -512)">
+    <g id="tv-symbol">
+      <rect x="132" y="244" width="760" height="500" rx="78" stroke="#FFFFFF" stroke-width="40"/>
+
+      <path d="M326 434H458" stroke="#FFFFFF" stroke-width="48" stroke-linecap="round"/>
+      <path d="M392 434V602" stroke="#FFFFFF" stroke-width="48" stroke-linecap="round"/>
+      <path d="M514 434L578 602L642 434" stroke="#FFFFFF" stroke-width="48" stroke-linecap="round" stroke-linejoin="round"/>
+
+      <!-- Only keep the simple bottom support line -->
+      <path d="M388 856H636" stroke="#FFFFFF" stroke-width="36" stroke-linecap="round"/>
+    </g>
+
+    <rect x="700" y="592" width="170" height="304" rx="34" fill="#000000"/>
+    <rect x="700" y="592" width="170" height="304" rx="34" stroke="#FFFFFF" stroke-width="30"/>
+    <circle cx="785" cy="858" r="10" fill="#FFFFFF"/>
+    <circle cx="784" cy="627" r="7" fill="#FFFFFF"/>
+  </g>
+</svg>

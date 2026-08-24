@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    v1.1.124 历史卡片「稍后播放」按钮背景（仅按自身焦点响应）：
+    - 默认：浅灰边框 + 半透明灰底
+    - 焦点（state_focused=true）：暖黄实线边框 + 半透明暖黄底
+    - 按下：稍深暖黄底 + 橙色边框
+    根因修复：卡片 root 获得焦点时会 setSelected 传播到全部子按钮（dispatchSetSelected），
+    旧版按钮含 state_selected 视觉，导致「继续播放」获焦时「稍后播放」也被点亮暖黄边框。
+    这里移除 state_selected 分支，使每个按钮只随自身 state_focused 变化，互不污染。
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 焦点态：暖黄实线边框 + 半透明暖黄底（忽略 selected，避免兄弟按钮相互影响） -->
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#33F6C445" />
+            <corners android:radius="12dp" />
+            <stroke android:width="2dp" android:color="@color/crayon_yellow" />
+        </shape>
+    </item>
+
+    <!-- 按下态：稍深暖黄底 + 橙色边框 -->
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#55F6C445" />
+            <corners android:radius="12dp" />
+            <stroke android:width="2dp" android:color="@color/crayon_orange" />
+        </shape>
+    </item>
+
+    <!-- 默认态：浅灰实线边框 + 半透明灰底 -->
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#554A4F5A" />
+            <corners android:radius="12dp" />
+            <stroke android:width="1dp" android:color="#AAAAAA" />
+        </shape>
+    </item>
+</selector>

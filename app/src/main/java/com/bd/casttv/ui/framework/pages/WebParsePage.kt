@@ -1,0 +1,1263 @@
+package com.bd.casttv.ui.framework.pages
+
+import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.text.InputType
+import android.text.TextUtils
+import android.util.Log
+import android.view.Gravity
+import android.view.KeyEvent
+import android.view.View
+import android.view.ViewGroup
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
+import android.widget.FrameLayout
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
+import android.widget.Toast
+import androidx.media3.common.MimeTypes
+import com.bd.casttv.R
+import com.bd.casttv.dlna.PlaybackController
+import com.bd.casttv.player.PlayerActivity
+import com.bd.casttv.ui.GlowUnderlineView
+import com.bd.casttv.ui.framework.BasePage
+import com.bd.casttv.ui.framework.BoundaryFocusHandler
+import com.bd.casttv.ui.framework.FocusFxHelper
+import com.bd.casttv.ui.framework.PhoneHubHost
+import com.bd.casttv.webparse.AdapterKind
+import com.bd.casttv.webparse.AdapterSelectResult
+import com.bd.casttv.webparse.AdapterSelector
+import com.bd.casttv.webparse.JsonAdapterEventBus
+import com.bd.casttv.webparse.ParsePageKind
+import com.bd.casttv.webparse.ParseStep
+import com.bd.casttv.webparse.ParsedListMovie
+import com.bd.casttv.webparse.ParsedMovie
+import com.bd.casttv.webparse.RuleBasedAdapter
+import com.bd.casttv.webparse.WebFrameworkType
+import com.bd.casttv.webparse.WebParseAdapterStore
+import com.bd.casttv.webparse.WebParseExtractor
+import com.bd.casttv.webparse.WebParseHtml
+import com.bd.casttv.webparse.WebParseListExtractor
+import com.bd.casttv.webparse.WebParsePageType
+import com.bd.casttv.webparse.WebParseRequest
+import com.bd.casttv.webparse.WebParseRequestBus
+import com.bd.casttv.webparse.WebParseStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.NetworkInterface
+import java.net.URL
+
+class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Listener, JsonAdapterEventBus.Listener {
+    private companion object {
+        const val TAG = "WebParsePage"
+        const val WEB_PARSE_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    }
+
+    override val pageId = com.bd.casttv.settings.Settings.PAGE_ID_WEB_PARSE
+    override val pageTitle = "网页解析播放"
+    override val pageIconRes = R.drawable.ic_web_parse
+    override val enablePageScroll: Boolean = false
+    override val useContentPanel: Boolean get() = true
+    override val showPageHeader: Boolean get() = true
+    override val pageStickerRes: Int get() = R.drawable.sticker_shinchan
+
+    private val warm = Color.parseColor("#FFD700")
+    private val card = Color.parseColor("#12FFFFFF")
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val store = WebParseStore(context)
+    private val adapterStore = WebParseAdapterStore(context)
+    private var currentUrl: String = ""
+    private var movie: ParsedMovie? = null
+    private var listMovies: List<ParsedListMovie> = emptyList()
+    private var listBackUrl: String = ""
+    private var listBackMovies: List<ParsedListMovie> = emptyList()
+    private var detailFromList = false
+    private var selectedSourceIndex = 0
+    private var selectedEpisodeIndex = 0
+    private var extractor = WebParseExtractor(context.applicationContext)
+    private val listExtractor = WebParseListExtractor()
+    private var parseJob: Job? = null
+    private var progressJob: Job? = null
+    private var phoneHubUrl: String = ""
+    private var descriptionView: TextView? = null
+
+    private val root = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; clipChildren = false; clipToPadding = false }
+    private val contentScroll = ScrollView(context).apply {
+        isFillViewport = true
+        isFocusable = false
+        descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+        overScrollMode = ScrollView.OVER_SCROLL_NEVER
+        // 列表结果卡片自身仍允许焦点放大绘制；父层容器边界负责裁剪溢出区域。
+        clipChildren = true
+        clipToPadding = false
+        setPadding(dp(4), dp(4), dp(4), dp(4))
+    }
+    private val contentArea = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; clipChildren = false; clipToPadding = false }
+    private val emptyView = TextView(context).apply {
+        text = "在手机端输入影片列表页或详情页网址开始解析"
+        textSize = 20f
+        setTextColor(Color.argb(220, 255, 255, 255))
+        gravity = Gravity.CENTER
+        isFocusable = true
+        background = panelBg(false)
+        setOnKeyListener { v, _, e -> boundaryKey(v, e) }
+    }
+    private val inputEdit: EditText = EditText(context).apply {
+        hint = "请输入影片列表页或详情页网址"
+        textSize = 16f
+        setSingleLine(true)
+        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+        setTextColor(Color.WHITE)
+        setHintTextColor(Color.argb(170, 255, 255, 255))
+        setPadding(dp(14), 0, dp(14), 0)
+        background = inputBg(false)
+        isFocusable = true
+        isFocusableInTouchMode = true
+        showSoftInputOnFocus = false
+        setOnFocusChangeListener { v, has ->
+            background = inputBg(has)
+            FocusFxHelper.applyFocusFxState(v, has, cornerRadiusDp = 10)
+        }
+        setOnClickListener { selectAllAndShowKeyboard() }
+        setOnEditorActionListener { _, _, _ -> showPageTypeDialogFromInput(); true }
+        setOnKeyListener { v, keyCode, e ->
+            when (keyCode) {
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                    if (e.action == KeyEvent.ACTION_UP) selectAllAndShowKeyboard()
+                    true
+                }
+                KeyEvent.KEYCODE_DPAD_LEFT -> {
+                    if (e.action == KeyEvent.ACTION_DOWN) {
+                        if (backToListButton.visibility == View.VISIBLE) backToListButton.requestFocus() else scanButton.requestFocus()
+                        true
+                    } else {
+                        false
+                    }
+                }
+                KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    if (e.action == KeyEvent.ACTION_DOWN) {
+                        parseButton.requestFocus()
+                        true
+                    } else {
+                        false
+                    }
+                }
+                else -> boundaryKey(v, e)
+            }
+        }
+    }
+    private val inputBox: FrameLayout = FrameLayout(context).apply {
+        clipChildren = false
+        clipToPadding = false
+        addView(inputEdit, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+    }
+    private val backToListButton = dialogButton("←") { returnToListResult() }.apply {
+        visibility = View.GONE
+        contentDescription = "返回上一级"
+    }
+    private val scanButton = dialogButton("扫码") { WebParseQrDialog(context, phoneHubUrl.ifBlank { buildPhoneHubUrl(PhoneHubHost.port()) }).show() }
+    private val parseButton = dialogButton("立即解析") { showPageTypeDialogFromInput() }
+    private val historyButton = dialogButton("解析记录") {
+        WebParseHistoryDialog(context) { history ->
+            val url = history.url
+            inputEdit.setText(url)
+            inputEdit.setSelection(inputEdit.text?.length ?: 0)
+            inputEdit.requestFocus()
+            when (history.pageType.trim().lowercase()) {
+                "list" -> startParseList(url)
+                "detail" -> startParse(url)
+                else -> showPageTypeDialogForUrl(url, parseButton)
+            }
+        }.show()
+    }
+    private val adapterSettingsButton = iconButton(R.drawable.ic_settings_tv) {
+        WebParseAdapterSettingsDialog(
+            context = context,
+            currentUrlProvider = { inputEdit.text?.toString()?.trim().orEmpty().ifBlank { currentUrl } },
+            uploadPageUrlProvider = { buildJsonUploadUrl(PhoneHubHost.port()) },
+            onUseRule = { fileName ->
+                val url = inputEdit.text?.toString()?.trim().orEmpty().ifBlank { currentUrl }
+                if (url.startsWith("http://", true) || url.startsWith("https://", true)) startParseWithRule(url, fileName)
+            }
+        ).show()
+    }
+    private val saveButton = dialogButton("保存到合集") { movie?.let { WebParseSaveDialog(context, it) { url -> extractor.resolve(url) }.show() } }
+    private val jsonButton = dialogButton("JSON解析") { showJsonAdapterDialog() }
+    private val listJsonButton = dialogButton("JSON 解析") { showListJsonAdapterDialog() }
+    private val jsonTip = TextView(context).apply {
+        text = "解析结果异常？试试AI生成JSON解析"
+        textSize = 14f
+        setTextColor(Color.argb(225, 255, 215, 0))
+        gravity = Gravity.CENTER_VERTICAL
+        isFocusable = true
+        isClickable = true
+        setPadding(dp(10), 0, dp(10), 0)
+        background = GradientDrawable().apply {
+            cornerRadius = dp(10).toFloat()
+            setColor(Color.argb(28, 255, 215, 0))
+            setStroke(dp(1), Color.argb(120, 255, 215, 0))
+        }
+        setOnClickListener { showJsonAdapterDialog() }
+        setOnFocusChangeListener { v, has ->
+            setTextColor(if (has) warm else Color.argb(225, 255, 215, 0))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(10).toFloat()
+                setColor(Color.argb(36, 32, 34, 40))
+                setStroke(dp(if (has) 3 else 1), if (has) warm else Color.argb(120, 255, 215, 0))
+            }
+            FocusFxHelper.applyFocusFxState(v, has, cornerRadiusDp = 10)
+        }
+        setOnKeyListener { v, _, e -> boundaryKey(v, e) }
+    }
+    private val bottomButtons = LinearLayout(context).apply {
+        gravity = Gravity.END or Gravity.CENTER_VERTICAL
+        clipChildren = false
+        clipToPadding = false
+        visibility = View.GONE
+        addView(jsonTip, LinearLayout.LayoutParams(dp(270), dp(42)).apply { marginEnd = dp(10) })
+        addView(jsonButton, LinearLayout.LayoutParams(dp(118), dp(42)).apply { marginEnd = dp(10) })
+        addView(saveButton, LinearLayout.LayoutParams(dp(132), dp(42)))
+    }
+
+    init {
+        buildLayout()
+        WebParseRequestBus.addListener(this)
+        JsonAdapterEventBus.addListener(this)
+        startPhoneHubAndUpdateInputArea()
+    }
+
+    override fun onDetachedFromWindow() {
+        WebParseRequestBus.removeListener(this)
+        JsonAdapterEventBus.removeListener(this)
+        parseJob?.cancel()
+        progressJob?.cancel()
+        scope.cancel()
+        super.onDetachedFromWindow()
+    }
+
+    override fun focusToFirstContent(): Boolean {
+        val ok = scanButton.requestFocus()
+        if (ok) onFocusEnterContent()
+        return ok
+    }
+
+    override fun onWebParseUrl(url: String) {
+        onWebParseRequest(WebParseRequest(url, WebParsePageType.DETAIL))
+    }
+
+    override fun onWebParseRequest(request: WebParseRequest) {
+        val url = request.url
+        if (url.isBlank()) return
+        inputEdit.setText(url)
+        inputEdit.setSelection(inputEdit.text?.length ?: 0)
+        when (request.pageType) {
+            WebParsePageType.LIST -> startParseList(url)
+            WebParsePageType.DETAIL -> startParse(url)
+        }
+    }
+
+    override fun onJsonAdapterImported(fileName: String, pageKind: ParsePageKind) {
+        val url = inputEdit.text?.toString()?.trim().orEmpty().ifBlank { currentUrl }
+        if (url.startsWith("http://", true) || url.startsWith("https://", true)) {
+            toast("JSON 规则导入成功，正在重新解析")
+            when (pageKind) {
+                ParsePageKind.LIST -> startParseListWithJsonRule(url, fileName)
+                ParsePageKind.DETAIL -> startParseWithRule(url, fileName)
+            }
+        } else {
+            toast("JSON 规则导入成功，请先输入网址")
+        }
+    }
+
+    private fun buildLayout() {
+        root.setPadding(dp(10), dp(8), dp(10), dp(8))
+        val inputRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = panelBg(false)
+            clipChildren = false
+            clipToPadding = false
+            addView(backToListButton, LinearLayout.LayoutParams(dp(54), dp(46)).apply { marginEnd = dp(10) })
+            addView(scanButton, LinearLayout.LayoutParams(dp(86), dp(46)).apply { marginEnd = dp(12) })
+            addView(inputBox, LinearLayout.LayoutParams(0, dp(46), 1f).apply { marginEnd = dp(12) })
+            addView(parseButton, LinearLayout.LayoutParams(dp(122), dp(46)).apply { marginEnd = dp(12) })
+            addView(historyButton, LinearLayout.LayoutParams(dp(122), dp(46)).apply { marginEnd = dp(10) })
+            addView(adapterSettingsButton, LinearLayout.LayoutParams(dp(46), dp(46)))
+        }
+        root.addView(inputRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(78)))
+        root.addView(FrameLayout(context).apply {
+            // 结果区域最外层裁剪，避免列表卡片焦点放大溢出到输入区或页面其他区域。
+            clipChildren = true
+            clipToPadding = true
+            val resultPanel = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                // 结果面板作为滚动容器父层也启用裁剪；内部列表/卡片仍保持不裁剪，保证焦点态边框完整。
+                clipChildren = true
+                clipToPadding = true
+                contentScroll.addView(contentArea, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                addView(contentScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+                addView(bottomButtons, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)).apply { topMargin = dp(8) })
+            }
+            addView(resultPanel, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            addView(emptyView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply { topMargin = dp(12) })
+        contentContainer.addView(root, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        render()
+    }
+
+    private fun startPhoneHubAndUpdateInputArea() {
+        phoneHubUrl = buildPhoneHubUrl(PhoneHubHost.port())
+        PhoneHubHost.startAsync(context.applicationContext) { phoneHubUrl = buildPhoneHubUrl(PhoneHubHost.port()) }
+    }
+
+    private fun buildPhoneHubUrl(port: Int): String {
+        val ip = localIp()
+        return if (port > 0 && ip.contains('.')) "http://$ip:$port/parse" else ""
+    }
+
+    private fun buildJsonUploadUrl(port: Int): String {
+        val ip = localIp()
+        return if (port > 0 && ip.contains('.')) "http://$ip:$port/upload-json-adapter" else ""
+    }
+
+    private fun selectAllAndShowKeyboard() {
+        if (!inputEdit.text.isNullOrEmpty()) inputEdit.selectAll()
+        showKeyboard()
+    }
+
+    private fun showKeyboard() {
+        inputEdit.postDelayed({
+            (context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager)
+                ?.showSoftInput(inputEdit, InputMethodManager.SHOW_IMPLICIT)
+        }, 120L)
+    }
+
+    private fun showPageTypeDialogFromInput() {
+        val url = normalizedInputUrl() ?: return
+        showPageTypeDialogForUrl(url, parseButton)
+    }
+
+    private fun showPageTypeDialogForUrl(url: String, returnFocusView: View?) {
+        WebParsePageTypeDialog(
+            context = context,
+            returnFocusView = returnFocusView,
+            onListPage = { startParseList(url) },
+            onDetailPage = { startParse(url) }
+        ).show()
+    }
+
+    private fun returnToListResult() {
+        val items = listBackMovies
+        if (items.isEmpty()) {
+            toast("暂无可返回的列表结果")
+            backToListButton.visibility = View.GONE
+            return
+        }
+        parseJob?.cancel()
+        progressJob?.cancel()
+        detailFromList = false
+        movie = null
+        currentUrl = listBackUrl
+        listMovies = items
+        if (listBackUrl.isNotBlank()) {
+            inputEdit.setText(listBackUrl)
+            inputEdit.setSelection(inputEdit.text?.length ?: 0)
+        }
+        renderList(items)
+    }
+
+    private fun startParseFromList(item: ParsedListMovie) {
+        listBackUrl = currentUrl
+        listBackMovies = listMovies
+        detailFromList = true
+        startParse(item.detailUrl, fromList = true)
+    }
+
+    private fun startParseFromInput() {
+        val url = normalizedInputUrl() ?: return
+        startParse(url)
+    }
+
+    private fun normalizedInputUrl(): String? {
+        val url = inputEdit.text?.toString()?.trim().orEmpty()
+        if (url.isBlank()) {
+            toast("请先输入影片列表页或详情页网址")
+            inputEdit.requestFocus()
+            return null
+        }
+        if (!url.startsWith("http://", ignoreCase = true) && !url.startsWith("https://", ignoreCase = true)) {
+            toast("请输入 http/https 开头的网址")
+            inputEdit.requestFocus()
+            return null
+        }
+        return url
+    }
+
+    private fun startParseList(url: String) {
+        detailFromList = false
+        backToListButton.visibility = View.GONE
+        currentUrl = url
+        movie = null
+        listMovies = emptyList()
+        selectedSourceIndex = 0
+        selectedEpisodeIndex = 0
+        parseJob?.cancel()
+        progressJob?.cancel()
+        val progressDialog = WebParseProgressDialog(
+            context = context,
+            pageKind = ParsePageKind.LIST,
+            onTryJsonParse = { showListJsonAdapterDialog() },
+            onCancel = { parseJob?.cancel() }
+        )
+        progressDialog.show()
+        parseJob = scope.launch {
+            try {
+                progressDialog.update(ParseStep.RECEIVED)
+                val preselectedAdapter = AdapterSelector.select(context.applicationContext, url, "", ParsePageKind.LIST)
+                val parsedList: List<ParsedListMovie>
+                val adapterSelection: AdapterSelectResult
+                val htmlForHistory: String
+                if (preselectedAdapter.source == AdapterSelectResult.SelectSource.DOMAIN_BINDING &&
+                    preselectedAdapter.adapterInfo.kind == AdapterKind.CUSTOM_JSON
+                ) {
+                    val ruleFileName = preselectedAdapter.adapterInfo.description
+                        .ifBlank { preselectedAdapter.adapterInfo.id }
+                    val jsonRule = RuleBasedAdapter.readRuleText(context.applicationContext, ruleFileName)
+                    if (jsonRule.isBlank()) error("已绑定的列表页自定义适配器规则文件不存在")
+                    progressDialog.update(ParseStep.FETCHING_HTML)
+                    val html = withContext(Dispatchers.IO) { WebParseExtractor.fetchText(url) }
+                    WebParseExtractor.lastParsedUrl = url
+                    WebParseExtractor.lastParsedHtml = html
+                    progressDialog.update(ParseStep.PARSING_INFO)
+                    parsedList = withContext(Dispatchers.Default) { listExtractor.parseWithJsonRule(html, jsonRule, url) }
+                    if (parsedList.isEmpty()) error("未按已绑定的自定义适配器解析到影片条目")
+                    adapterSelection = preselectedAdapter
+                    htmlForHistory = html
+                } else {
+                    progressDialog.update(ParseStep.FETCHING_HTML)
+                    parsedList = listExtractor.extractList(url)
+                    adapterSelection = selectAdapterForHistory(url, ParsePageKind.LIST)
+                    progressDialog.update(ParseStep.PARSING_INFO)
+                    htmlForHistory = WebParseExtractor.lastParsedHtml.orEmpty()
+                }
+                listMovies = parsedList
+                store.saveParseHistory(
+                    title = "列表页 · ${parsedList.size} 个条目",
+                    url = url,
+                    pageType = "list",
+                    siteTitle = WebParseStore.extractSiteTitle(htmlForHistory),
+                    frameworkType = frameworkDisplayName(adapterSelection),
+                    adapterName = adapterSelection.adapterInfo.name,
+                    adapterId = adapterSelection.adapterInfo.id
+                )
+                renderList(parsedList)
+                progressDialog.update(ParseStep.LOADING_DONE)
+                progressDialog.dismissDelayed()
+            } catch (t: Throwable) {
+                progressDialog.update(ParseStep.ERROR, t.message ?: "未知错误")
+            }
+        }
+    }
+
+    private fun startParse(url: String, fromList: Boolean = false) {
+        detailFromList = fromList
+        backToListButton.visibility = if (fromList && listBackMovies.isNotEmpty()) View.VISIBLE else View.GONE
+        currentUrl = url
+        if (inputEdit.text?.toString()?.trim() != url) {
+            inputEdit.setText(url)
+            inputEdit.setSelection(inputEdit.text?.length ?: 0)
+        }
+        listMovies = emptyList()
+        selectedSourceIndex = 0
+        selectedEpisodeIndex = 0
+        parseJob?.cancel()
+        val progressDialog = WebParseProgressDialog(context) { parseJob?.cancel() }
+        progressDialog.show()
+        extractor = WebParseExtractor(context.applicationContext) { p ->
+            post {
+                if (p.step == ParseStep.ERROR) progressDialog.update(ParseStep.ERROR, p.error) else progressDialog.update(p.step)
+            }
+        }
+        parseJob = scope.launch {
+            try {
+                val preselectedAdapter = AdapterSelector.select(context.applicationContext, url, "", ParsePageKind.DETAIL)
+                val parsed: ParsedMovie
+                val adapterSelection: AdapterSelectResult
+                if (preselectedAdapter.source == AdapterSelectResult.SelectSource.DOMAIN_BINDING &&
+                    preselectedAdapter.adapterInfo.kind == AdapterKind.CUSTOM_JSON
+                ) {
+                    val ruleFileName = preselectedAdapter.adapterInfo.description
+                        .ifBlank { preselectedAdapter.adapterInfo.id }
+                    val jsonRule = RuleBasedAdapter.readRuleText(context.applicationContext, ruleFileName)
+                    if (jsonRule.isBlank()) error("已绑定的详情页自定义适配器规则文件不存在")
+                    parsed = extractor.extractWithRule(url, ruleFileName)
+                    adapterSelection = preselectedAdapter
+                } else {
+                    parsed = extractor.extract(url)
+                    adapterSelection = selectAdapterForHistory(url, ParsePageKind.DETAIL)
+                }
+                movie = parsed
+                store.saveParseHistory(
+                    title = parsed.title,
+                    url = url,
+                    pageType = "detail",
+                    frameworkType = frameworkDisplayName(adapterSelection),
+                    adapterName = adapterSelection.adapterInfo.name,
+                    adapterId = adapterSelection.adapterInfo.id
+                )
+                val progress = store.getProgress(url)
+                selectedSourceIndex = progress?.sourceIndex?.coerceIn(0, parsed.sources.lastIndex.coerceAtLeast(0)) ?: 0
+                selectedEpisodeIndex = progress?.episodeIndex?.coerceIn(0, (parsed.sources.getOrNull(selectedSourceIndex)?.episodes?.lastIndex ?: 0).coerceAtLeast(0)) ?: 0
+                render()
+                progressDialog.update(ParseStep.LOADING_DONE)
+                progressDialog.dismissDelayed()
+            } catch (t: Throwable) {
+                progressDialog.update(ParseStep.ERROR, t.message ?: "未知错误")
+            }
+        }
+    }
+
+    private fun startParseWithRule(url: String, fileName: String) {
+        currentUrl = url
+        detailFromList = false
+        backToListButton.visibility = View.GONE
+        listMovies = emptyList()
+        inputEdit.setText(url)
+        inputEdit.setSelection(inputEdit.text?.length ?: 0)
+        selectedSourceIndex = 0
+        selectedEpisodeIndex = 0
+        parseJob?.cancel()
+        val progressDialog = WebParseProgressDialog(context) { parseJob?.cancel() }
+        progressDialog.show()
+        extractor = WebParseExtractor(context.applicationContext) { p ->
+            post { if (p.step == ParseStep.ERROR) progressDialog.update(ParseStep.ERROR, p.error) else progressDialog.update(p.step) }
+        }
+        parseJob = scope.launch {
+            try {
+                val parsed = extractor.extractWithRule(url, fileName)
+                val ruleName = RuleBasedAdapter.listRuleInfos(context).firstOrNull { it.fileName == fileName }?.name.orEmpty().ifBlank { fileName }
+                movie = parsed
+                store.saveParseHistory(
+                    title = parsed.title,
+                    url = url,
+                    pageType = "detail",
+                    frameworkType = WebFrameworkType.CUSTOM.displayName,
+                    adapterName = ruleName,
+                    adapterId = fileName
+                )
+                selectedSourceIndex = 0
+                selectedEpisodeIndex = 0
+                render()
+                progressDialog.update(ParseStep.LOADING_DONE)
+                progressDialog.dismissDelayed()
+            } catch (t: Throwable) {
+                progressDialog.update(ParseStep.ERROR, t.message ?: "未知错误")
+            }
+        }
+    }
+
+    private fun showJsonAdapterDialog() {
+        JsonAdapterDialog(
+            context = context,
+            currentUrlProvider = { inputEdit.text?.toString()?.trim().orEmpty().ifBlank { currentUrl } },
+            uploadPageUrlProvider = { buildJsonUploadUrl(PhoneHubHost.port()) },
+            pageKindProvider = { ParsePageKind.DETAIL },
+            onUseRawJson = { json -> startParseDetailWithJsonRule(json) },
+            onUseRule = { fileName ->
+                val url = inputEdit.text?.toString()?.trim().orEmpty().ifBlank { currentUrl }
+                startParseWithRule(url, fileName)
+            }
+        ).show()
+    }
+
+    private fun showListJsonAdapterDialog() {
+        JsonAdapterDialog(
+            context = context,
+            currentUrlProvider = { inputEdit.text?.toString()?.trim().orEmpty().ifBlank { currentUrl } },
+            uploadPageUrlProvider = { buildJsonUploadUrl(PhoneHubHost.port()) },
+            pageKindProvider = { ParsePageKind.LIST },
+            onUseRawJson = { json -> startParseListWithJsonRule(json) },
+            onUseRule = { }
+        ).show()
+    }
+
+    private fun startParseDetailWithJsonRule(jsonRule: String) {
+        val url = inputEdit.text?.toString()?.trim().orEmpty().ifBlank { currentUrl }
+        if (!url.startsWith("http://", true) && !url.startsWith("https://", true)) {
+            toast("请先输入 http/https 开头的网址")
+            return
+        }
+        val host = adapterStore.normalizeHost(url)
+        if (host.isBlank()) {
+            toast("无法识别当前网址域名")
+            return
+        }
+        currentUrl = url
+        detailFromList = false
+        backToListButton.visibility = View.GONE
+        listMovies = emptyList()
+        selectedSourceIndex = 0
+        selectedEpisodeIndex = 0
+        parseJob?.cancel()
+        val progressDialog = WebParseProgressDialog(context) { parseJob?.cancel() }
+        progressDialog.show()
+        parseJob = scope.launch {
+            var savedFileName: String? = null
+            try {
+                val info = RuleBasedAdapter.saveRule(context.applicationContext, jsonRule, host, ParsePageKind.DETAIL)
+                savedFileName = info.fileName
+                extractor = WebParseExtractor(context.applicationContext) { p ->
+                    post { if (p.step == ParseStep.ERROR) progressDialog.update(ParseStep.ERROR, p.error) else progressDialog.update(p.step) }
+                }
+                val parsed = extractor.extractWithRule(url, info.fileName)
+                saveCustomAdapterBinding(url, info.name, info.fileName, ParsePageKind.DETAIL)
+                movie = parsed
+                store.saveParseHistory(
+                    title = parsed.title,
+                    url = url,
+                    pageType = "detail",
+                    frameworkType = WebFrameworkType.CUSTOM.displayName,
+                    adapterName = info.name,
+                    adapterId = info.fileName
+                )
+                render()
+                progressDialog.update(ParseStep.LOADING_DONE)
+                progressDialog.dismissDelayed()
+                toast("详情页 JSON 规则已保存为自定义适配器：${info.name}")
+            } catch (t: Throwable) {
+                savedFileName?.let { RuleBasedAdapter.deleteRule(context.applicationContext, it) }
+                val msg = t.message ?: "详情页 JSON 解析失败"
+                progressDialog.update(ParseStep.ERROR, msg)
+                toast(msg)
+            }
+        }
+    }
+
+    private fun startParseListWithJsonRule(url: String, fileName: String) {
+        inputEdit.setText(url)
+        inputEdit.setSelection(inputEdit.text?.length ?: 0)
+        val jsonRule = RuleBasedAdapter.readRuleText(context.applicationContext, fileName)
+        if (jsonRule.isBlank()) {
+            toast("列表页 JSON 规则文件不存在")
+            return
+        }
+        startParseListWithJsonRule(jsonRule)
+    }
+
+    private fun startParseListWithJsonRule(jsonRule: String) {
+        val url = inputEdit.text?.toString()?.trim().orEmpty().ifBlank { currentUrl }
+        if (!url.startsWith("http://", true) && !url.startsWith("https://", true)) {
+            toast("请先输入 http/https 开头的网址")
+            return
+        }
+        try {
+            val obj = JSONObject(jsonRule)
+            if (obj.optString("type") != "list") {
+                toast("JSON 校验失败：type 必须为 list")
+                return
+            }
+            if (obj.optString("titleSelector").isBlank()) {
+                toast("JSON 校验失败：titleSelector 不能为空")
+                return
+            }
+            if (obj.optString("detailUrlSelector").isBlank()) {
+                toast("JSON 校验失败：detailUrlSelector 不能为空")
+                return
+            }
+        } catch (t: Throwable) {
+            toast("JSON 格式错误，请检查内容")
+            return
+        }
+        currentUrl = url
+        detailFromList = false
+        backToListButton.visibility = View.GONE
+        movie = null
+        listMovies = emptyList()
+        selectedSourceIndex = 0
+        selectedEpisodeIndex = 0
+        parseJob?.cancel()
+        progressJob?.cancel()
+        val progressDialog = WebParseProgressDialog(context) { parseJob?.cancel() }
+        progressDialog.show()
+        parseJob = scope.launch {
+            try {
+                progressDialog.update(ParseStep.RECEIVED)
+                progressDialog.update(ParseStep.FETCHING_HTML)
+                val html = withContext(Dispatchers.IO) { WebParseExtractor.fetchText(url) }
+                WebParseExtractor.lastParsedUrl = url
+                WebParseExtractor.lastParsedHtml = html
+                progressDialog.update(ParseStep.PARSING_INFO)
+                val parsedList = withContext(Dispatchers.Default) { listExtractor.parseWithJsonRule(html, jsonRule, url) }
+                if (parsedList.isEmpty()) error("未按 JSON 规则解析到影片条目")
+                val host = adapterStore.normalizeHost(url)
+                val info = RuleBasedAdapter.saveRule(context.applicationContext, jsonRule, host, ParsePageKind.LIST)
+                saveCustomAdapterBinding(url, info.name, info.fileName, ParsePageKind.LIST)
+                listMovies = parsedList
+                store.saveParseHistory(
+                    title = "列表页 JSON · ${parsedList.size} 个条目",
+                    url = url,
+                    pageType = "list",
+                    siteTitle = WebParseStore.extractSiteTitle(html),
+                    frameworkType = WebFrameworkType.CUSTOM.displayName,
+                    adapterName = info.name,
+                    adapterId = info.fileName
+                )
+                renderList(parsedList)
+                progressDialog.update(ParseStep.LOADING_DONE)
+                progressDialog.dismissDelayed()
+            } catch (t: Throwable) {
+                val msg = t.message ?: "列表页 JSON 解析失败"
+                progressDialog.update(ParseStep.ERROR, msg)
+                toast(msg)
+            }
+        }
+    }
+
+    private fun selectAdapterForHistory(url: String, pageKind: ParsePageKind): AdapterSelectResult {
+        val html = WebParseExtractor.lastParsedHtml.orEmpty()
+        return AdapterSelector.select(context.applicationContext, url, html, pageKind)
+    }
+
+    private fun saveCustomAdapterBinding(url: String, adapterName: String, ruleFileName: String, pageKind: ParsePageKind) {
+        adapterStore.forceUpdateBinding(
+            WebParseAdapterStore.DomainBinding(
+                pageKind = pageKind,
+                host = url,
+                adapterId = ruleFileName,
+                adapterKind = AdapterKind.CUSTOM_JSON,
+                adapterName = adapterName,
+                ruleFileName = ruleFileName,
+                frameworkType = WebFrameworkType.CUSTOM,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    private fun frameworkDisplayName(selection: AdapterSelectResult): String {
+        val framework = if (selection.detectedFramework == WebFrameworkType.UNKNOWN) selection.adapterInfo.frameworkType else selection.detectedFramework
+        return framework.displayName
+    }
+
+    private fun detachFromParent(view: View) {
+        (view.parent as? ViewGroup)?.removeView(view)
+    }
+
+    private fun render() {
+        contentArea.removeAllViews()
+        backToListButton.visibility = if (detailFromList && listBackMovies.isNotEmpty()) View.VISIBLE else View.GONE
+        descriptionView = null
+        val data = movie
+        emptyView.visibility = if (data == null) View.VISIBLE else View.GONE
+        contentScroll.visibility = if (data == null) View.GONE else View.VISIBLE
+        bottomButtons.visibility = if (data == null) View.GONE else View.VISIBLE
+        contentArea.visibility = if (data == null) View.GONE else View.VISIBLE
+        if (data == null) return
+        Log.d(TAG, "render title=${data.title} sources=${data.sources.size} selectedSourceIndex=$selectedSourceIndex episodeCounts=${data.sources.map { it.episodes.size }}")
+
+        val top = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; clipChildren = false; clipToPadding = false }
+        val cover = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP; background = panelBg(false); setImageResource(R.drawable.ic_thumb_default) }
+        top.addView(cover, LinearLayout.LayoutParams(dp(150), dp(210)).apply { marginEnd = dp(16) })
+        loadCover(data.coverUrl, cover)
+
+        val info = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(12), dp(16), dp(12)); background = panelBg(false); clipChildren = false; clipToPadding = false }
+        val title = TextView(context).apply { text = data.title; textSize = 26f; typeface = Typeface.DEFAULT_BOLD; setTextColor(warm); maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
+        val meta = listOf(data.category, data.year, data.area).filter { it.isNotBlank() }.joinToString(" · ")
+        info.addView(title)
+        info.addView(TextView(context).apply { text = meta.ifBlank { "网页解析影片" }; textSize = 15f; setTextColor(Color.argb(220, 255, 255, 255)); setPadding(0, dp(8), 0, 0) })
+        if (data.director.isNotBlank()) info.addView(infoLine("导演", data.director))
+        if (data.actors.isNotBlank()) info.addView(infoLine("主演", data.actors))
+        val rawDesc = data.description.ifBlank { "暂无简介" }
+        var descExpanded = false
+        val desc = TextView(context).apply {
+            textSize = 14f
+            setTextColor(Color.argb(220, 255, 255, 255))
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            isFocusable = true
+            isFocusableInTouchMode = false
+            isClickable = true
+            background = panelBg(false)
+            setOnFocusChangeListener { v, has ->
+                background = panelBg(has)
+                FocusFxHelper.applyFocusFxState(v, has, cornerRadiusDp = 14)
+            }
+            fun refresh() {
+                text = if (descExpanded) "$rawDesc △收起" else collapsedDescriptionText(rawDesc)
+                maxLines = if (descExpanded) Int.MAX_VALUE else 2
+                ellipsize = null
+            }
+            refresh()
+            setOnClickListener { descExpanded = !descExpanded; refresh() }
+            setOnKeyListener { v, keyCode, e ->
+                if ((keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER) && e.action == KeyEvent.ACTION_UP) {
+                    descExpanded = !descExpanded
+                    refresh()
+                    true
+                } else {
+                    boundaryKey(v, e)
+                }
+            }
+        }
+        descriptionView = desc
+        info.addView(desc)
+        top.addView(info, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        contentArea.addView(top, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+
+        if (data.sources.isEmpty()) {
+            contentArea.addView(emptyEpisodeView("未解析到播放线路，请尝试 JSON解析"), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(72)).apply { topMargin = dp(12) })
+        } else {
+            if (data.sources.size > 1) contentArea.addView(sourceTabs(data), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(54)).apply { topMargin = dp(12) })
+            contentArea.addView(episodeList(data), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
+        }
+    }
+
+    private fun renderList(items: List<ParsedListMovie>) {
+        detailFromList = false
+        backToListButton.visibility = View.GONE
+        contentArea.removeAllViews()
+        descriptionView = null
+        movie = null
+        emptyView.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
+        contentScroll.visibility = if (items.isEmpty()) View.GONE else View.VISIBLE
+        bottomButtons.visibility = View.GONE
+        contentArea.visibility = if (items.isEmpty()) View.GONE else View.VISIBLE
+        if (items.isEmpty()) return
+
+        val header = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            background = panelBg(false)
+            clipChildren = false
+            clipToPadding = false
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                clipChildren = false
+                clipToPadding = false
+                addView(TextView(context).apply {
+                    text = "已解析到 ${items.size} 个影片条目"
+                    textSize = 22f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setTextColor(warm)
+                    maxLines = 1
+                    ellipsize = TextUtils.TruncateAt.END
+                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                detachFromParent(listJsonButton)
+                addView(listJsonButton, LinearLayout.LayoutParams(dp(118), dp(42)).apply { marginStart = dp(12) })
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(TextView(context).apply {
+                text = "请选择要播放的影片，确认后会进入详情页解析流程"
+                textSize = 14f
+                setTextColor(Color.argb(210, 255, 255, 255))
+                setPadding(0, dp(8), 0, 0)
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        contentArea.addView(header, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+
+        val grid = listMovieGrid(items)
+        contentArea.addView(grid, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        contentScroll.post { grid.findViewWithTag<View>("list_movie_0")?.requestFocus() }
+    }
+
+    private fun listMovieGrid(items: List<ParsedListMovie>): LinearLayout = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        clipChildren = false
+        clipToPadding = false
+        setPadding(dp(4), dp(16), dp(4), dp(4))
+        val spanCount = 4
+        val cardHeight = dp(220)
+        val itemGap = dp(8)
+        items.chunked(spanCount).forEachIndexed { rowIndex, rowItems ->
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                clipChildren = false
+                clipToPadding = false
+            }
+            rowItems.forEachIndexed { columnIndex, item ->
+                val index = rowIndex * spanCount + columnIndex
+                row.addView(
+                    listMovieCard(item, index, items.size),
+                    LinearLayout.LayoutParams(0, cardHeight, 1f).apply {
+                        if (columnIndex > 0) marginStart = itemGap
+                    }
+                )
+            }
+            repeat(spanCount - rowItems.size) {
+                row.addView(
+                    FrameLayout(context),
+                    LinearLayout.LayoutParams(0, cardHeight, 1f).apply { marginStart = itemGap }
+                )
+            }
+            addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, cardHeight).apply { if (rowIndex > 0) topMargin = itemGap })
+        }
+    }
+
+    private fun listMovieCard(item: ParsedListMovie, index: Int, total: Int): LinearLayout = LinearLayout(context).apply {
+        tag = "list_movie_$index"
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER_HORIZONTAL
+        isFocusable = true
+        isClickable = true
+        setPadding(dp(8), dp(8), dp(8), dp(8))
+        background = listMovieCardBg(false)
+        clipChildren = false
+        clipToPadding = false
+        val cover = ImageView(context).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            adjustViewBounds = true
+            setImageResource(R.drawable.ic_thumb_default)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(10).toFloat()
+                setColor(Color.argb(42, 255, 255, 255))
+            }
+        }
+        addView(cover, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        loadThumb(item.coverUrl, cover)
+        addView(TextView(context).apply {
+            text = item.title
+            textSize = 14f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+            setPadding(dp(3), dp(7), dp(3), 0)
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
+        setOnFocusChangeListener { v, has ->
+            background = listMovieCardBg(has)
+            FocusFxHelper.applyFocusFxState(v, has, cornerRadiusDp = 14)
+        }
+        setOnClickListener { startParseFromList(item) }
+        setOnKeyListener { v, _, e -> listMovieBoundaryKey(v, e, index, total) }
+    }
+
+    private fun listMovieBoundaryKey(v: View, event: KeyEvent, index: Int, total: Int): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            val spanCount = 4
+            val column = index % spanCount
+            val lastColumn = minOf(spanCount - 1, (total - 1) % spanCount)
+            val lastRowStart = ((total - 1) / spanCount) * spanCount
+            if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT && column == 0 && !hasFocusableInDirection(v, View.FOCUS_LEFT)) {
+                BoundaryFocusHandler.shake(v)
+                return true
+            }
+            if (event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && (column == spanCount - 1 || (index >= lastRowStart && column == lastColumn)) && !hasFocusableInDirection(v, View.FOCUS_RIGHT)) {
+                BoundaryFocusHandler.shake(v)
+                return true
+            }
+            if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP && index < spanCount && !hasFocusableInDirection(v, View.FOCUS_UP)) {
+                BoundaryFocusHandler.shake(v)
+                return true
+            }
+            if (event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN && index >= lastRowStart && !hasFocusableInDirection(v, View.FOCUS_DOWN)) {
+                BoundaryFocusHandler.shake(v)
+                return true
+            }
+        }
+        return boundaryKey(v, event)
+    }
+
+    private fun sourceTabs(data: ParsedMovie): View {
+        val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; clipChildren = false; clipToPadding = false }
+        data.sources.forEachIndexed { index, source ->
+            row.addView(tabButton(source.name, index == selectedSourceIndex) {
+                selectedSourceIndex = index
+                selectedEpisodeIndex = 0
+                render()
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply { if (index > 0) marginStart = dp(8) })
+        }
+        return row
+    }
+
+    private fun episodeList(data: ParsedMovie): View {
+        val source = data.sources.getOrNull(selectedSourceIndex)
+        if (source == null) {
+            Log.w(TAG, "episodeList no source selectedSourceIndex=$selectedSourceIndex sources=${data.sources.size}")
+            return emptyEpisodeView("未解析到播放线路，请尝试 JSON解析")
+        }
+        Log.d(TAG, "episodeList source=${source.name} episodes=${source.episodes.size}")
+        val grid = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            clipChildren = false
+            clipToPadding = false
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+        }
+        var row: LinearLayout? = null
+        source.episodes.forEachIndexed { index, ep ->
+            if (index % 5 == 0) {
+                row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; clipChildren = false; clipToPadding = false }
+                grid.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)).apply { if (index > 0) topMargin = dp(8) })
+            }
+            row?.addView(episodeButton(ep.name, index, source.episodes.size, index == selectedEpisodeIndex, store.getProgress(currentUrl)?.let { it.sourceIndex == selectedSourceIndex && it.episodeIndex == index && it.positionSec > 0 } == true) {
+                selectedEpisodeIndex = index
+                launchEpisode(index)
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply { if (index % 5 > 0) marginStart = dp(8) })
+        }
+        return grid
+    }
+
+    private fun emptyEpisodeView(message: String): TextView = TextView(context).apply {
+        text = message
+        textSize = 16f
+        setTextColor(Color.argb(220, 255, 255, 255))
+        gravity = Gravity.CENTER
+        isFocusable = true
+        background = panelBg(false)
+        setOnKeyListener { v, _, e -> boundaryKey(v, e) }
+    }
+
+    private fun launchEpisode(index: Int) {
+        val data = movie ?: return
+        val source = data.sources.getOrNull(selectedSourceIndex) ?: return
+        val ep = source.episodes.getOrNull(index) ?: return
+        scope.launch {
+            val progressDialog = WebParseProgressDialog(context) { }
+            progressDialog.show()
+            progressDialog.update(ParseStep.RECEIVED)
+            progressDialog.update(ParseStep.FETCHING_HTML)
+            val uri = withContext(Dispatchers.IO) { ep.resolvedUrl ?: extractor.resolve(ep.playPageUrl) }
+            if (uri.isNullOrBlank() || !WebParseHtml.looksPlayable(uri)) {
+                progressDialog.update(ParseStep.ERROR, "未解析到有效视频直链")
+                delay(1200L)
+                progressDialog.dismissDelayed()
+                toast("未解析到 m3u8/mp4 视频直链，请换一集或换线路")
+                Log.w(TAG, "launchEpisode resolve failed playPageUrl=${ep.playPageUrl} resolved=$uri")
+                return@launch
+            }
+            ep.resolvedUrl = uri
+            progressDialog.update(ParseStep.LOADING_DONE)
+            progressDialog.dismissDelayed()
+            val startMs = store.getProgress(currentUrl)
+                ?.takeIf { it.sourceIndex == selectedSourceIndex && it.episodeIndex == index }
+                ?.positionSec?.times(1000L) ?: 0L
+            val title = if (data.sources.size > 1) "${ep.name} · ${source.name}" else ep.name
+            val referer = ep.playPageUrl.takeIf { it.startsWith("http://", true) || it.startsWith("https://", true) } ?: currentUrl
+            val mimeType = inferMimeType(uri)
+            PlaybackController.recordPlaybackHistory(uri, title, "网页解析播放", data.coverUrl)
+            context.startActivity(Intent(context, PlayerActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                putExtra(PlayerActivity.EXTRA_URI, uri)
+                putExtra(PlayerActivity.EXTRA_TITLE, title)
+                putExtra(PlayerActivity.EXTRA_SOURCE, "网页解析播放")
+                putExtra(PlayerActivity.EXTRA_MIME_TYPE, mimeType)
+                putExtra(PlayerActivity.EXTRA_HTTP_REFERER, referer)
+                putExtra(PlayerActivity.EXTRA_HTTP_USER_AGENT, WEB_PARSE_USER_AGENT)
+                putExtra(PlayerActivity.EXTRA_START_POSITION, startMs)
+                putExtra(com.bd.casttv.ui.framework.NewMainActivity.EXTRA_OPEN_PAGE_ID, pageId)
+            })
+            startProgressPoll(uri, selectedSourceIndex, index)
+        }
+    }
+
+    private fun startProgressPoll(uri: String, sourceIndex: Int, episodeIndex: Int) {
+        progressJob?.cancel()
+        progressJob = scope.launch {
+            repeat(720) {
+                delay(5000L)
+                if (PlaybackController.currentUri == uri) {
+                    store.saveProgress(currentUrl, sourceIndex, episodeIndex, PlaybackController.positionMs / 1000L)
+                }
+            }
+        }
+    }
+
+    private fun inferMimeType(uri: String): String {
+        val lower = uri.substringBefore('#').substringBefore('?').lowercase(java.util.Locale.US)
+        return when {
+            lower.endsWith(".m3u8") -> MimeTypes.APPLICATION_M3U8
+            lower.endsWith(".mpd") -> MimeTypes.APPLICATION_MPD
+            lower.endsWith(".mp4") || lower.endsWith(".m4v") -> MimeTypes.VIDEO_MP4
+            lower.endsWith(".webm") -> MimeTypes.VIDEO_WEBM
+            lower.endsWith(".mkv") -> MimeTypes.VIDEO_MATROSKA
+            else -> ""
+        }
+    }
+
+    private fun loadCover(url: String, image: ImageView) {
+        loadBitmapInto(url, image) { image.setImageBitmap(it) }
+    }
+
+    private fun loadThumb(url: String, image: ImageView) {
+        loadBitmapInto(url, image) { image.setImageBitmap(it) }
+    }
+
+    private fun loadBitmapInto(url: String, image: ImageView, applyBitmap: (Bitmap) -> Unit) {
+        if (url.isBlank()) return
+        scope.launch {
+            val bmp = withContext(Dispatchers.IO) { downloadBitmap(url) }
+            if (bmp != null) {
+                applyBitmap(bmp)
+            } else {
+                image.setImageDrawable(null)
+                image.background = GradientDrawable().apply {
+                    cornerRadius = dp(6).toFloat()
+                    setColor(Color.parseColor("#333333"))
+                }
+            }
+        }
+    }
+
+    private fun downloadBitmap(url: String): Bitmap? = try {
+        val conn = (URL(url).openConnection() as HttpURLConnection).apply { connectTimeout = 8000; readTimeout = 8000 }
+        conn.inputStream.use { BitmapFactory.decodeStream(it) }
+    } catch (_: Throwable) { null }
+
+    private fun collapsedDescriptionText(value: String): String {
+        val normalized = value.trim()
+        val limit = 72
+        return if (normalized.length > limit) "${normalized.take(limit).trimEnd()}… ▽展开" else "$normalized ▽展开"
+    }
+
+    private fun infoLine(label: String, value: String): TextView = TextView(context).apply { text = "$label：$value"; textSize = 14f; setTextColor(Color.argb(220, 255, 255, 255)); setPadding(0, dp(8), 0, 0); maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
+
+    private fun tabButton(text: String, selected: Boolean, click: () -> Unit): FrameLayout {
+        val frame = FrameLayout(context).apply { isFocusable = true; isClickable = true; clipChildren = false; clipToPadding = false; setOnClickListener { click() } }
+        val glow = GlowUnderlineView(context).apply { applyVisualState(false, false) }
+        val tv = TextView(context).apply { this.text = text; gravity = Gravity.CENTER; textSize = 15f; setTextColor(if (selected) warm else Color.WHITE); includeFontPadding = false }
+        frame.addView(glow, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        frame.addView(tv, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        frame.setOnFocusChangeListener { v, has -> tv.setTextColor(if (selected || has) warm else Color.WHITE); glow.applyVisualState(false, has); FocusFxHelper.applyFocusFxState(v, has, cornerRadiusDp = 10) }
+        frame.setOnKeyListener { v, _, e -> boundaryKey(v, e) }
+        return frame
+    }
+
+    private fun episodeButton(text: String, index: Int, total: Int, selected: Boolean, played: Boolean, click: () -> Unit): TextView = dialogButton(if (played) "▶ $text" else text, click).apply {
+        isSelected = selected
+        setTextColor(if (selected || played) warm else Color.WHITE)
+        setOnKeyListener { v, _, e -> episodeBoundaryKey(v, e, index, total) }
+    }
+
+    private fun episodeBoundaryKey(v: View, event: KeyEvent, index: Int, total: Int): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN) {
+            val lastRowStart = ((total - 1) / 5) * 5
+            if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP && index < 5) {
+                val desc = descriptionView
+                if (desc != null && desc.visibility == View.VISIBLE && desc.isFocusable) {
+                    desc.requestFocus()
+                    return true
+                }
+                BoundaryFocusHandler.shake(v)
+                return true
+            }
+            if (event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN && index >= lastRowStart && !hasFocusableInDirection(v, View.FOCUS_DOWN)) {
+                BoundaryFocusHandler.shake(v)
+                return true
+            }
+        }
+        return boundaryKey(v, event)
+    }
+
+    private fun hasFocusableInDirection(v: View, direction: Int): Boolean {
+        val next = v.focusSearch(direction)
+        return next != null && next !== v && next.visibility == View.VISIBLE && next.isFocusable && isChildOf(next, contentContainer)
+    }
+
+    private fun dialogButton(label: String, click: () -> Unit): TextView = TextView(context).apply {
+        text = label
+        textSize = 15f
+        typeface = Typeface.DEFAULT_BOLD
+        gravity = Gravity.CENTER
+        maxLines = 1
+        ellipsize = TextUtils.TruncateAt.END
+        isFocusable = true
+        isClickable = true
+        fun refresh(focused: Boolean) {
+            val selected = isSelected
+            setTextColor(if (selected) warm else Color.argb(235, 245, 245, 245))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(10).toFloat()
+                setColor(Color.argb(52, 32, 34, 40))
+                setStroke(dp(if (focused) 3 else 1), if (focused) warm else Color.argb(170, 210, 214, 222))
+            }
+        }
+        refresh(false)
+        setOnFocusChangeListener { v, has -> refresh(has); FocusFxHelper.applyFocusFxState(v, has, cornerRadiusDp = 10) }
+        setOnClickListener { click() }
+        setOnKeyListener { v, _, e -> boundaryKey(v, e) }
+    }
+
+    private fun iconButton(iconRes: Int, click: () -> Unit): ImageView = ImageView(context).apply {
+        setImageResource(iconRes)
+        scaleType = ImageView.ScaleType.CENTER
+        setPadding(dp(7), dp(7), dp(7), dp(7))
+        isFocusable = true
+        isClickable = true
+        fun refresh(focused: Boolean) {
+            setColorFilter(if (focused) warm else Color.argb(220, 210, 214, 222))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.argb(52, 32, 34, 40))
+                setStroke(dp(if (focused) 3 else 1), if (focused) warm else Color.argb(170, 210, 214, 222))
+            }
+        }
+        refresh(false)
+        setOnFocusChangeListener { v, has -> refresh(has); FocusFxHelper.applyFocusFxState(v, has, cornerRadiusDp = 19) }
+        setOnClickListener { click() }
+        setOnKeyListener { v, _, e -> boundaryKey(v, e) }
+    }
+
+    private fun inputBg(focused: Boolean) = GradientDrawable().apply {
+        cornerRadius = dp(10).toFloat()
+        setColor(card)
+        setStroke(dp(if (focused) 3 else 1), if (focused) warm else Color.argb(95, 255, 255, 255))
+    }
+
+    private fun boundaryKey(v: View, event: KeyEvent): Boolean {
+        if (event.action != KeyEvent.ACTION_DOWN) return false
+        val direction = when (event.keyCode) {
+            KeyEvent.KEYCODE_DPAD_UP -> View.FOCUS_UP
+            KeyEvent.KEYCODE_DPAD_DOWN -> View.FOCUS_DOWN
+            KeyEvent.KEYCODE_DPAD_LEFT -> View.FOCUS_LEFT
+            KeyEvent.KEYCODE_DPAD_RIGHT -> View.FOCUS_RIGHT
+            else -> return false
+        }
+        val next = v.focusSearch(direction)
+        if (next != null && next !== v && next.visibility == View.VISIBLE && next.isFocusable && isChildOf(next, contentContainer)) return false
+        BoundaryFocusHandler.shake(v)
+        return true
+    }
+
+    private fun panelBg(focused: Boolean) = GradientDrawable().apply {
+        cornerRadius = dp(14).toFloat()
+        setColor(card)
+        setStroke(dp(if (focused) 3 else 1), if (focused) warm else Color.argb(90, 255, 255, 255))
+    }
+
+    private fun listMovieCardBg(focused: Boolean) = GradientDrawable().apply {
+        cornerRadius = dp(14).toFloat()
+        setColor(card)
+        setStroke(dp(if (focused) 3 else 1), if (focused) warm else Color.argb(120, 210, 214, 222))
+    }
+
+    private fun localIp(): String {
+        return try {
+            NetworkInterface.getNetworkInterfaces().toList().flatMap { it.inetAddresses.toList() }
+                .firstOrNull { !it.isLoopbackAddress && it.hostAddress?.contains(':') == false }
+                ?.hostAddress.orEmpty()
+        } catch (_: Throwable) { "" }
+    }
+
+    private fun isChildOf(view: View, root: View): Boolean {
+        var current: View? = view
+        while (current != null) { if (current === root) return true; current = current.parent as? View }
+        return false
+    }
+
+    private fun toast(s: String) = Toast.makeText(context, s, Toast.LENGTH_SHORT).show()
+    private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
+}

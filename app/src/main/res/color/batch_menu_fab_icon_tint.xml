@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    批量操作悬浮菜单 Icon 的 tint 三态色（v1.1.106）：
+    - 默认态：白色 Icon（无背景色，配合 bg_batch_menu_fab 的白色边框）；
+    - 选中+焦点态（focused/selected/pressed）：暖蜡笔黄 crayon_yellow。
+    仅用状态色列表实现，无 Material 依赖。
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true" android:color="@color/crayon_yellow" />
+    <item android:state_selected="true" android:color="@color/crayon_yellow" />
+    <item android:state_pressed="true" android:color="@color/crayon_yellow" />
+    <item android:color="#FFFFFF" />
+</selector>

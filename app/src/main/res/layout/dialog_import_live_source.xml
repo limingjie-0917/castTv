@@ -1,0 +1,201 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_dialog_crayon_panel"
+    android:clipChildren="false"
+    android:clipToPadding="false"
+    android:orientation="vertical"
+    android:paddingLeft="40dp"
+    android:paddingTop="28dp"
+    android:paddingRight="40dp"
+    android:paddingBottom="28dp">
+
+    <!-- 顶部子 Tab：下划线 + GlowUnderlineView，与左侧合集 Tab 对齐 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="42dp"
+        android:orientation="horizontal">
+
+        <FrameLayout
+            android:id="@+id/tabInputLink"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="@drawable/bg_sidebar_item"
+            android:clickable="true"
+            android:focusable="true">
+
+            <com.bd.casttv.ui.GlowUnderlineView
+                android:id="@+id/tabInputLinkGlowUnderline"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <TextView
+                android:id="@+id/tabInputLinkText"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:duplicateParentState="true"
+                android:gravity="center"
+                android:text="📡 输入链接"
+                android:textColor="@color/sidebar_item_text"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:id="@+id/tabCloudShare"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="18dp"
+            android:layout_weight="1"
+            android:background="@drawable/bg_sidebar_item"
+            android:clickable="true"
+            android:focusable="true">
+
+            <com.bd.casttv.ui.GlowUnderlineView
+                android:id="@+id/tabCloudShareGlowUnderline"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <TextView
+                android:id="@+id/tabCloudShareText"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:duplicateParentState="true"
+                android:gravity="center"
+                android:text="☁️ 云端共享"
+                android:textColor="@color/sidebar_item_text"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+        </FrameLayout>
+    </LinearLayout>
+
+    <!-- ========== Tab 1：输入链接（手机扫码提交） ========== -->
+    <LinearLayout
+        android:id="@+id/sectionInputLink"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:paddingTop="24dp">
+
+        <FrameLayout
+            android:layout_width="230dp"
+            android:layout_height="230dp"
+            android:background="@drawable/bg_dialog_input"
+            android:padding="12dp">
+
+            <ImageView
+                android:id="@+id/importLiveQr"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="导入直播源二维码"
+                android:scaleType="fitCenter" />
+
+            <TextView
+                android:id="@+id/importLiveQrFallback"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="正在生成二维码…"
+                android:textColor="@color/text_secondary"
+                android:textSize="15sp"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <TextView
+            android:id="@+id/importLiveAddress"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:gravity="center"
+            android:text="正在启动局域网服务…"
+            android:textColor="@color/crayon_yellow"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/importLiveStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:gravity="center"
+            android:text="手机扫码后粘贴 M3U/M3U8 或直播源 JSON 直链，电视端会自动解析并直接导入。"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp" />
+
+        <ScrollView
+            android:id="@+id/importLiveStepScroll"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:fillViewport="false"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/importLiveStepList"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_dialog_input"
+                android:orientation="vertical"
+                android:paddingLeft="14dp"
+                android:paddingTop="12dp"
+                android:paddingRight="14dp"
+                android:paddingBottom="12dp" />
+        </ScrollView>
+    </LinearLayout>
+
+    <!-- ========== Tab 2：云端共享 ========== -->
+    <LinearLayout
+        android:id="@+id/sectionCloudShare"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:visibility="gone">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:gravity="center"
+            android:text="社区共享的直播源，点击「导入」即可使用，别忘了给贡献者点个赞 👍"
+            android:textColor="@color/text_secondary"
+            android:textSize="14sp" />
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="16dp"
+            android:layout_weight="1"
+            android:fadeScrollbars="false"
+            android:scrollbars="vertical">
+
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <LinearLayout
+                    android:id="@+id/cloudShareListContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+
+                <TextView
+                    android:id="@+id/cloudShareEmpty"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:gravity="center"
+                    android:paddingTop="48dp"
+                    android:paddingBottom="48dp"
+                    android:text="暂无共享直播源"
+                    android:textColor="@color/text_hint"
+                    android:textSize="15sp"
+                    android:visibility="gone" />
+            </FrameLayout>
+        </ScrollView>
+    </LinearLayout>
+</LinearLayout>

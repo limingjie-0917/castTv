@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    v1.1.120 网络诊断工具栏按钮/搜索框文字与图标（compound drawable）色 selector：
+    - 默认态：白色（text_primary）
+    - 焦点态（无选中）：白色（保持，不变暖黄）
+    - 选中态：暖黄
+    - 选中+焦点态：暖黄
+    与 @drawable/bg_diag_toolbar_btn 三态背景配套使用。
+    通过 TextViewCompat.setCompoundDrawableTintList 应用到图标，可随 View 自身 focused/selected 状态自动切换。
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_selected="true" android:state_focused="true" android:color="@color/crayon_yellow" />
+    <item android:state_selected="true" android:color="@color/crayon_yellow" />
+    <item android:state_focused="true" android:color="@color/text_primary" />
+    <item android:state_pressed="true" android:color="@color/text_primary" />
+    <item android:color="@color/text_primary" />
+</selector>

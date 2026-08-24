@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 手绘风格蜡笔小新贴纸装饰：红黄配色 + 简化卡通头像，用于历史卡片角落点缀。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+
+    <path
+        android:fillColor="#FFF2D4"
+        android:pathData="M32,8 C45,8 55,18 55,31 C55,46 45,56 32,56 C19,56 9,46 9,31 C9,18 19,8 32,8 Z" />
+    <path
+        android:fillColor="#FF1E1F25"
+        android:pathData="M14,24 C17,11 27,5 41,9 C49,12 54,19 55,28 C45,23 33,22 14,24 Z" />
+    <path
+        android:fillColor="#FF1E1F25"
+        android:pathData="M20,30 C23,28 27,28 30,31 L27,34 C25,32 23,32 21,34 Z" />
+    <path
+        android:fillColor="#FF1E1F25"
+        android:pathData="M38,31 C41,28 45,28 48,31 L45,34 C43,32 41,32 39,34 Z" />
+    <path
+        android:fillColor="#FFE8453C"
+        android:pathData="M24,42 C29,46 36,46 41,42 C39,50 27,50 24,42 Z" />
+    <path
+        android:fillColor="#FFF6C445"
+        android:pathData="M7,48 L20,44 L17,58 Z" />
+    <path
+        android:fillColor="#FFE8453C"
+        android:pathData="M44,45 L57,50 L47,59 Z" />
+    <path
+        android:fillColor="#FF4089FD"
+        android:pathData="M6,36 C10,34 12,35 14,38 C10,39 8,39 6,36 Z" />
+</vector>

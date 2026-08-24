@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    自定义 Tab 频道列表标题文字四态：
+    - 默认态：浅灰
+    - 选中态：暖黄
+    - 焦点态：保持浅灰
+    - 选中+焦点态：暖黄
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_selected="true" android:color="@color/crayon_yellow" />
+    <item android:color="@color/text_primary" />
+</selector>

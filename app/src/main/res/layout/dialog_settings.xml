@@ -1,0 +1,406 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:layout_margin="28dp"
+    android:background="@drawable/bg_dialog_crayon_panel">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:paddingLeft="40dp"
+        android:paddingTop="26dp"
+        android:paddingRight="40dp"
+        android:paddingBottom="26dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_dialog_crayon_header"
+            android:gravity="center_vertical"
+            android:paddingLeft="18dp"
+            android:paddingTop="10dp"
+            android:paddingRight="18dp"
+            android:paddingBottom="10dp"
+            android:text="@string/settings_dialog_header"
+            android:textColor="#101217"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="16dp"
+            android:fadeScrollbars="false"
+            android:fillViewport="false"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:overScrollMode="ifContentScrolls"
+            android:scrollbarStyle="insideInset"
+            android:scrollbars="vertical">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingBottom="4dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/settings_dialog_subtitle"
+            android:textColor="@color/text_secondary"
+            android:textSize="15sp" />
+
+        <LinearLayout
+            android:id="@+id/deviceNameCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:background="@drawable/bg_dialog_focus_item"
+            android:clickable="true"
+            android:focusable="true"
+            android:focusableInTouchMode="false"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="18dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/settings_device_name_current"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="15sp" />
+
+                <TextView
+                    android:id="@+id/currentDeviceName"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:duplicateParentState="true"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/settings_button_text"
+                    android:textSize="22sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="18dp"
+                android:background="@drawable/bg_dialog_badge"
+                android:paddingLeft="14dp"
+                android:paddingTop="8dp"
+                android:paddingRight="14dp"
+                android:paddingBottom="8dp"
+                android:text="@string/settings_device_name_edit_hint"
+                android:textColor="@color/text_primary"
+                android:textSize="15sp" />
+        </LinearLayout>
+
+        <Switch
+            android:id="@+id/pwdMode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:background="@drawable/bg_dialog_focus_item"
+            android:focusable="true"
+            android:padding="14dp"
+            android:text="@string/settings_password_mode"
+            android:textColor="@color/settings_button_text"
+            android:textSize="17sp" />
+
+        <EditText
+            android:id="@+id/pwdInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_dialog_input"
+            android:hint="@string/password_title"
+            android:singleLine="true"
+            android:textColor="@color/text_primary"
+            android:textColorHint="@color/text_hint"
+            android:textSize="17sp" />
+
+        <Switch
+            android:id="@+id/mute"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_dialog_focus_item"
+            android:focusable="true"
+            android:padding="14dp"
+            android:text="@string/settings_mute"
+            android:textColor="@color/settings_button_text"
+            android:textSize="17sp" />
+
+        <Switch
+            android:id="@+id/autoStart"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_dialog_focus_item"
+            android:focusable="true"
+            android:padding="14dp"
+            android:text="@string/settings_autostart"
+            android:textColor="@color/settings_button_text"
+            android:textSize="17sp" />
+
+        <Switch
+            android:id="@+id/useSurfaceView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_dialog_focus_item"
+            android:focusable="true"
+            android:padding="14dp"
+            android:text="@string/settings_use_surface_view"
+            android:textColor="@color/settings_button_text"
+            android:textSize="17sp" />
+
+        <!-- v1.1.116 主题风格：经典 / 深灰主题（v1.1.118 起提到屏保海报墙样式上方） -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:text="🎨 主题风格"
+            android:textColor="@color/crayon_yellow"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+
+        <RadioGroup
+            android:id="@+id/themeStyleGroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_dialog_input"
+            android:orientation="vertical"
+            android:padding="10dp">
+
+            <RadioButton
+                android:id="@+id/themeStyleDarkGray"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:buttonTint="@color/crayon_yellow"
+                android:focusable="true"
+                android:text="深灰主题（默认，深灰 + 暖黄）"
+                android:textColor="@color/text_primary"
+                android:textSize="15sp" />
+
+            <RadioButton
+                android:id="@+id/themeStyleClassic"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:buttonTint="@color/crayon_yellow"
+                android:focusable="true"
+                android:text="经典（深蓝焦点）"
+                android:textColor="@color/text_primary"
+                android:textSize="15sp" />
+        </RadioGroup>
+
+        <TextView
+            android:id="@+id/themeStyleHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="切换后会自动刷新主界面以应用新主题。"
+            android:textColor="@color/text_secondary"
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:text="📽 屏保海报墙样式"
+            android:textColor="@color/crayon_yellow"
+            android:textSize="17sp"
+            android:textStyle="bold" />
+
+        <RadioGroup
+            android:id="@+id/screensaverStyleGroup"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_dialog_input"
+            android:orientation="vertical"
+            android:padding="10dp">
+
+            <RadioButton
+                android:id="@+id/screensaverTrack"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:buttonTint="@color/crayon_yellow"
+                android:focusable="true"
+                android:text="横向轨道流（默认）"
+                android:textColor="@color/text_primary"
+                android:textSize="15sp" />
+
+            <RadioButton
+                android:id="@+id/screensaverWaterfall"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:buttonTint="@color/crayon_yellow"
+                android:focusable="true"
+                android:text="多列瀑布流"
+                android:textColor="@color/text_primary"
+                android:textSize="15sp" />
+
+            <RadioButton
+                android:id="@+id/screensaverMosaic"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:buttonTint="@color/crayon_yellow"
+                android:focusable="true"
+                android:text="随机砖块网格"
+                android:textColor="@color/text_primary"
+                android:textSize="15sp" />
+        </RadioGroup>
+
+        <!-- 立即预览海报墙：无需等 5 分钟空闲，直接拉起 PosterWallActivity -->
+        <TextView
+            android:id="@+id/btnPreviewScreensaver"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_dialog_focus_item"
+            android:focusable="true"
+            android:gravity="center"
+            android:padding="14dp"
+            android:text="🎬 立即预览海报墙"
+            android:textColor="@color/settings_button_text"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <!-- 首页侧边栏管理：自定义 Tab 配置入口（仅影响首页侧边栏展示，不修改收藏数据） -->
+        <TextView
+            android:id="@+id/btnDockManage"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:background="@drawable/bg_dialog_focus_item"
+            android:focusable="true"
+            android:gravity="center"
+            android:padding="14dp"
+            android:text="🧭 首页侧边栏管理"
+            android:textColor="@color/settings_button_text"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginTop="20dp"
+            android:layout_marginBottom="14dp"
+            android:background="#22101217" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_clear_cache_title"
+            android:textColor="@color/text_primary"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/cacheSizeHistory"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/settings_cache_history_placeholder"
+            android:textColor="@color/text_secondary"
+            android:textSize="15sp" />
+
+        <TextView
+            android:id="@+id/cacheSizeFavorite"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/settings_cache_favorite_placeholder"
+            android:textColor="@color/text_secondary"
+            android:textSize="15sp" />
+
+        <TextView
+            android:id="@+id/cacheSizeTotal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/settings_cache_total_placeholder"
+            android:textColor="@color/text_primary"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <Switch
+            android:id="@+id/clearHistoryCheck"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/bg_dialog_focus_item"
+            android:checked="true"
+            android:focusable="true"
+            android:nextFocusUp="@id/btnDockManage"
+            android:padding="14dp"
+            android:text="@string/settings_cache_pick_history"
+            android:textColor="@color/settings_button_text"
+            android:textSize="16sp" />
+
+        <Switch
+            android:id="@+id/clearFavoriteCheck"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="@drawable/bg_dialog_focus_item"
+            android:checked="false"
+            android:focusable="true"
+            android:nextFocusUp="@id/clearHistoryCheck"
+            android:padding="14dp"
+            android:text="@string/settings_cache_pick_favorite"
+            android:textColor="@color/settings_button_text"
+            android:textSize="16sp" />
+
+        <Button
+            android:id="@+id/clearCacheBtn"
+            style="@style/TvButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="@string/settings_cache_clear_action" />
+
+        <TextView
+            android:id="@+id/btnCheckUpdate"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:background="@drawable/bg_dialog_focus_item"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:padding="14dp"
+            android:text="@string/settings_update"
+            android:textColor="@color/settings_button_text"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/textCurrentVersion"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:clickable="false"
+            android:focusable="false"
+            android:gravity="center"
+            android:textColor="@color/text_secondary"
+            android:textSize="13sp" />
+            </LinearLayout>
+        </ScrollView>
+    </LinearLayout>
+</FrameLayout>

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    深灰主题主背景（v1.1.116+）：
+    - 深灰渐变体系（#070809 → #0D0F12 → #14171C → #1B1F26），
+      替换原有深蓝渐变，与批量操作弹窗设计语言统一；
+    - 右上角暖黄氛围光保留，作为唯一强调色。
+    经典主题会通过 setTheme(Classic) 切换到 bg_main_gradient_classic。
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="135"
+                android:startColor="@color/theme_bg_start"
+                android:centerColor="@color/theme_bg_center"
+                android:endColor="@color/theme_bg_end"
+                android:type="linear" />
+        </shape>
+    </item>
+    <!-- 右上角暖黄氛围光（唯一强调色） -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:type="radial"
+                android:gradientRadius="720dp"
+                android:centerX="0.86"
+                android:centerY="0.12"
+                android:startColor="#22F6C445"
+                android:endColor="#00F6C445" />
+        </shape>
+    </item>
+</layer-list>

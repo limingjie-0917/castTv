@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    深灰主题「收藏」卡片背景（v1.1.116+）：
+    - 焦点态：暖黄透明底 + 暖黄描边（唯一强调色）
+    - 按下态：更亮暖黄描边（保留橙色蜡笔感）
+    - 默认态：深灰面板 + 细描边
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <gradient
+                android:startColor="#33F6C445"
+                android:endColor="#2314171C"
+                android:angle="135"
+                android:type="linear" />
+            <corners android:radius="16dp" />
+            <stroke android:width="2dp" android:color="@color/crayon_yellow" />
+        </shape>
+    </item>
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#44F6C445" />
+            <corners android:radius="16dp" />
+            <stroke android:width="2dp" android:color="@color/crayon_orange" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:startColor="#211B2230"
+                android:endColor="#2314171C"
+                android:angle="135"
+                android:type="linear" />
+            <solid android:color="#1C1F27" />
+            <corners android:radius="16dp" />
+            <stroke android:width="1dp" android:color="#2EFFFFFF" />
+        </shape>
+    </item>
+</selector>

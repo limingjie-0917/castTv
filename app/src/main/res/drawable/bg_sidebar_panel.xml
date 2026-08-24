@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 播放页右侧侧边弹窗背景：深色半透明面板 + 蜡笔黄左描边，圆角朝左。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient
+        android:startColor="#F00D0F12"
+        android:centerColor="#F0121319"
+        android:endColor="#F01B1F26"
+        android:angle="180"
+        android:type="linear" />
+    <corners
+        android:topLeftRadius="24dp"
+        android:bottomLeftRadius="24dp"
+        android:topRightRadius="0dp"
+        android:bottomRightRadius="0dp" />
+    <stroke android:width="2dp" android:color="#66F6C445" />
+</shape>

@@ -1,0 +1,411 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_main_gradient"
+    android:padding="40dp">
+
+    <!-- 顶部状态栏：左侧设备名 + 蜡笔条点缀，右侧设置/帮助图标按钮。 -->
+    <TextView
+        android:id="@+id/labelDeviceName"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:letterSpacing="0.08"
+        android:text="@string/device_name_label"
+        android:textColor="@color/crayon_yellow"
+        android:textSize="14sp"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <TextView
+        android:id="@+id/textDeviceName"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:layout_marginEnd="24dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:text="客厅电视"
+        android:textColor="@color/text_primary"
+        android:textSize="34sp"
+        android:textStyle="bold"
+        app:layout_constrainedWidth="true"
+        app:layout_constraintEnd_toStartOf="@id/bottomBar"
+        app:layout_constraintHorizontal_bias="0"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/labelDeviceName" />
+
+    <!-- 蜡笔小新主题彩色蜡笔条，作为品牌点缀。 -->
+    <View
+        android:id="@+id/crayonStripe"
+        android:layout_width="0dp"
+        android:layout_height="5dp"
+        android:layout_marginTop="10dp"
+        android:background="@drawable/bg_crayon_stripe"
+        app:layout_constraintEnd_toEndOf="@id/textDeviceName"
+        app:layout_constraintStart_toStartOf="@id/textDeviceName"
+        app:layout_constraintTop_toBottomOf="@id/textDeviceName" />
+
+    <!-- 顶部右侧图标按钮：id 保持不变，确保 MainActivity 的点击监听继续生效。 -->
+    <LinearLayout
+        android:id="@+id/bottomBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:orientation="horizontal"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <ImageButton
+            android:id="@+id/btnHistory"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:background="@drawable/bg_icon_button"
+            android:contentDescription="@string/history_title"
+            android:focusable="true"
+            android:nextFocusRight="@id/btnSettings"
+            android:padding="14dp"
+            android:src="@drawable/ic_history_tv"
+            android:tint="@color/text_primary" />
+
+        <ImageButton
+            android:id="@+id/btnSettings"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:layout_marginStart="14dp"
+            android:background="@drawable/bg_icon_button"
+            android:contentDescription="@string/menu_settings"
+            android:focusable="true"
+            android:nextFocusLeft="@id/btnHistory"
+            android:nextFocusRight="@id/btnHelp"
+            android:padding="14dp"
+            android:src="@drawable/ic_settings_tv"
+            android:tint="@color/text_primary" />
+
+        <ImageButton
+            android:id="@+id/btnHelp"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:layout_marginStart="14dp"
+            android:background="@drawable/bg_icon_button"
+            android:contentDescription="@string/menu_help"
+            android:focusable="true"
+            android:nextFocusLeft="@id/btnSettings"
+            android:padding="14dp"
+            android:src="@drawable/ic_help_tv"
+            android:tint="@color/text_primary" />
+    </LinearLayout>
+
+    <!-- 中间区域：投屏状态 | 收藏 | 服务状态，三区平分宽度、等高。 -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/centerCards"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="26dp"
+        android:layout_marginBottom="28dp"
+        app:layout_constraintBottom_toTopOf="@id/tutorialTitle"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/crayonStripe">
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/centerGuideOneThird"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.3333" />
+
+        <androidx.constraintlayout.widget.Guideline
+            android:id="@+id/centerGuideTwoThird"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            app:layout_constraintGuide_percent="0.6667" />
+
+        <!-- 区域 1：投屏状态卡片，照片背景 + 底部渐深蒙层。 -->
+        <FrameLayout
+            android:id="@+id/castStatusCard"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_marginEnd="10dp"
+            android:background="@drawable/bg_card"
+            android:clipToOutline="true"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/centerGuideOneThird"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <ImageView
+                android:id="@+id/imgTv"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:contentDescription="@string/card_cast_status"
+                android:scaleType="centerCrop"
+                android:src="@drawable/cast_status_bg" />
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/bg_card_scrim" />
+
+            <!-- 右上角蜡笔小新主题小点缀。 -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="top|end"
+                android:layout_margin="18dp"
+                android:text="🖍️"
+                android:textSize="24sp" />
+
+            <!-- 内容底部对齐：只展示投屏状态；引导文案仅保留在底部区域。 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="bottom"
+                android:orientation="vertical"
+                android:padding="26dp">
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <View
+                        android:layout_width="4dp"
+                        android:layout_height="18dp"
+                        android:layout_marginEnd="8dp"
+                        android:background="@drawable/bg_crayon_stripe" />
+
+                    <TextView
+                        android:id="@+id/textReady"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:letterSpacing="0.04"
+                        android:text="@string/card_cast_status"
+                        android:textColor="#CCFFFFFF"
+                        android:textSize="15sp" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/textCastState"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:ellipsize="end"
+                    android:maxLines="2"
+                    android:shadowColor="#B3000000"
+                    android:shadowDx="0"
+                    android:shadowDy="2"
+                    android:shadowRadius="8"
+                    android:text="@string/cast_waiting"
+                    android:textColor="#F2FFFFFF"
+                    android:textSize="26sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </FrameLayout>
+
+        <!-- 区域 2：收藏入口，可整块聚焦，OK 键进入完整收藏列表。 -->
+        <LinearLayout
+            android:id="@+id/favoritesCard"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_marginStart="10dp"
+            android:layout_marginEnd="10dp"
+            android:background="@drawable/bg_dialog_focus_item"
+            android:clickable="true"
+            android:focusable="true"
+            android:nextFocusUp="@id/btnHistory"
+            android:orientation="vertical"
+            android:padding="22dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/centerGuideTwoThird"
+            app:layout_constraintStart_toStartOf="@id/centerGuideOneThird"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="⭐ 收藏"
+                    android:textColor="@color/crayon_yellow"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/favoritesCount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:background="@drawable/bg_dialog_badge"
+                    android:paddingLeft="10dp"
+                    android:paddingTop="2dp"
+                    android:paddingRight="10dp"
+                    android:paddingBottom="2dp"
+                    android:text="0"
+                    android:textColor="@color/crayon_yellow"
+                    android:textSize="13sp" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="4dp"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/bg_crayon_stripe" />
+
+            <!-- 最近 3 条收藏动态填充区。 -->
+            <LinearLayout
+                android:id="@+id/favoritesListContainer"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_marginTop="12dp"
+                android:layout_weight="1"
+                android:orientation="vertical" />
+
+            <!-- 空态提示。 -->
+            <TextView
+                android:id="@+id/favoritesEmpty"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_marginTop="12dp"
+                android:layout_weight="1"
+                android:gravity="center"
+                android:text="@string/favorites_empty_home"
+                android:textColor="@color/text_secondary"
+                android:textSize="15sp"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/favoritesEnterHint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:gravity="end"
+                android:text="@string/favorites_enter_hint"
+                android:textColor="@color/text_hint"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <!-- 区域 3：服务状态区。 -->
+        <LinearLayout
+            android:id="@+id/serviceStatusPanel"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:layout_marginStart="10dp"
+            android:background="@drawable/bg_card_grad"
+            android:clipToOutline="true"
+            android:orientation="vertical"
+            android:padding="22dp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="@id/centerGuideTwoThird"
+            app:layout_constraintTop_toTopOf="parent">
+
+            <TextView
+                android:id="@+id/serviceStatusTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:drawableStart="@drawable/ic_crayon_dot"
+                android:drawablePadding="8dp"
+                android:gravity="center_vertical"
+                android:text="@string/service_status_title"
+                android:textColor="@color/text_secondary"
+                android:textSize="16sp" />
+
+            <LinearLayout
+                android:id="@+id/serviceStatusBar"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_marginTop="16dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_icon_button"
+                android:gravity="center_vertical"
+                android:orientation="vertical"
+                android:padding="18dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <View
+                        android:id="@+id/statusDot"
+                        android:layout_width="18dp"
+                        android:layout_height="18dp"
+                        android:background="@drawable/dot_status_glow" />
+
+                    <TextView
+                        android:id="@+id/textStatus"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="12dp"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:maxLines="2"
+                        android:text="@string/status_starting"
+                        android:textColor="@color/text_primary"
+                        android:textSize="17sp" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/textIp"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="15sp" />
+            </LinearLayout>
+        </LinearLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
+
+    <!-- 底部：如何投屏引导（保留轮播）。前置蜡笔色点做标题点缀。 -->
+    <TextView
+        android:id="@+id/tutorialTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:drawableStart="@drawable/ic_crayon_dot"
+        android:drawablePadding="8dp"
+        android:gravity="center_vertical"
+        android:text="@string/tutorial_title"
+        android:textColor="@color/text_secondary"
+        android:textSize="16sp"
+        app:layout_constraintBottom_toTopOf="@id/tutorialText"
+        app:layout_constraintStart_toStartOf="parent" />
+
+    <!-- 底部引导卡片：左侧蜡笔条 + 文案。 -->
+    <View
+        android:id="@+id/tutorialAccent"
+        android:layout_width="5dp"
+        android:layout_height="0dp"
+        android:background="@drawable/bg_crayon_stripe"
+        app:layout_constraintBottom_toBottomOf="@id/tutorialText"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="@id/tutorialText" />
+
+    <TextView
+        android:id="@+id/tutorialText"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="12dp"
+        android:layout_marginBottom="16dp"
+        android:background="@drawable/bg_card_grad"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:padding="18dp"
+        android:text="@string/tutorial_static"
+        android:textColor="@color/text_primary"
+        android:textSize="16sp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toEndOf="@id/tutorialAccent" />
+
+
+</androidx.constraintlayout.widget.ConstraintLayout>

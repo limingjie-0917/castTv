@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 首页「投屏状态」卡片圆角：无明确视觉规范时统一按 16dp。 -->
+    <dimen name="cast_status_corner_radius">16dp</dimen>
+</resources>

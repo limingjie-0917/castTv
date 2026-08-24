@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  程序坞入口背景：
+  - 默认 / 选中 / 聚焦均保持透明，避免 selected=true 且 focused=false 时残留背景或边框。
+  - 一级 Dock 焦点视觉统一由 GlowUnderlineView 承载；选中态只影响文字/图标颜色。
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#00000000" />
+            <corners android:radius="20dp" />
+        </shape>
+    </item>
+</selector>

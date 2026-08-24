@@ -1,0 +1,48 @@
+<resources>
+    <!-- Deep dark mode palette (near-black, reduced glare) -->
+    <color name="ic_launcher_background">#4089FD</color>
+    <color name="bg_dark">#070809</color>
+    <color name="bg_dark_2">#0D0F12</color>
+    <color name="surface">#14171C</color>
+    <color name="surface_2">#1B1F26</color>
+    <color name="primary">#2E63C4</color>
+    <color name="primary_variant">#21498F</color>
+    <color name="accent">#2FA8C9</color>
+    <color name="text_primary">#E8EAED</color>
+    <color name="text_secondary">#98A0AC</color>
+    <color name="text_hint">#5E6773</color>
+    <color name="standard_action_gray">#BFC3CC</color>
+    <color name="scrim">#E6000000</color>
+    <color name="success">#2FA36B</color>
+    <color name="error">#C4463E</color>
+    <color name="focus_stroke">#2FA8C9</color>
+
+    <!-- Immersive gradient stops (deep navy → near black, subtle warmth) -->
+    <color name="grad_top">#141A2A</color>
+    <color name="grad_mid">#0B0F1A</color>
+    <color name="grad_bottom">#05070C</color>
+
+    <!-- Crayon Shin-chan themed accents (蜡笔小新配色点缀) -->
+    <color name="crayon_red">#E8453C</color>
+    <color name="crayon_orange">#F2913D</color>
+    <color name="crayon_yellow">#F6C445</color>
+    <color name="crayon_green">#43B97F</color>
+    <color name="crayon_blue">#3E9BE8</color>
+    <color name="royal_blue">#2E63C4</color>
+    <color name="royal_blue_dark">#21498F</color>
+    <color name="royal_blue_deep">#16366F</color>
+
+    <!--
+        v1.1.116 深灰主题（DarkGray）语义化色 token：
+        - color_theme_bg_primary: 主背景基色（深灰系）
+        - color_theme_accent: 唯一强调色（暖黄）
+        - theme_bg_start/center/end: 主背景渐变三段（深灰渐变体系，
+          #070809 → #0D0F12 → #14171C → #1B1F26 收敛，去除深蓝调）
+        经典主题（Classic）通过 setTheme() 切换到 bg_main_gradient_classic 等旧资源。
+    -->
+    <color name="color_theme_bg_primary">#070809</color>
+    <color name="color_theme_accent">#F6C445</color>
+    <color name="theme_bg_start">#070809</color>
+    <color name="theme_bg_center">#14171C</color>
+    <color name="theme_bg_end">#1B1F26</color>
+</resources>

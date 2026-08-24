@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    首页侧边栏管理 · Tab 列表项。
+    结构：透明外层容器（itemRoot，不可聚焦）+ 可聚焦内容卡片（tabContentCard）+ 卡片外的编辑/删除白色矢量图标按钮。
+    编辑/删除按钮移出内容卡片，位于列表项右侧、卡片外，默认透明背景，仅在获得焦点时显示暖黄边框。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/itemRoot"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="10dp"
+    android:background="@android:color/transparent"
+    android:focusable="false"
+    android:gravity="center_vertical"
+    android:orientation="horizontal">
+
+    <LinearLayout
+        android:id="@+id/tabContentCard"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:background="@drawable/bg_dialog_focus_item"
+        android:clickable="true"
+        android:focusable="true"
+        android:focusableInTouchMode="false"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingLeft="16dp"
+        android:paddingTop="12dp"
+        android:paddingRight="12dp"
+        android:paddingBottom="12dp">
+
+        <ImageView
+            android:id="@+id/imgTabIcon"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_marginRight="12dp"
+            android:duplicateParentState="true"
+            android:padding="6dp"
+            android:src="@drawable/ic_collection_list"
+            android:tint="@color/settings_button_text" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:duplicateParentState="true"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/textTabTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:duplicateParentState="true"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="Tab"
+                android:textColor="@color/settings_button_text"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/textTabSubtitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:duplicateParentState="true"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:text="绑定合集：-"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <ImageButton
+        android:id="@+id/btnEditDockTab"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_marginLeft="14dp"
+        android:background="@drawable/bg_dock_manage_icon_button"
+        android:contentDescription="编辑"
+        android:focusable="true"
+        android:padding="10dp"
+        android:scaleType="fitCenter"
+        android:src="@drawable/ic_dock_tab_edit"
+        android:tint="@color/dock_manage_icon_tint" />
+
+    <ImageButton
+        android:id="@+id/btnDeleteDockTab"
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:layout_marginLeft="10dp"
+        android:background="@drawable/bg_dock_manage_icon_button"
+        android:contentDescription="删除"
+        android:focusable="true"
+        android:padding="10dp"
+        android:scaleType="fitCenter"
+        android:src="@drawable/ic_dock_tab_delete"
+        android:tint="@color/dock_manage_icon_tint" />
+
+</LinearLayout>

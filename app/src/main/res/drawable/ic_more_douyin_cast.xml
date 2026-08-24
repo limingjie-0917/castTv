@@ -1,0 +1,46 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- 抖音音符主体（左移，与 TV 拉开间距） -->
+    <!-- 音符头（实心圆） -->
+    <path android:pathData="M4.5,16A2.8,2.3 0,1 0,4.5 20.6A2.8,2.3 0,1 0,4.5 16" android:fillColor="#FFFFFF" />
+    <!-- 音符杆 + 旗 -->
+    <path android:pathData="M7.1,17.2L7.1,4.4L13,5.8L13,8.4L7.1,7" android:strokeColor="#FFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round" android:fillColor="@android:color/transparent" />
+
+    <!-- TV 电视样式（右侧，底部与抖音音符底部对齐） -->
+    <!-- 圆角方框（底部 y=17.6，与底脚间距 3dp，底脚 y=20.6 对齐抖音底部） -->
+    <path
+        android:pathData="M15,8.6L22,8.6Q23,8.6 23,9.6L23,16.6Q23,17.6 22,17.6L15,17.6Q14,17.6 14,16.6L14,9.6Q14,8.6 15,8.6Z"
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.4"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <!-- T 字母（加粗，横+竖） -->
+    <path
+        android:pathData="M15.8,11.1L18.2,11.1M17,11.1L17,15.1"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="@android:color/transparent" />
+    <!-- V 字母（加粗，两条斜线交汇） -->
+    <path
+        android:pathData="M18.8,11.1L19.8,15.1L20.8,11.1"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="@android:color/transparent" />
+    <!-- 底部圆角短横线（电视底脚，距方框下边框 3dp） -->
+    <path
+        android:pathData="M16.2,20.6Q16.2,20.4 16.4,20.4L20,20.4Q20.2,20.4 20.2,20.6"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="@android:color/transparent" />
+</vector>

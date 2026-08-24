@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 蜡笔小新主题彩色蜡笔条：红→橙→黄→绿→蓝，作为品牌点缀。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient
+        android:startColor="@color/crayon_red"
+        android:centerColor="@color/crayon_yellow"
+        android:endColor="@color/crayon_blue"
+        android:type="linear"
+        android:angle="0" />
+    <corners android:radius="3dp" />
+</shape>

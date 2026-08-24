@@ -1,0 +1,251 @@
+<title>casttv-receiver 代码审查报告（v1.1.54）</title>
+
+<callout emoji="📌" background-color="light-yellow" border-color="yellow">
+  <p><b>结论速览（TL;DR）</b>：本次针对 v1.1.53 / v1.1.54 迭代做静态审查，共记录 <b>25</b> 个问题：P0 <b>0</b>、P1 <b>4</b>、P2 <b>8</b>、P3 <b>13</b>。整体架构清晰、边界处理有意识，但缩略图优先级链路存在“数据已备齐却不展示 / 展示口径不一致”的逻辑冲突，且有两处易复现的运行时缺陷需优先处理。</p>
+  <p><b>最须先修（Top 3）</b>：① 收藏封面后台保存复用共享 <code>lastCapturedBitmap</code>，与截图回调的 recycle 存在竞态，可能崩溃（B5，P1）；② <code>PlaybackController.stop()</code> 未复位 <code>desiredPlaying</code>，Stop 后重挂载会自动续播（B1，P1）；③ 历史列表仅按 <code>thumbPath</code> 加载，忽略 <code>artworkPath</code>，与既定“封面优先”口径冲突，导致 DLNA 封面在历史列表缺失（C1，P1）。</p>
+</callout>
+
+<h1>一、审查范围与口径</h1>
+
+<p><b>审查对象</b>：Android TV 投屏接收端工程 <code>casttv-receiver</code>（versionName 1.1.54 / versionCode 155，见 <code>app/build.gradle.kts</code>）。工程非 git 仓库，本报告为纯静态源码阅读结论，不涉及构建、出包或运行时验证。</p>
+
+<p><b>重点区域（本次迭代改动集中处）</b>：Dock / 二级导航 / 收藏侧栏焦点管理（<code>MainActivity.kt</code>、<code>GlowUnderlineView.kt</code>）；缩略图链路（<code>Thumbnails.kt</code>、DLNA <code>albumArtURI</code> 解析、TextureView 截图、SurfaceView 兜底、默认兜底图）；播放页双 <code>PlayerView</code> 与 <code>Settings.useSurfaceView</code>（<code>PlayerActivity.kt</code>、<code>Settings.kt</code>、<code>activity_player.xml</code>）；播放/历史状态桥（<code>PlaybackController.kt</code>、<code>DlnaHttpServer.kt</code>）；收藏存储与选中态刷新（<code>FavoritesStore.kt</code>、<code>CollectionSidebarAdapter</code>）。</p>
+
+<p><b>取证方式</b>：结论均基于具体代码路径与行号（观察事实），仅涉及并发时序、设备内存的部分标注为“推断”，并说明触发条件与验证方式。审查排除 <code>com.github.serezhka.*</code>（vendored AirPlay 三方源码）与 build 生成的 DataBinding 产物。</p>
+
+<p><b>已知局限</b>：未运行工程、未接入真实播控端与真机，涉及多线程竞态、低内存 OOM 的判断为静态推断，需以真机压测/Slardar 崩溃数据复核。</p>
+
+<h1>二、问题总览</h1>
+
+<p>按四类归集，优先级定义：<b>P0</b> 必现崩溃 / 数据损坏，立即修；<b>P1</b> 明显功能缺陷或崩溃风险，本迭代修；<b>P2</b> 次要功能 / 体验问题；<b>P3</b> 清理与一致性。</p>
+
+<table>
+  <colgroup><col width="160"/><col width="90"/><col width="90"/><col width="90"/><col width="90"/><col width="90"/></colgroup>
+  <thead>
+    <tr>
+      <th background-color="light-gray">类别</th>
+      <th background-color="light-gray">条数</th>
+      <th background-color="light-gray">P0</th>
+      <th background-color="light-gray">P1</th>
+      <th background-color="light-gray">P2</th>
+      <th background-color="light-gray">P3</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td>冗余代码</td><td>7</td><td>0</td><td>0</td><td>0</td><td>7</td></tr>
+    <tr><td>逻辑冲突</td><td>6</td><td>0</td><td>2</td><td>4</td><td>0</td></tr>
+    <tr><td>潜在 Bug</td><td>7</td><td>0</td><td>2</td><td>4</td><td>1</td></tr>
+    <tr><td>可读性与一致性</td><td>5</td><td>0</td><td>0</td><td>0</td><td>5</td></tr>
+    <tr><td><b>合计</b></td><td><b>25</b></td><td><b>0</b></td><td><b>4</b></td><td><b>8</b></td><td><b>13</b></td></tr>
+  </tbody>
+</table>
+
+<h1>三、冗余代码</h1>
+
+<p>以下为可安全删除或收敛的死代码 / 冗余分支，不影响功能，建议清理以降低维护噪声。均定级 P3。</p>
+
+<p><b>R1｜FavoritesStore.parseObjectStrict() 未被调用</b>（P3）</p>
+<p><b>位置</b>：<code>favorites/FavoritesStore.kt:731 fun parseObjectStrict(root: JSONObject)</code>。</p>
+<p><b>问题</b>：该严格解析函数仅有定义，全工程无任何调用点（实际解析走宽松分支）。</p>
+<p><b>影响</b>：遗留校验逻辑与真实解析路径并存，易让后续维护者误以为已启用严格校验。</p>
+<p><b>建议</b>：确认无用后删除；若计划用作 schema 校验，应在 <code>load()</code> 解析入口显式接入并补测试，而非悬空定义。</p>
+
+<p><b>R2｜HistoryAdapter.onItemClick 赋值后从未触发</b>（P3）</p>
+<p><b>位置</b>：声明 <code>ui/MainActivity.kt:1649</code>，赋值 <code>1392</code>；实际点击走 <code>playAction</code>（<code>1726</code>，<code>itemPlayButton.setOnClickListener(playAction)</code>，<code>1794</code>）。</p>
+<p><b>问题</b>：<code>onItemClick</code> 被赋值但没有任何 <code>invoke</code>，播放入口实际由 <code>playAction</code> 直接调用 <code>launchPlayer</code>。</p>
+<p><b>影响</b>：存在两条“看似都生效”的点击路径，阅读时易误判事件流向。</p>
+<p><b>建议</b>：删除 <code>onItemClick</code> 字段及其赋值；统一由 <code>playAction</code> 承载。</p>
+
+<p><b>R3｜MainActivity.addToQueueSafe() 定义但无调用</b>（P3）</p>
+<p><b>位置</b>：<code>ui/MainActivity.kt:1408 fun addToQueueSafe(...)</code>（内部日志在 1416）。</p>
+<p><b>问题</b>：入队实际统一走 <code>toggleQueueSafe(...)</code>，<code>addToQueueSafe</code> 无外部调用。</p>
+<p><b>影响</b>：死方法，增加认知成本。</p>
+<p><b>建议</b>：删除；如需保留“仅加入不切换”的语义，应在按钮处显式接入并去重。</p>
+
+<p><b>R4｜refreshFavoritesHome() 为 no-op 却仍被调用</b>（P3）</p>
+<p><b>位置</b>：定义 <code>ui/MainActivity.kt:577</code>（空实现），调用点 <code>2132</code>、<code>2370</code>。</p>
+<p><b>问题</b>：收藏已改为一级菜单全屏展示，该函数空转但仍被调用。</p>
+<p><b>影响</b>：无功能影响，属遗留兼容残留。</p>
+<p><b>建议</b>：删除函数及两处调用；若为将来预留钩子，加注释说明并保留单一调用点。</p>
+
+<p><b>R5｜recordHistory() 仅是 recordPlaybackHistory() 的私有别名</b>（P3）</p>
+<p><b>位置</b>：<code>dlna/PlaybackController.kt:104</code>（转调 <code>84</code>）。</p>
+<p><b>问题</b>：私有 <code>recordHistory</code> 无附加逻辑，仅原样转调。</p>
+<p><b>影响</b>：一层无意义间接调用。</p>
+<p><b>建议</b>：内联删除，调用方直接使用 <code>recordPlaybackHistory</code>。</p>
+
+<p><b>R6｜item.source ?: "history/favorite" 的 Elvis 分支不可达</b>（P3）</p>
+<p><b>位置</b>：<code>ui/MainActivity.kt:1394</code>、<code>1654</code>、<code>2605</code>。</p>
+<p><b>问题</b>：<code>HistoryItem.source</code>（<code>PlaybackController.kt:60</code>）与 <code>FavoriteItem.source</code> 均为非空 <code>String</code>，Elvis 右侧永不生效。</p>
+<p><b>影响</b>：编译器可能告警；表达“可能为空”的假象，误导阅读。</p>
+<p><b>建议</b>：直接使用 <code>item.source</code>，去掉 <code>?: "history"</code> / <code>?: "favorite"</code>。</p>
+
+<p><b>R7｜androidx.leanback 依赖疑似未使用</b>（P3）</p>
+<p><b>位置</b>：<code>app/build.gradle.kts:94 implementation("androidx.leanback:leanback:1.0.0")</code>。</p>
+<p><b>问题</b>：Kotlin/XML 中无任何 leanback 类引用；<code>AndroidManifest.xml</code> 仅声明系统特性 <code>android.software.leanback</code>（与该库无依赖关系）。同类审计还发现 <code>kotlinx.coroutines</code>、<code>media3-session</code>/<code>MediaSession</code> 在源码中未见使用。</p>
+<p><b>影响</b>：无用依赖增加包体与方法数。</p>
+<p><b>建议</b>：逐项确认后移除未使用依赖；确需保留的先补注释说明用途。</p>
+
+<h1>四、逻辑冲突</h1>
+
+<p>本类问题指“代码行为与注释/既定口径/自身其它路径相互矛盾”，多与缩略图优先级、设置生效、选中态刷新相关。</p>
+
+<p><b>C1｜历史列表缩略图忽略 artworkPath，与“封面优先”口径冲突</b>（P1）</p>
+<p><b>位置</b>：<code>ui/MainActivity.kt:1703 Thumbnails.load(holder.binding.itemThumb, item.thumbPath)</code>；对照 <code>PlaybackController.currentThumbPath()</code>（<code>139-144</code>，<code>artworkPath &gt; thumbPath</code>）与首页大卡 <code>MainActivity.kt:646</code>。</p>
+<p><b>问题</b>：<code>HistoryItem</code> 同时具备 <code>artworkPath</code> 与 <code>thumbPath</code>，且注释（<code>PlaybackController.kt:122</code>）明确“<code>artworkPath &gt; thumbPath &gt; 兜底</code>”。但历史列表 bind 只取 <code>thumbPath</code>，DLNA 下载得到的封面即便已就绪也不会显示。</p>
+<p><b>影响</b>：同一条历史，首页大卡显示 DLNA 封面、历史列表却显示截图或兜底图，用户可见的不一致。</p>
+<p><b>建议</b>：统一走优先级取值。示例：</p>
+<pre lang="kotlin" caption="MainActivity HistoryAdapter.onBindViewHolder"><code>val thumb = item.artworkPath?.takeIf { it.isNotBlank() } ?: item.thumbPath
+Thumbnails.load(holder.binding.itemThumb, thumb)</code></pre>
+<p>更彻底的做法是在 <code>HistoryItem</code> 上提供 <code>displayThumbPath()</code>，让所有展示点复用同一口径。</p>
+
+<p><b>C2｜收藏保存优先级与相邻注释相反</b>（P2）</p>
+<p><b>位置</b>：<code>player/PlayerActivity.kt:1073-1078</code>。</p>
+<p><b>问题</b>：注释（<code>1074</code>）称“优先复用 DLNA 元数据下载得到的封面”，但代码为 <code>val favThumbPath = existingThumbPath ?: artworkPath</code>（<code>1078</code>）——已有的旧截图文件反而优先于新下载封面。</p>
+<p><b>影响</b>：语义与注释矛盾；收藏项可能长期保留旧截图而非更清晰的官方封面，且与历史/首页“封面优先”口径不一致。</p>
+<p><b>建议</b>：明确单一口径。若确实“封面优先”，改为 <code>artworkPath ?: existingThumbPath</code>；若“已存在即复用”，则订正注释。二者择一并全链路统一。</p>
+
+<p><b>C3｜recordPlaybackHistory 重建条目会丢弃已有缩略图/进度</b>（P1）</p>
+<p><b>位置</b>：<code>dlna/PlaybackController.kt:84-102</code>（<code>removeAll</code> 后 <code>add</code> 全新项）；重复记录调用点 <code>MainActivity.launchPlayer</code>（<code>826</code>）与 <code>onSetAvTransportUri</code>（<code>279</code>）。</p>
+<p><b>问题</b>：<code>recordPlaybackHistory</code> 先 <code>removeAll { it.uri == uri }</code> 再插入仅含 <code>uri/title/source/time/artworkUrl</code> 的新 <code>HistoryItem</code>，<code>thumbPath / artworkPath / positionMs / durationMs</code> 全部回落默认值。每次从历史/收藏重播（<code>launchPlayer</code>→826）都会覆盖同 uri 的既有记录。</p>
+<p><b>影响</b>：重播瞬间历史缩略图回退兜底图、进度清零，待重新截图/下载后才恢复，产生可见闪烁与“进度丢失”观感（推断：具体表现取决于重截图耗时）。</p>
+<p><b>建议</b>：记录时对已存在的同 uri 项做字段合并而非整条替换：</p>
+<pre lang="kotlin" caption="PlaybackController.recordPlaybackHistory 合并保留"><code>val old = historyList.firstOrNull { it.uri == uri }
+historyList.removeAll { it.uri == uri }
+historyList.add(0, HistoryItem(
+    uri = uri, title = title, source = hint, time = System.currentTimeMillis(),
+    thumbPath = old?.thumbPath, artworkPath = old?.artworkPath,
+    positionMs = old?.positionMs ?: 0, durationMs = old?.durationMs ?: 0,
+    artworkUrl = (artworkUrl ?: old?.artworkUrl)?.takeIf { it.isNotBlank() }
+))</code></pre>
+
+<p><b>C4｜useSurfaceView 切换不实时生效且无重启提示</b>（P2）</p>
+<p><b>位置</b>：<code>player/PlayerActivity.kt onCreate</code> 一次性选择 <code>activePlayerView</code>（依据 <code>Settings.useSurfaceView</code>）；设置项写入见 <code>settings/Settings.kt</code>。</p>
+<p><b>问题</b>：渲染面仅在 <code>onCreate</code> 决定，正在播放的页面切换设置不会重建，UI 也没有“需重启播放页生效”的明确提示（对照 PhoneHub 侧对 needRestart 有提示）。</p>
+<p><b>影响</b>：用户在设置里切换 SurfaceView/TextureView 后，当前播放无变化，易被当作“开关无效”。</p>
+<p><b>建议</b>：设置变更后对活动播放页给出“重新打开播放生效”提示；或在 <code>PlayerActivity</code> 监听该项并安全重建渲染面（注意 Surface 释放时序）。</p>
+
+<p><b>C5｜CollectionSidebarAdapter.setSelected 不刷新可见项，选中态可能滞后/残留</b>（P2）</p>
+<p><b>位置</b>：<code>ui/MainActivity.kt</code> <code>CollectionSidebarAdapter.setSelected(id)</code>（仅改 <code>selectedId</code> 不 notify）；补偿刷新在 <code>1889</code>（<code>post + !isComputingLayout</code> 才 <code>notifyDataSetChanged</code>）。</p>
+<p><b>问题</b>：为规避焦点切换时 RecyclerView computing layout 崩溃，<code>setSelected</code> 刻意不刷新，依赖 onFocus 与延后 post。当 post 因 <code>isComputingLayout</code> 被跳过、且后续无再次刷新时，旧选中态高亮会残留或延迟更新。</p>
+<p><b>影响</b>：侧栏合集选中高亮偶发滞后/错位，尤其快速 D-pad 切换时。</p>
+<p><b>建议</b>：改为对“旧选中项 + 新选中项”两个 position 做定点 <code>notifyItemChanged</code>（避免全量刷新），并统一封装为在下一帧安全刷新的 <code>safeNotify</code>；确保 post 被跳过时有兜底重投递。</p>
+
+<p><b>C6｜GlowUnderlineView 的 active 存在多状态源，易相互覆盖</b>（P2）</p>
+<p><b>位置</b>：<code>ui/GlowUnderlineView.kt</code>（<code>onFocusChanged</code> 直接 <code>active = gainFocus</code>；同时外部手动设置 <code>isActivated/isSelected</code> 并频繁 <code>refreshDrawableState()</code>）。</p>
+<p><b>问题</b>：视觉高亮同时受 <code>onFocusChanged</code> 内部赋值与外部 <code>state_focused/state_activated/isSelected</code> 多个来源驱动，状态真相分散。</p>
+<p><b>影响</b>：焦点移走后的选中态、数据选中态与焦点态可能相互覆盖，出现旧 item 残留高亮或该亮不亮（本次迭代已在注释中反复规避，说明该处历史上易出问题）。</p>
+<p><b>建议</b>：让 active 单一地由 <code>drawableStateChanged()</code> 从 <code>state_focused/state_activated</code> 派生，移除 <code>onFocusChanged</code> 内的直接赋值，外部只维护 <code>isActivated/isSelected</code> 语义。</p>
+
+<h1>五、潜在 Bug</h1>
+
+<p>本类为可能导致崩溃、错误播放行为或资源问题的缺陷，多与并发时序、状态复位、缓存边界相关。</p>
+
+<p><b>B1｜stop() 未复位 desiredPlaying，重挂载后自动续播</b>（P1）</p>
+<p><b>位置</b>：<code>dlna/PlaybackController.kt:300 fun stop() = main.post { command?.onStop() }</code>；对照 <code>pause()</code>（<code>296</code> 置 <code>false</code>）、<code>flushPending()</code>（<code>247-254</code>，按 <code>desiredPlaying</code> 决定 onPlay/onPause）、<code>registerCommandCallback</code>（<code>244</code> 重挂载即 flush）。</p>
+<p><b>问题</b>：<code>stop()</code> 不修改 <code>desiredPlaying</code>（默认 <code>true</code>）。用户/播控端 Stop 后，若播放页重建并重新 <code>registerCommandCallback</code>，<code>flushPending</code> 会因 <code>desiredPlaying==true</code> 调用 <code>onPlay()</code>，自动恢复已被停止的播放。</p>
+<p><b>影响</b>：Stop 后意外自动续播，与用户预期相反。</p>
+<p><b>建议</b>：在 <code>stop()</code> 中同步复位状态：</p>
+<pre lang="kotlin" caption="PlaybackController.stop"><code>fun stop() {
+    desiredPlaying = false
+    pendingSeekMs = -1
+    main.post { command?.onStop() }
+}</code></pre>
+
+<p><b>B2｜空 CurrentURI 仅记录日志仍进入播放状态机</b>（P2）</p>
+<p><b>位置</b>：<code>dlna/DlnaHttpServer.kt:162-170</code>（blank 只 <code>Log.w</code>，仍调用 <code>controller.onSetAvTransportUri(currentUri, ...)</code>）；controller 侧 <code>PlaybackController.kt:270-288</code> 无条件设 <code>currentUri</code>、置 <code>TRANSITIONING</code> 并回调 <code>onSetUri</code>。</p>
+<p><b>问题</b>：空 URI 未被拒绝，进入状态机后 <code>command?.onSetUri("")</code> 可能触发播放器加载空源。</p>
+<p><b>影响</b>：畸形/异常投屏请求下播放页进入异常态（黑屏/报错），排查成本高。</p>
+<p><b>建议</b>：在 <code>DlnaHttpServer</code> 对 blank <code>CurrentURI</code> 直接返回 SOAP 错误或忽略，不进入 controller；controller 入口对空 uri 提前 return。</p>
+
+<p><b>B3｜thumbnails_artwork 缓存目录不计入统计、也不被清理</b>（P2）</p>
+<p><b>位置</b>：目录定义 <code>util/Thumbnails.kt:311 artworkDir(cacheDir)</code>；缓存统计 <code>MainActivity.kt:990-991</code>（仅 history+favorite）；清理 <code>MainActivity.kt:1044-1053</code>（仅 history+favorite）。</p>
+<p><b>问题</b>：DLNA 封面缓存目录 <code>thumbnails_artwork</code> 既不计入设置页缓存大小，也不在“清理缓存”覆盖范围内。</p>
+<p><b>影响</b>：封面缓存持续增长且对用户不可见、不可清（虽在 cacheDir，仅依赖系统在存储紧张时回收）。</p>
+<p><b>建议</b>：将 <code>artworkDir</code> 纳入 <code>refreshCacheSizes</code> 统计与 <code>clearFolder</code> 清理（可归入“历史”类目一并清理）。</p>
+
+<p><b>B4｜多处 notifyDataSetChanged 缺少统一 isComputingLayout 防护</b>（P2）</p>
+<p><b>位置</b>：<code>ui/MainActivity.kt</code> 的 <code>1061/1062</code>、<code>1447/1448</code>、<code>1672</code>、<code>2152/2159/2166</code>、<code>2561</code>、<code>2655</code> 等；仅 <code>1889</code> 一处有 <code>isComputingLayout</code> 守卫。</p>
+<p><b>问题</b>：TV 焦点驱动下，刷新可能发生在 RecyclerView 布局计算期间；除侧栏外的刷新点未统一防护。</p>
+<p><b>影响</b>：极端时序下可能抛 <code>IllegalStateException: Cannot call this method while RecyclerView is computing a layout</code>（推断：需焦点/点击与刷新并发才复现）。</p>
+<p><b>建议</b>：封装统一的 <code>RecyclerView.safeNotify { ... }</code>：computing layout 时 <code>post</code> 到下一帧执行，全站替换裸 <code>notifyDataSetChanged</code>；能定点刷新的优先 <code>notifyItemChanged/Range</code>。</p>
+
+<p><b>B5｜收藏封面后台保存复用 lastCapturedBitmap，与截图回调 recycle 存在竞态</b>（P1）</p>
+<p><b>位置</b>：读取共享位图 <code>player/PlayerActivity.kt:1100-1104</code>（<code>cachedBmp = lastCapturedBitmap</code> 后台 <code>Thumbnails.saveJpeg(cachedBmp, favFile)</code>）；截图回调替换并回收 <code>538-540</code>（<code>prev.recycle()</code>）。</p>
+<p><b>问题</b>：后台线程持有 <code>cachedBmp</code> 引用做 JPEG 编码期间，主线程若产生新截图会在 <code>538-540</code> 把上一张（即 <code>cachedBmp</code>）<code>recycle</code>，导致后台对已回收 Bitmap 编码。</p>
+<p><b>影响</b>：崩溃 <code>Canvas: trying to use a recycled bitmap</code>（推断：需保存与新截图并发；TV 上重复投屏/快速操作可触发）。</p>
+<p><b>建议</b>：后台保存前对位图做保护性拷贝，避免与回收竞态：</p>
+<pre lang="kotlin" caption="PlayerActivity 保存前拷贝"><code>val snapshot = cachedBmp.copy(cachedBmp.config ?: Bitmap.Config.ARGB_8888, false)
+decodeExecutor.execute {
+    Thumbnails.saveJpeg(snapshot, favFile)
+    if (!snapshot.isRecycled) snapshot.recycle()
+}</code></pre>
+<p>或改为不共享 <code>lastCapturedBitmap</code>，让保存链路独立持有自身位图并负责回收。</p>
+
+<p><b>B6｜captureThread（thumb-pixelcopy）从不 quit</b>（P3）</p>
+<p><b>位置</b>：<code>util/Thumbnails.kt:209-221</code>（懒启动 <code>HandlerThread("thumb-pixelcopy")</code>，无 <code>quit()</code>）。</p>
+<p><b>问题</b>：<code>Thumbnails</code> 为单例 object，该线程一旦启动即随进程存活，无释放路径。</p>
+<p><b>影响</b>：一次性线程常驻（非累积泄漏），影响较小，但不利于资源可控。</p>
+<p><b>建议</b>：可接受现状；若追求整洁，可在长时间空闲后 <code>quitSafely()</code> 并置空，下次按需重建。</p>
+
+<p><b>B7｜封面解码缺少像素维度防护，存在 OOM 风险</b>（P2）</p>
+<p><b>位置</b>：<code>util/Thumbnails.kt:341-390 downloadArtworkBlocking</code>（有 2MB 字节上限 <code>ARTWORK_MAX_BYTES</code> 与黑图过滤，但 <code>BitmapFactory.decodeByteArray</code> 未做 <code>inJustDecodeBounds</code>/<code>inSampleSize</code>）。</p>
+<p><b>问题</b>：字节上限只约束下载体积，不约束解码后像素内存。2MB 的高压缩比图片可解出极大分辨率位图（如 1 万×1 万 ARGB 达数百 MB）。</p>
+<p><b>影响</b>：低内存 TV 设备上解码超大分辨率封面可能 OOM（推断：取决于对端返回图片，需真机验证）。</p>
+<p><b>建议</b>：先 <code>inJustDecodeBounds=true</code> 读尺寸，按目标尺寸计算 <code>inSampleSize</code> 再正式解码；同时校验 <code>Content-Type</code> 为 image/*。</p>
+
+<h1>六、可读性与一致性建议</h1>
+
+<p>以下不影响功能，属工程一致性与可维护性改进，定级 P3。</p>
+
+<p><b>D1｜GlowUnderlineView 直接 import android.R</b>：与项目 <code>R</code> 易混淆，建议改用全限定名 <code>android.R.attr.state_focused</code> 或移除该 import，降低阅读歧义。</p>
+
+<p><b>D2｜设置项 key 分散</b>：<code>Settings.kt</code> 与 <code>PhoneHubServer</code> 字符串协议各自维护 key（如 <code>muteOnCast/quality</code> 在设置与 PhoneHub 存在但播放链路未见消费）。建议集中常量定义并核对是否有“定义未使用”的设置项。</p>
+
+<p><b>D3｜Gradle 导出任务命名带旧迭代语义</b>：<code>app/build.gradle.kts</code> 的 <code>exportHomePlayerCardApk</code> 输出 <code>...-favorites-activestate.apk</code>，命名固化了历史迭代语义。建议改为版本无关的中性命名。</p>
+
+<p><b>D4｜DLNA/DIDL 解析基于正则</b>：<code>DlnaHttpServer</code> 用 <code>extractTag</code>/正则与手写 <code>xmlUnescape</code> 解析 SOAP/DIDL-Lite。对嵌套、CDATA、命名空间边界健壮性有限。建议对关键字段迁移到 <code>XmlPullParser</code>，或在注释中明确当前解析的适用边界。</p>
+
+<p><b>D5｜FavoritesStore schema 注释与序列化字段不一致</b>：schema 示例注释未包含实际会序列化的 <code>thumbPath</code> 字段。建议补齐注释，避免后续按注释误改结构。</p>
+
+<h1>七、Top 3 优先修复</h1>
+
+<p>综合“可见影响 × 触发概率 × 修复成本”，建议本迭代优先处理下列三项（均为 P1）。</p>
+
+<table>
+  <colgroup><col width="60"/><col width="220"/><col width="150"/><col width="240"/></colgroup>
+  <thead>
+    <tr>
+      <th background-color="light-gray">#</th>
+      <th background-color="light-gray">问题</th>
+      <th background-color="light-gray">位置</th>
+      <th background-color="light-gray">修复要点</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1</td>
+      <td>B5 收藏封面保存与截图回收竞态，可能崩溃</td>
+      <td>PlayerActivity.kt:1100-1104 / 538-540</td>
+      <td>后台保存前对 Bitmap 做保护性 copy，或让保存链路独立持有位图</td>
+    </tr>
+    <tr>
+      <td>2</td>
+      <td>B1 stop() 未复位 desiredPlaying，重挂载自动续播</td>
+      <td>PlaybackController.kt:300</td>
+      <td>stop() 内置 desiredPlaying=false、pendingSeekMs=-1</td>
+    </tr>
+    <tr>
+      <td>3</td>
+      <td>C1 历史列表忽略 artworkPath，封面口径不一致</td>
+      <td>MainActivity.kt:1703</td>
+      <td>按 artworkPath &gt; thumbPath 统一取值，或提供 displayThumbPath()</td>
+    </tr>
+  </tbody>
+</table>
+
+<h1>八、结论与后续</h1>
+
+<p>工程整体结构清晰，对 TV 焦点、Surface 释放、MMR 超时、位图黑图过滤等已有明确防护意识，注释也反映出对历史坑点的规避。主要问题集中在<b>缩略图优先级的口径统一</b>与<b>播放/历史状态的复位与并发时序</b>两条主线：数据模型已支持 <code>artworkPath &gt; thumbPath</code>，但展示与保存路径未全链路对齐（C1/C2/C3）；<code>stop()</code> 状态复位缺失与位图回收竞态（B1/B5）是最需先修的运行时风险。</p>
+
+<p>建议顺序：先修 Top 3（P1）；再统一 <code>notifyDataSetChanged</code> 的 <code>safeNotify</code> 封装与封面缓存的统计/清理（B3/B4）；最后清理冗余代码与依赖（R1-R7）并统一可读性问题（D1-D5）。涉及并发与低内存的判断（B4/B5/B7 中标注为“推断”的部分）建议结合真机压测与线上崩溃数据复核后再定最终优先级。</p>

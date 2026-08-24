@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 手机交互入口图标：手机 + 二维码点缀，蜡笔黄描边呼应设置弹窗风格。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="32dp"
+    android:height="32dp"
+    android:viewportWidth="32"
+    android:viewportHeight="32">
+    <!-- 手机机身 -->
+    <path
+        android:pathData="M9,3 h11 a2,2 0 0 1 2,2 v22 a2,2 0 0 1 -2,2 h-11 a2,2 0 0 1 -2,-2 v-22 a2,2 0 0 1 2,-2 z"
+        android:fillColor="#4089FD"
+        android:strokeColor="#F6C445"
+        android:strokeWidth="1.6" />
+    <!-- 屏幕区域 -->
+    <path
+        android:pathData="M9.5,6 h10 v18 h-10 z"
+        android:fillColor="#0B0F1A" />
+    <!-- 二维码点阵（简化：3x3 大点） -->
+    <path
+        android:pathData="M11,8 h3 v3 h-3 z M15.5,8 h3 v3 h-3 z M11,12.5 h3 v3 h-3 z M15.5,15 h3 v3 h-3 z M11,18 h3 v3 h-3 z M15.5,10 h3 v3 h-3 z"
+        android:fillColor="#F6C445" />
+    <!-- Home 按钮点 -->
+    <path
+        android:pathData="M14.5,26.5 m -1,0 a 1,1 0 1,0 2,0 a 1,1 0 1,0 -2,0"
+        android:fillColor="#F6C445" />
+    <!-- 电视 icon 呼应 -->
+    <path
+        android:pathData="M22.5,15 h6.5 a1,1 0 0 1 1,1 v6 a1,1 0 0 1 -1,1 h-6.5 z"
+        android:fillColor="#F2913D"
+        android:strokeColor="#F6C445"
+        android:strokeWidth="1.2" />
+    <path
+        android:pathData="M23.5,24.2 h4.5 v1.2 h-4.5 z"
+        android:fillColor="#F6C445" />
+    <!-- 连接曲线 -->
+    <path
+        android:pathData="M21.8,10 q3,2 5,7"
+        android:strokeColor="#43B97F"
+        android:strokeWidth="1.6"
+        android:fillColor="#00000000"
+        android:strokeLineCap="round" />
+</vector>

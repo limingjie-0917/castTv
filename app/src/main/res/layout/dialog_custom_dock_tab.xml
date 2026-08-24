@@ -1,0 +1,328 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/customDockRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:layout_margin="0dp"
+    android:background="@drawable/bg_dialog_crayon_panel"
+    android:clipChildren="false"
+    android:clipToPadding="false">
+
+    <!-- ============ 正常内容（频道列表 + 预览区） ============ -->
+    <LinearLayout
+        android:id="@+id/panelNormalContent"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:paddingLeft="2dp"
+        android:paddingTop="2dp"
+        android:paddingRight="2dp"
+        android:paddingBottom="2dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_marginTop="0dp"
+            android:layout_weight="1"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:orientation="horizontal">
+
+            <!-- 左侧频道列表（宽度较上一版再收窄 1/4） -->
+            <LinearLayout
+                android:id="@+id/panelResourceList"
+                android:layout_width="195dp"
+                android:layout_height="match_parent"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/textResourceListTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="资源列表"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="13sp" />
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/resourceList"
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_marginTop="10dp"
+                    android:layout_weight="1"
+                    android:clipToPadding="false"
+                    android:descendantFocusability="afterDescendants"
+                    android:focusable="true"
+                    android:focusableInTouchMode="false"
+                    android:overScrollMode="never"
+                    android:paddingBottom="6dp" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="6dp"
+                android:layout_height="match_parent" />
+
+            <!-- 右侧预览区：左侧播放器信息区 3，右侧提示与检测区 2 -->
+            <LinearLayout
+                android:id="@+id/panelPreview"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:background="@drawable/bg_preview_panel"
+                android:clipChildren="false"
+                android:clipToPadding="false"
+                android:orientation="horizontal"
+                android:paddingLeft="8dp"
+                android:paddingTop="6dp"
+                android:paddingRight="8dp"
+                android:paddingBottom="0dp">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="3"
+                    android:clipChildren="false"
+                    android:clipToPadding="false"
+                    android:orientation="vertical">
+
+                    <TextView
+                        android:id="@+id/textPreviewTitle"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="播放器预览"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="13sp" />
+
+                    <FrameLayout
+                        android:id="@+id/previewPlayerContainer"
+                        android:layout_width="match_parent"
+                        android:layout_height="0dp"
+                        android:layout_marginTop="8dp"
+                        android:layout_weight="1"
+                        android:background="#0F000000"
+                        android:clipChildren="false"
+                        android:clipToPadding="false"
+                        android:focusable="true"
+                        android:focusableInTouchMode="false">
+
+                        <!-- 跟随设置：SurfaceView / TextureView 二选一 -->
+                        <androidx.media3.ui.PlayerView
+                            android:id="@+id/previewPlayerView"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            app:use_controller="false" />
+
+                        <androidx.media3.ui.PlayerView
+                            android:id="@+id/previewPlayerViewTexture"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            app:surface_type="texture_view"
+                            app:use_controller="false" />
+
+                        <ProgressBar
+                            android:id="@+id/progressPreviewLoading"
+                            style="?android:attr/progressBarStyleLarge"
+                            android:layout_width="48dp"
+                            android:layout_height="48dp"
+                            android:layout_gravity="center"
+                            android:indeterminate="true"
+                            android:indeterminateTint="@color/crayon_yellow"
+                            android:visibility="gone" />
+
+                        <TextView
+                            android:id="@+id/textPreviewStatus"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:gravity="center"
+                            android:padding="18dp"
+                            android:text="请选择左侧资源"
+                            android:textColor="#EEFFFFFF"
+                            android:textSize="16sp" />
+
+                    </FrameLayout>
+
+                    <TextView
+                        android:id="@+id/textPreviewInfo"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:ellipsize="end"
+                        android:maxLines="3"
+                        android:text="频道名称：-\n主源：-\n备份源：-"
+                        android:textColor="@color/text_primary"
+                        android:textSize="13sp" />
+
+                </LinearLayout>
+
+                <View
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:background="#24000000"
+                    android:gravity="top"
+                    android:orientation="vertical"
+                    android:paddingLeft="16dp"
+                    android:paddingTop="14dp"
+                    android:paddingRight="16dp"
+                    android:paddingBottom="14dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="遥控器按键提示"
+                        android:textColor="@color/crayon_yellow"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/textPreviewHint"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="↑↓ 切换频道自动刷新预览\nOK：全屏播放\nMENU：源管理\nBACK：返回当前页根焦点"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="13sp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="24dp"
+                        android:text="资源检测"
+                        android:textColor="@color/crayon_yellow"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/textHealthTag"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:background="@drawable/bg_custom_tab_health_tag"
+                            android:text="健康"
+                            android:textColor="#FFB8F7D0"
+                            android:textSize="12sp" />
+
+                        <TextView
+                            android:id="@+id/textAbnormalTag"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginLeft="8dp"
+                            android:background="@drawable/bg_custom_tab_abnormal_tag"
+                            android:text="异常源已过滤"
+                            android:textColor="#FFFFD67A"
+                            android:textSize="12sp" />
+
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:id="@+id/panelDetectionStatus"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <ProgressBar
+                            android:id="@+id/progressSourceDetection"
+                            style="?android:attr/progressBarStyleSmall"
+                            android:layout_width="18dp"
+                            android:layout_height="18dp"
+                            android:indeterminate="true"
+                            android:indeterminateTint="@color/crayon_yellow" />
+
+                        <TextView
+                            android:id="@+id/textDetectionStatus"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginLeft="6dp"
+                            android:layout_weight="1"
+                            android:text="直播源检测中 · 已检测 0/0 个源"
+                            android:textColor="@color/text_secondary"
+                            android:textSize="12sp" />
+
+                    </LinearLayout>
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- ============ 频道为空兜底页（覆盖层） ============ -->
+    <LinearLayout
+        android:id="@+id/panelEmptyFallback"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:padding="32dp"
+        android:visibility="gone">
+
+        <ImageView
+            android:id="@+id/imgEmptySticker"
+            android:layout_width="160dp"
+            android:layout_height="160dp"
+            android:contentDescription="@null"
+            android:scaleType="fitCenter"
+            android:src="@drawable/sticker_shinchan" />
+
+        <TextView
+            android:id="@+id/textEmptyTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="哎？这里空空的耶～"
+            android:textColor="#FFFFFF"
+            android:textSize="24sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/textEmptyMessage"
+            android:layout_width="480dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:gravity="center"
+            android:lineSpacingExtra="4dp"
+            android:text="这个 Tab 还没有绑定合集，没有频道可以看哦！快去「设置」里重新绑定一个合集，或者换一个有内容的合集吧～不然小新也不知道要播什么给你看！(；′⌒`)"
+            android:textColor="#B0B0B0"
+            android:textSize="15sp" />
+
+        <TextView
+            android:id="@+id/textEmptyHint"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="💡 提示：进入设置 → 自定义 Tab → 重新选择合集，即可绑定频道"
+            android:textColor="#F5C451"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/btnEmptyGoSettings"
+            android:layout_width="160dp"
+            android:layout_height="52dp"
+            android:layout_marginTop="26dp"
+            android:background="@drawable/bg_preview_source_manage_button"
+            android:clickable="true"
+            android:focusable="true"
+            android:focusableInTouchMode="false"
+            android:gravity="center"
+            android:text="⚙️ 去设置"
+            android:textColor="#FFFFFFFF"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+    </LinearLayout>
+
+</FrameLayout>

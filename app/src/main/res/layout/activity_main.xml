@@ -1,0 +1,446 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="?attr/themeMainBg"
+    android:orientation="horizontal">
+
+    <ScrollView
+        android:id="@+id/dockBar"
+        android:layout_width="158dp"
+        android:layout_height="match_parent"
+        android:layout_marginLeft="16dp"
+        android:layout_marginTop="24dp"
+        android:layout_marginRight="10dp"
+        android:layout_marginBottom="24dp"
+        android:background="@drawable/bg_dock_bar"
+        android:clipToPadding="false"
+        android:fillViewport="true"
+        android:overScrollMode="never"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:paddingLeft="8dp"
+            android:paddingTop="10dp"
+            android:paddingRight="8dp"
+            android:paddingBottom="10dp">
+
+        <!--
+            Dock 一级入口（v1.1.80 焦点态改造）：
+            外层 FrameLayout（DockItemFrame）承担焦点+背景；底部覆盖 GlowUnderlineView，
+            由 MainActivity.setupDock 在焦点/选中变化时统一调用 applyVisualState()
+            同帧刷新暖黄下划线与光晕散射。图标 tint 用 dock_icon_tint selector，
+            文字 textColor 用 sidebar_item_text selector，两者均通过 duplicateParentState 继承外层状态。
+        -->
+        <FrameLayout android:id="@+id/dockHome" style="@style/DockItemFrame">
+            <com.bd.casttv.ui.GlowUnderlineView
+                android:id="@+id/dockHomeGlow"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clickable="false"
+                android:focusable="false" />
+            <LinearLayout style="@style/DockItemContent">
+                <ImageView
+                    android:id="@+id/dockHomeIcon"
+                    style="@style/DockItemIcon"
+                    android:contentDescription="@string/dock_home"
+                    android:src="@drawable/ic_dock_home"
+                    android:tint="@color/dock_icon_tint" />
+                <TextView
+                    android:id="@+id/dockHomeLabel"
+                    style="@style/DockItemLabel"
+                    android:text="@string/dock_home" />
+            </LinearLayout>
+        </FrameLayout>
+
+        <FrameLayout android:id="@+id/dockFavorites" style="@style/DockItemFrame">
+            <com.bd.casttv.ui.GlowUnderlineView
+                android:id="@+id/dockFavoritesGlow"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clickable="false"
+                android:focusable="false" />
+            <LinearLayout style="@style/DockItemContent">
+                <ImageView
+                    android:id="@+id/dockFavoritesIcon"
+                    style="@style/DockItemIcon"
+                    android:contentDescription="@string/dock_favorites"
+                    android:src="@drawable/ic_dock_favorite"
+                    android:tint="@color/dock_icon_tint" />
+                <TextView
+                    android:id="@+id/dockFavoritesLabel"
+                    style="@style/DockItemLabel"
+                    android:text="@string/dock_favorites" />
+            </LinearLayout>
+        </FrameLayout>
+
+        <!-- 自定义 Dock Tab：动态插入区域（由 MainActivity 根据配置渲染）。 -->
+        <LinearLayout
+            android:id="@+id/dockCustomTabsContainer"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:orientation="vertical" />
+
+        <FrameLayout android:id="@+id/dockPhone" style="@style/DockItemFrame">
+            <com.bd.casttv.ui.GlowUnderlineView
+                android:id="@+id/dockPhoneGlow"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clickable="false"
+                android:focusable="false" />
+            <LinearLayout style="@style/DockItemContent">
+                <ImageView
+                    android:id="@+id/dockPhoneIcon"
+                    style="@style/DockItemIcon"
+                    android:contentDescription="@string/dock_phone"
+                    android:src="@drawable/ic_phone_qrcode"
+                    android:tint="@color/dock_icon_tint" />
+                <TextView
+                    android:id="@+id/dockPhoneLabel"
+                    style="@style/DockItemLabel"
+                    android:text="@string/dock_phone" />
+            </LinearLayout>
+        </FrameLayout>
+
+        <FrameLayout android:id="@+id/dockHistory" style="@style/DockItemFrame">
+            <com.bd.casttv.ui.GlowUnderlineView
+                android:id="@+id/dockHistoryGlow"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clickable="false"
+                android:focusable="false" />
+            <LinearLayout style="@style/DockItemContent">
+                <ImageView
+                    android:id="@+id/dockHistoryIcon"
+                    style="@style/DockItemIcon"
+                    android:contentDescription="@string/dock_history"
+                    android:src="@drawable/ic_history_tv"
+                    android:tint="@color/dock_icon_tint" />
+                <TextView
+                    android:id="@+id/dockHistoryLabel"
+                    style="@style/DockItemLabel"
+                    android:text="@string/dock_history" />
+            </LinearLayout>
+        </FrameLayout>
+
+        <FrameLayout android:id="@+id/dockSettings" style="@style/DockItemFrame">
+            <com.bd.casttv.ui.GlowUnderlineView
+                android:id="@+id/dockSettingsGlow"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clickable="false"
+                android:focusable="false" />
+            <LinearLayout style="@style/DockItemContent">
+                <ImageView
+                    android:id="@+id/dockSettingsIcon"
+                    style="@style/DockItemIcon"
+                    android:contentDescription="@string/dock_settings"
+                    android:src="@drawable/ic_settings_tv"
+                    android:tint="@color/dock_icon_tint" />
+                <TextView
+                    android:id="@+id/dockSettingsLabel"
+                    style="@style/DockItemLabel"
+                    android:text="@string/dock_settings" />
+            </LinearLayout>
+        </FrameLayout>
+
+        <FrameLayout android:id="@+id/dockHelp" style="@style/DockItemFrame">
+            <com.bd.casttv.ui.GlowUnderlineView
+                android:id="@+id/dockHelpGlow"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clickable="false"
+                android:focusable="false" />
+            <LinearLayout style="@style/DockItemContent">
+                <ImageView
+                    android:id="@+id/dockHelpIcon"
+                    style="@style/DockItemIcon"
+                    android:contentDescription="@string/dock_help"
+                    android:src="@drawable/ic_help_tv"
+                    android:tint="@color/dock_icon_tint" />
+                <TextView
+                    android:id="@+id/dockHelpLabel"
+                    style="@style/DockItemLabel"
+                    android:text="@string/dock_help" />
+            </LinearLayout>
+        </FrameLayout>
+
+        <FrameLayout android:id="@+id/dockDiagnostics" style="@style/DockItemFrame">
+            <com.bd.casttv.ui.GlowUnderlineView
+                android:id="@+id/dockDiagnosticsGlow"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clickable="false"
+                android:focusable="false" />
+            <LinearLayout style="@style/DockItemContent">
+                <ImageView
+                    android:id="@+id/dockDiagnosticsIcon"
+                    style="@style/DockItemIcon"
+                    android:contentDescription="@string/dock_diagnostics"
+                    android:src="@drawable/ic_dock_diagnostics"
+                    android:tint="@color/dock_icon_tint" />
+                <TextView
+                    android:id="@+id/dockDiagnosticsLabel"
+                    style="@style/DockItemLabel"
+                    android:text="@string/dock_diagnostics" />
+            </LinearLayout>
+        </FrameLayout>
+        </LinearLayout>
+    </ScrollView>
+
+    <FrameLayout
+        android:id="@+id/contentContainer"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:clipChildren="false"
+        android:clipToPadding="false">
+
+        <LinearLayout
+            android:id="@+id/contentHome"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:paddingLeft="30dp"
+            android:paddingTop="24dp"
+            android:paddingRight="42dp"
+            android:paddingBottom="24dp">
+
+            <LinearLayout
+                android:id="@+id/homeStatusBar"
+                android:layout_width="match_parent"
+                android:layout_height="40dp"
+                android:background="@drawable/bg_home_status_bar"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingLeft="16dp"
+                android:paddingRight="16dp">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+                    <TextView
+                        android:id="@+id/labelDeviceName"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:letterSpacing="0.08"
+                        android:text="设备名称"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="11sp" />
+                    <TextView
+                        android:id="@+id/textDeviceName"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:text="客厅电视"
+                        android:textColor="@color/text_primary"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/textStatusTime"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="0.8"
+                    android:gravity="center"
+                    android:text="23:25"
+                    android:textColor="@color/crayon_yellow"
+                    android:textSize="13sp"
+                    android:textStyle="bold" />
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="1"
+                    android:gravity="center_vertical|end"
+                    android:orientation="horizontal">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="DLNA"
+                        android:textColor="@color/text_primary"
+                        android:textSize="11sp"
+                        android:textStyle="bold" />
+                    <ImageView
+                        android:id="@+id/dlnaSignalIcon"
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_marginStart="4dp"
+                        android:layout_marginEnd="12dp"
+                        android:contentDescription="DLNA 服务状态"
+                        android:src="@drawable/ic_service_signal" />
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="AirPlay"
+                        android:textColor="@color/text_primary"
+                        android:textSize="11sp"
+                        android:textStyle="bold" />
+                    <ImageView
+                        android:id="@+id/airplaySignalIcon"
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:layout_marginStart="4dp"
+                        android:contentDescription="AirPlay 服务状态"
+                        android:src="@drawable/ic_service_signal" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_marginTop="14dp"
+                android:layout_weight="1"
+                android:clipChildren="false"
+                android:clipToPadding="false">
+
+                <androidx.cardview.widget.CardView
+                    android:id="@+id/castStatusCard"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:layout_gravity="center"
+                    android:clickable="false"
+                    android:focusable="false"
+                    android:focusableInTouchMode="false"
+                    android:foreground="@drawable/fg_cast_status_card_focus"
+                    app:cardBackgroundColor="@color/surface"
+                    app:cardCornerRadius="@dimen/cast_status_corner_radius"
+                    app:cardElevation="0dp"
+                    app:cardPreventCornerOverlap="false"
+                    app:cardUseCompatPadding="false">
+
+                    <ImageView
+                        android:id="@+id/imgTv"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:contentDescription="@string/card_cast_status"
+                        android:scaleType="centerCrop"
+                        android:src="@drawable/cast_status_bg" />
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:background="@drawable/bg_card_scrim" />
+                    <ImageView
+                        android:id="@+id/imgCastPlayOverlay"
+                        android:layout_width="56dp"
+                        android:layout_height="56dp"
+                        android:layout_gravity="center"
+                        android:contentDescription="@string/cast_playing"
+                        android:src="@drawable/ic_play_overlay_circle"
+                        android:visibility="gone" />
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="top|end"
+                        android:layout_margin="20dp"
+                        android:text="🖍️"
+                        android:textSize="26sp" />
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:gravity="bottom"
+                        android:orientation="vertical"
+                        android:padding="28dp">
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+                            <View
+                                android:layout_width="4dp"
+                                android:layout_height="18dp"
+                                android:layout_marginEnd="8dp"
+                                android:background="@drawable/bg_crayon_stripe" />
+                            <TextView
+                                android:id="@+id/textReady"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:letterSpacing="0.04"
+                                android:text="@string/card_cast_status"
+                                android:textColor="#CCFFFFFF"
+                                android:textSize="16sp" />
+                        </LinearLayout>
+                        <TextView
+                            android:id="@+id/textCastState"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:ellipsize="marquee"
+                            android:fadingEdge="horizontal"
+                            android:marqueeRepeatLimit="marquee_forever"
+                            android:scrollHorizontally="true"
+                            android:shadowColor="#B3000000"
+                            android:shadowDx="0"
+                            android:shadowDy="2"
+                            android:shadowRadius="8"
+                            android:singleLine="true"
+                            android:text="@string/cast_waiting"
+                            android:textColor="#F2FFFFFF"
+                            android:textSize="28sp"
+                            android:textStyle="bold" />
+                        <TextView
+                            android:id="@+id/textIp"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:ellipsize="end"
+                            android:maxLines="1"
+                            android:textColor="#BFFFFFFF"
+                            android:textSize="14sp" />
+                    </LinearLayout>
+                </androidx.cardview.widget.CardView>
+            </FrameLayout>
+
+            <TextView
+                android:id="@+id/tutorialTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="14dp"
+                android:layout_marginBottom="8dp"
+                android:drawableStart="@drawable/ic_crayon_dot"
+                android:drawablePadding="8dp"
+                android:gravity="center_vertical"
+                android:text="@string/tutorial_title"
+                android:textColor="@color/text_secondary"
+                android:textSize="15sp" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+                <View
+                    android:id="@+id/tutorialAccent"
+                    android:layout_width="5dp"
+                    android:layout_height="match_parent"
+                    android:layout_marginEnd="12dp"
+                    android:background="@drawable/bg_crayon_stripe" />
+                <TextView
+                    android:id="@+id/tutorialText"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:background="@drawable/bg_card_grad"
+                    android:ellipsize="end"
+                    android:maxLines="2"
+                    android:padding="16dp"
+                    android:text="@string/tutorial_static"
+                    android:textColor="@color/text_primary"
+                    android:textSize="15sp" />
+            </LinearLayout>
+        </LinearLayout>
+    </FrameLayout>
+</LinearLayout>

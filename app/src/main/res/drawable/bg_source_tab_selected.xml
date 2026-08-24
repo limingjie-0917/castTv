@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 导入直播源弹窗 Tab：选中态（蜡笔黄描边高亮） -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#33F6C445" />
+    <corners android:radius="16dp" />
+    <stroke android:width="2dp" android:color="@color/crayon_yellow" />
+</shape>

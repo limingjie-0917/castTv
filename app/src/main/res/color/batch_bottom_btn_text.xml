@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 弹窗底部按钮文字三态：默认/焦点保持近白，只有选中态切为暖黄。 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_selected="true" android:color="#FFD700" />
+    <item android:color="#EEFFFFFF" />
+</selector>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 批量操作竖排浮层菜单背景：暖色深底 + 蜡笔黄圆角描边。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#F214171C" />
+    <corners android:radius="18dp" />
+    <stroke
+        android:width="1.5dp"
+        android:color="#6BF6C445" />
+</shape>

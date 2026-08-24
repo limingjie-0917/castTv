@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 缩略图占位背景：4dp 圆角深灰色，用于 ImageView 底部兜底避免透明区域。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#332A2C34" />
+    <corners android:radius="4dp" />
+</shape>

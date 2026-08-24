@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        自定义 ClippedImageView 的样式属性。
+        - civIsCircle: true → 按最短边一半裁圆；false → 圆角矩形
+        - civCornerRadius: 圆角矩形的圆角半径（dp）
+    -->
+    <declare-styleable name="ClippedImageView">
+        <attr name="civIsCircle" format="boolean" />
+        <attr name="civCornerRadius" format="dimension" />
+    </declare-styleable>
+
+    <!--
+        GlowUnderlineView 光晕对齐模式：默认保持旧行为（居中），仅在需要“照亮文字”时切到 start。
+        - glowAlign=center: cx = width/2
+        - glowAlign=start:  cx = paddingStart + glowOffsetX
+    -->
+    <declare-styleable name="GlowUnderlineView">
+        <attr name="glowAlign">
+            <enum name="center" value="0" />
+            <enum name="start" value="1" />
+        </attr>
+        <attr name="glowOffsetX" format="dimension" />
+    </declare-styleable>
+
+    <!--
+        v1.1.116 深灰主题属性：
+        - themeMainBg: 首页主背景 drawable（DarkGray = 深灰渐变；Classic = 深蓝渐变）
+        - themeFavoriteGridCardBg: 收藏页视频卡片背景 drawable（DarkGray = 暖黄描边；Classic = 蓝色描边）
+    -->
+    <attr name="themeMainBg" format="reference" />
+    <attr name="themeFavoriteGridCardBg" format="reference" />
+</resources>

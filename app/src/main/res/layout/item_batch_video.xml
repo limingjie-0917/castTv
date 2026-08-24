@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  批量操作弹窗内的小视频卡片：
+  - 顶部 16:9 小缩略图，左上角序号角标
+  - 底部视频名称（最多两行，末尾省略号）
+  - 卡片整体可聚焦；选中/焦点态由 bg_favorites_dialog_video_card 暖黄边框体现
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/batchCardRoot"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="5dp"
+    android:background="@drawable/bg_favorites_dialog_video_card"
+    android:clickable="true"
+    android:clipChildren="false"
+    android:clipToPadding="false"
+    android:focusable="true"
+    android:orientation="vertical"
+    android:padding="6dp">
+
+    <FrameLayout
+        android:id="@+id/batchThumbContainer"
+        android:layout_width="match_parent"
+        android:layout_height="66dp"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:minHeight="66dp">
+
+        <ImageView
+            android:id="@+id/batchThumb"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#22000000"
+            android:contentDescription="缩略图"
+            android:scaleType="centerCrop" />
+
+        <!-- 左上角序号角标 -->
+        <TextView
+            android:id="@+id/batchSeq"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|start"
+            android:layout_margin="3dp"
+            android:background="@drawable/bg_batch_seq_badge"
+            android:gravity="center"
+            android:minWidth="20dp"
+            android:paddingLeft="6dp"
+            android:paddingTop="1dp"
+            android:paddingRight="6dp"
+            android:paddingBottom="1dp"
+            android:text="1"
+            android:textColor="#FFFFFF"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <!-- 已推荐态右下角标记 -->
+        <TextView
+            android:id="@+id/batchRecommendedBadge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|end"
+            android:layout_margin="3dp"
+            android:background="@drawable/bg_batch_seq_badge"
+            android:gravity="center"
+            android:paddingLeft="6dp"
+            android:paddingTop="1dp"
+            android:paddingRight="6dp"
+            android:paddingBottom="1dp"
+            android:text="已推荐"
+            android:textColor="#FFD700"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <!-- 选中态右上角对勾 -->
+        <TextView
+            android:id="@+id/batchCheck"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|end"
+            android:layout_margin="3dp"
+            android:text="✓"
+            android:textColor="#FFD700"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+    </FrameLayout>
+
+    <TextView
+        android:id="@+id/batchTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="5dp"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:minLines="2"
+        android:text="视频名称"
+        android:textColor="#FFFFFFFF"
+        android:textSize="12sp" />
+</LinearLayout>

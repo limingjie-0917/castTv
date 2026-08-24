@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Dock 一级入口图标 tint 状态色（v1.1.80）：
+    - focused/selected：暖蜡笔黄 crayon_yellow，与 GlowUnderlineView 底部下划线 + 光晕视觉呼应；
+    - 默认：text_primary。
+    需要配合 android:duplicateParentState="true"，让 ImageView 继承外层 FrameLayout 的焦点/选中态。
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true" android:color="@color/crayon_yellow" />
+    <item android:state_selected="true" android:color="@color/crayon_yellow" />
+    <item android:color="@color/text_primary" />
+</selector>

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    默认兜底缩略图（16:9）：灰黑径向渐变 + 半透明黑蒙层。
+    中间的播放按钮由 item 布局中的 ic_play_overlay_circle ImageView 叠加，
+    此处只画底色，避免重复出现两个播放三角。
+
+    - 底层：径向渐变，中心 #4A4A50（亮灰）→ 外圈 #111114（黑灰）
+    - 上层：#66000000 半透明黑蒙层，压暗渐变让缩略图区域更沉稳
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:type="radial"
+                android:startColor="#FF4A4A50"
+                android:endColor="#FF111114"
+                android:centerX="0.5"
+                android:centerY="0.5"
+                android:gradientRadius="60%p" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#66000000" />
+        </shape>
+    </item>
+</layer-list>

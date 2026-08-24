@@ -1,0 +1,269 @@
+<resources>
+    <string name="app_name">投屏TV接收器</string>
+
+    <!-- Standby screen -->
+    <string name="standby_ready">准备接收投屏</string>
+    <!-- 首页「投屏状态」四态文案（IDLE / RECEIVING / PLAYING / 结束回 IDLE） -->
+    <string name="cast_waiting">等待投屏连接...</string>
+    <string name="cast_receiving">📡 正在接收投屏数据，即将播放...</string>
+    <string name="cast_playing">▶ 正在播放 · %1$s</string>
+    <string name="cast_playing_subtitle">投屏播放中</string>
+    <!-- 全局悬浮横幅（不参与 D-pad 焦点，仅用于跨 Tab 提示） -->
+    <string name="cast_receiving_banner">📡 正在接收投屏数据，即将播放...</string>
+
+    <!-- 全局「系统提示气泡」（24 小时生活作息 + ≥2h 健康提醒），实际文案由代码按时间段填充 -->
+    <string name="routine_bubble_close">关闭提醒</string>
+    <string name="routine_bubble_placeholder_main">该休息一下了</string>
+    <string name="routine_bubble_placeholder_sub">起身走走，放松身体</string>
+    <!-- 播放器内接收投屏提示（带标题）：%1$s 为节目标题 -->
+    <string name="player_cast_receiving_banner">📡 %1$s 正在接收投屏数据…</string>
+    <string name="queue_watch_later">稍后播放</string>
+    <string name="queue_remove">移出队列</string>
+    <string name="queue_removed">已移出队列</string>
+    <string name="queue_remove_failed">移出失败</string>
+    <string name="standby_hint">请确保手机与电视连接同一 Wi-Fi，然后在视频 App 中点击「投屏 / TV」按钮，选择本设备</string>
+    <string name="device_name_label">电视设备名称</string>
+    <string name="status_running">投屏服务运行中</string>
+    <string name="status_starting">投屏服务启动中…</string>
+    <string name="status_stopped">投屏服务已停止</string>
+    <string name="status_ip">局域网地址：%1$s</string>
+    <string name="status_ip_with_phone_port">局域网地址：%1$s · HTTP页面：http://%1$s:%2$d</string>
+    <string name="status_ip_with_phone_port_off">局域网地址：%1$s · HTTP页面未开启（默认端口 %2$d）</string>
+    <string name="menu_settings">设置</string>
+    <string name="menu_help">帮助</string>
+    <string name="card_cast_status">投屏状态</string>
+    <string name="card_service_status">投屏服务状态</string>
+
+    <!-- AirPlay 镜像接收 -->
+    <string name="airplay_status_running">AirPlay 镜像服务运行中</string>
+    <string name="airplay_status_hint">iPhone/iPad 控制中心「屏幕镜像」可投屏到本设备</string>
+    <string name="airplay_mirror_incoming">收到 AirPlay 镜像投屏</string>
+    <string name="airplay_mirror_source">屏幕镜像 · 来自 Apple 设备</string>
+    <string name="airplay_state_on">AirPlay 镜像：已开启（%1$s）</string>
+    <string name="airplay_state_off">AirPlay 镜像：未开启</string>
+    <!-- 首页「服务状态」逐协议展示所用文案 -->
+    <string name="airplay_service_subtitle">Apple 设备屏幕镜像</string>
+    <string name="dlna_service_name">DLNA 投屏</string>
+    <string name="dlna_service_subtitle">视频 / 音乐推流</string>
+    <string name="dlna_state_on">DLNA 投屏：已开启（%1$s）</string>
+    <string name="dlna_state_off">DLNA 投屏：未开启</string>
+
+    <!-- History -->
+    <string name="history_title">历史播放</string>
+    <string name="history_empty">暂无播放记录</string>
+    <string name="history_empty_crayon">还没有播放记录哦～\n等一部动画片开始吧 ✨</string>
+    <string name="history_meta">%1$s · %2$s</string>
+    <string name="history_dialog_header">🍒 历史记录</string>
+    <string name="history_dialog_subtitle">最近播放</string>
+    <string name="history_continue_play">继续播放</string>
+    <string name="history_replay">重新播放</string>
+    <string name="history_last_watched">上次观看到：%1$s</string>
+    <string name="history_not_started">尚未开始观看</string>
+
+    <!-- Favorites 收藏 -->
+    <string name="favorites_title">🍅 小新的收藏哦</string>
+    <string name="favorites_home_title">我的收藏</string>
+    <string name="favorites_empty">暂无收藏</string>
+    <string name="favorites_empty_home">还没有收藏哦～\n播放时按菜单键即可收藏 🖍</string>
+    <string name="favorites_enter_hint">按 OK 查看全部收藏 →</string>
+    <string name="favorites_dialog_header">🖍 我的收藏 · 小新的宝藏清单</string>
+    <string name="favorites_dialog_subtitle">播放时按菜单键就能把喜欢的内容收进来，遥控器上下选择后即可继续播放。</string>
+    <string name="favorites_empty_crayon">还没有收藏记录哦～\n播放时按菜单键收藏一部动画片吧 ✨</string>
+
+    <!-- v1.1.125 合集管理弹窗 -->
+    <string name="fav_collection_manage_desc">合集管理</string>
+    <string name="fav_collection_manage_title">🗂 合集管理</string>
+    <string name="fav_collection_manage_subtitle">仅展示可编辑的非预置合集，勾选后可上下调整顺序或批量删除。</string>
+    <string name="fav_collection_manage_empty">暂无可管理的合集～\n先在收藏页新建一个合集吧 🖍</string>
+    <string name="fav_collection_manage_move_up">上移</string>
+    <string name="fav_collection_manage_move_down">下移</string>
+    <string name="fav_collection_manage_select_all">全选</string>
+    <string name="fav_collection_manage_clear">取消勾选</string>
+    <string name="fav_collection_manage_delete">删除</string>
+    <string name="fav_collection_manage_cancel">取消</string>
+    <string name="fav_collection_manage_confirm">确认</string>
+    <string name="fav_collection_manage_selected_count">已选 %1$d 个合集</string>
+    <string name="fav_collection_manage_item_count">%1$d 个视频</string>
+    <string name="fav_collection_manage_delete_title">🗑 删除合集</string>
+    <string name="fav_collection_manage_delete_confirm">确定要删除已勾选的 %1$d 个合集吗？删除后合集内的视频将一并移除，无法恢复。</string>
+    <string name="fav_collection_manage_delete_ok">确认删除</string>
+    <string name="fav_collection_manage_delete_cancel">再想想</string>
+    <string name="fav_collection_manage_delete_result">已删除 %1$d 个合集</string>
+    <string name="fav_collection_manage_reorder_saved">合集排序已保存</string>
+    <string name="fav_collection_manage_reorder_failed">合集排序保存失败，请重试</string>
+
+    <!-- Player 侧边栏 & 收藏弹窗 -->
+    <string name="sidebar_title">🖍 快捷菜单</string>
+    <string name="sidebar_subtitle">按菜单键可再次呼出</string>
+    <string name="btn_favorite">收藏当前内容</string>
+    <string name="btn_favorited">✅ 已收藏</string>
+    <string name="favorite_add_header">⭐ 收藏这一集 · 小新帮你记住</string>
+    <string name="favorite_add_subtitle">给它取个好记的名字吧，下次从首页收藏就能直接找到。</string>
+    <string name="favorite_title_label">自定义标题（必填）</string>
+    <string name="favorite_collection_label">选择合集（必填）</string>
+    <string name="favorite_title_hint">例如：蜡笔小新剧场版 第3集</string>
+    <string name="favorite_uri_label">资源地址</string>
+    <string name="favorite_title_required">请先填写收藏标题哦～</string>
+    <string name="favorite_saved">已收藏成功，可在首页「收藏」中查看 🎉</string>
+    <string name="favorite_save_failed">收藏保存失败，请重试</string>
+    <string name="favorite_no_uri">当前没有可收藏的播放内容</string>
+    <string name="btn_save">保存收藏</string>
+
+    <!-- 收藏列表 编辑 / 删除 -->
+    <string name="favorite_edit_header">✏️ 修改标题 · 换个好记的名字</string>
+    <string name="favorite_edit_subtitle">给这条收藏换个新名字吧，资源地址保持不变。</string>
+    <string name="favorite_title_updated">标题已更新 ✏️</string>
+    <string name="favorite_delete_header">🗑 删除收藏</string>
+    <string name="favorite_delete_confirm">确定要删除「%1$s」这条收藏吗？删除后无法恢复哦～</string>
+    <string name="favorite_deleted">已删除该收藏</string>
+    <string name="btn_confirm">确定</string>
+    <string name="btn_cancel">取消</string>
+    <string name="btn_delete">删除</string>
+
+    <!-- 合集管理 -->
+    <string name="collection_new_btn">➕ 新建合集</string>
+    <string name="collection_rename_btn">✏️ 重命名</string>
+    <string name="collection_delete_btn">🗑 删除合集</string>
+    <string name="collection_new_header">➕ 新建合集</string>
+    <string name="collection_rename_header">✏️ 重命名合集</string>
+    <string name="collection_name_label">合集名称</string>
+    <string name="collection_name_hint">给合集取个名字吧</string>
+    <string name="collection_name_required">请先填写合集名称哦～</string>
+    <string name="collection_created">已创建新合集 🎉</string>
+    <string name="collection_renamed">合集已重命名 ✏️</string>
+    <string name="collection_deleted">已删除该合集</string>
+    <string name="collection_delete_header">🗑 删除合集</string>
+    <string name="collection_delete_confirm">确定要删除合集「%1$s」吗？合集内的 %2$d 条收藏也会一起删除，无法恢复哦～</string>
+    <string name="collection_default_locked">默认合集不可重命名或删除哦～</string>
+    <string name="collection_preset_rename_locked">App 预置合集不可重命名哦～</string>
+    <string name="collection_preset_delete_locked">App 预置合集不可删除哦～</string>
+    <string name="collection_limit_reached">合集数量已达上限（%1$d 个）</string>
+    <string name="collection_item_limit_reached">该合集已满（最多 %1$d 条）</string>
+    <string name="collection_total_limit_reached">收藏总数已达上限（%1$d 条）</string>
+    <string name="collection_op_failed">操作失败，请重试</string>
+    <string name="collection_empty_crayon">这个合集还空空的～\n播放时按菜单键收藏内容吧 ✨</string>
+    <string name="favorite_move_btn">移动</string>
+    <string name="favorite_move_header">📁 移动到其他合集</string>
+    <string name="favorite_move_no_target">还没有其他合集可移动，先新建一个吧～</string>
+    <string name="favorite_moved">已移动到「%1$s」📁</string>
+    <string name="favorites_dialog_subtitle_collections">合集以 Tab 展示，遥控器左右切换合集、上下选择内容，可新建 / 重命名 / 删除合集。</string>
+
+    <!-- Tutorials -->
+    <string name="tutorial_title">如何投屏</string>
+    <string name="service_status_title">服务状态</string>
+    <string name="tutorial_iqiyi">爱奇艺：打开视频 → 点击右上角「TV」→ 选择「%1$s」</string>
+    <string name="tutorial_bilibili">哔哩哔哩：全屏播放 → 点击「投屏」→ 选择「%1$s」</string>
+    <string name="tutorial_tencent">腾讯视频：播放页 → 点击「电视」图标 → 选择「%1$s」</string>
+    <string name="tutorial_youku">优酷：播放页 → 点击「TV」→ 选择「%1$s」</string>
+    <string name="tutorial_static">通用方式：打开视频 → 点击「TV / 投屏」→ 选择当前电视设备名称</string>
+    <string name="tutorial_static_with_name">通用方式：打开视频 → 点击「TV / 投屏」→ 选择「%1$s」</string>
+
+    <!-- Connection confirm -->
+    <string name="connect_request_title">投屏请求</string>
+    <string name="connect_request_msg">「%1$s」请求投屏到本设备</string>
+    <string name="btn_allow">允许</string>
+    <string name="btn_reject">拒绝</string>
+    <string name="switch_source_title">切换投屏来源</string>
+    <string name="switch_source_msg">「%1$s」请求投屏，是否切换为新设备内容？</string>
+    <string name="btn_switch">切换</string>
+    <string name="btn_keep">保持当前</string>
+
+    <!-- Password -->
+    <string name="password_title">请输入投屏密码</string>
+    <string name="password_wrong">密码错误，请重试</string>
+
+    <!-- Player -->
+    <string name="player_source_from">来自 %1$s</string>
+    <string name="player_buffering">缓冲中…</string>
+    <string name="player_volume">音量</string>
+    <string name="player_reconnecting">网络波动，正在重连…</string>
+    <string name="player_reconnecting_attempt">网络波动，正在重连…（第 %1$d/%2$d 次）</string>
+    <string name="player_error_decode">该视频格式不支持，请尝试切换清晰度或更新应用</string>
+    <string name="player_error_network">网络连接失败，请检查手机与电视是否在同一 Wi-Fi 后重试</string>
+    <string name="player_error_drm">该内容受版权保护（DRM），无法投屏播放</string>
+    <string name="player_error_no_uri">未获取到有效的播放地址，请重新发起投屏</string>
+    <string name="player_error_generic">播放出错：%1$s</string>
+    <string name="player_stream_ended">推流已中断，即将返回待机界面</string>
+
+    <!-- Settings -->
+    <string name="settings_title">设置</string>
+    <string name="settings_dialog_header">🌻 设置 · 野原家的电视遥控器</string>
+    <string name="settings_dialog_subtitle">换个可爱的设备名，设置投屏安全和电视端静音状态。</string>
+    <string name="settings_device_name">设备名称</string>
+    <string name="settings_device_name_current">当前设备名称</string>
+    <string name="settings_device_name_edit_hint">点击修改</string>
+    <string name="settings_device_name_dialog_title">🌻 修改设备名称</string>
+    <string name="settings_random_name">🎲 随机一个（蜡笔小新主题）</string>
+    <string name="settings_device_name_summary">手机端投屏列表中显示的名称（最长 12 个中文字符）</string>
+    <string name="settings_security">投屏安全</string>
+    <string name="settings_password_free">免密模式</string>
+    <string name="settings_password_free_summary">局域网内任意设备可直接投屏</string>
+    <string name="settings_password_mode">密码模式</string>
+    <string name="settings_password_mode_summary">投屏前需在手机端输入 4-8 位数字密码</string>
+    <string name="settings_quality">画质</string>
+    <string name="settings_quality_auto">自适应（推荐）</string>
+    <string name="settings_quality_1080">最高 1080P</string>
+    <string name="settings_quality_4k">最高 4K（需设备支持）</string>
+    <string name="settings_mute">投屏时电视端静音</string>
+    <string name="settings_autostart">开机自启动</string>
+    <string name="settings_autostart_summary">默认关闭，开启后电视重启会自动在后台接收投屏</string>
+    <string name="settings_use_surface_view">使用 SurfaceView</string>
+    <string name="settings_use_surface_view_summary">默认关闭；关闭时使用 TextureView，兼容性更好且可稳定生成缩略图。开启后改用 SurfaceView，硬解性能略强，但部分机型截图会偏黑。</string>
+
+    <!-- 清理缓存 -->
+    <string name="settings_clear_cache_title">🧹 清理缩略图缓存</string>
+    <string name="settings_cache_history_placeholder">📂 历史记录缩略图：计算中…</string>
+    <string name="settings_cache_favorite_placeholder">📂 收藏缩略图：计算中…</string>
+    <string name="settings_cache_total_placeholder">合计：计算中…</string>
+    <string name="settings_cache_history_line">📂 历史记录缩略图：%1$s</string>
+    <string name="settings_cache_favorite_line">📂 收藏缩略图：%1$s</string>
+    <string name="settings_cache_total_line">合计：%1$s</string>
+    <string name="settings_cache_pick_history">清理历史记录缩略图</string>
+    <string name="settings_cache_pick_favorite">清理收藏缩略图（清理后收藏项将展示默认图）</string>
+    <string name="settings_cache_clear_action">清理选中项</string>
+    <string name="settings_cache_none_selected">请至少勾选一项要清理的缓存</string>
+    <string name="settings_cache_confirm_title">确认清理</string>
+    <string name="settings_cache_confirm_message">将删除已勾选目录下的所有缩略图，此操作不可恢复。是否继续？</string>
+    <string name="settings_cache_confirm_ok">清理</string>
+    <string name="settings_cache_cleared">清理完成，已释放 %1$s</string>
+    <string name="settings_update">检查更新</string>
+    <string name="settings_about">关于</string>
+    <string name="help_dialog_header">🚀 帮助 · 小新教你投屏</string>
+    <string name="help_dialog_badge">请先确认手机和电视在同一个 Wi‑Fi，像小新找小白一样找准本设备。</string>
+    <string name="help_dialog_steps">1. 打开视频 App，进入想看的内容\n2. 点击「TV / 投屏 / 屏幕镜像」按钮\n3. 选择当前电视设备名称\n4. 等待连接成功，就可以大屏播放啦\n\n📡 导入直播源\n1. 进入收藏页，选择左侧「📡 导入直播源」Tab\n2. 选择「输入链接」：手机和电视连同一 Wi‑Fi，用手机扫码或访问电视上的局域网地址，粘贴 M3U / M3U8 / JSON 直链后提交\n3. 电视会自动解析并预览分组，勾选想看的分组后导入\n4. 也可以选择「☁️ 云端共享」，浏览大家分享的直播源，一键导入本地\n5. 导入完成后，在收藏页「📡 直播」合集中查看\n\n☁️ 云同步\n1. 功能入口：进入「收藏」页，点击底部「↑ 导出」上传合集，或点击「↓ 导入」下载好友分享的合集\n2. 如何通过云同步分享资源：新建合集 → 本地投屏 → 收藏视频 → 上传合集 → 好友下载，即可把喜欢的视频合集分享给好友\n3. 合集加锁/解锁功能：上传时可为合集设置密码加锁；好友下载有锁合集时，需要输入密码解锁</string>
+    <!-- v1.1.118：帮助页拆分——左侧滚动区（投屏 + 云同步），右上角公告栏专门展示导入直播源。 -->
+    <string name="help_dialog_steps_main">1. 打开视频 App，进入想看的内容\n2. 点击「TV / 投屏 / 屏幕镜像」按钮\n3. 选择当前电视设备名称\n4. 等待连接成功，就可以大屏播放啦\n\n☁️ 云同步\n1. 功能入口：进入「设置」页，选择「☁️ 云同步」，在弹窗中选择「⬆️ 上传到云端」或「⬇️ 从云端下载」\n2. 如何通过云同步分享资源：先在本地收藏内容并整理到 shared 合集，再上传到云端；其他设备进入云同步下载列表，勾选云端 shared 合集后下载到本地\n3. 合集上传加锁 / 下载解锁：上传 shared 合集时，可点击右侧锁图标为本次上传设置密码，已加锁合集也可在上传时取消加密；下载非预置加锁合集时，点击合集或锁图标输入密码，验证通过后本次弹窗内的加锁合集即可勾选下载</string>
+    <string name="help_dialog_update_title">内容更新</string>
+    <string name="help_dialog_import_title">📡 导入直播源</string>
+    <string name="help_dialog_import_content">1. 进入收藏页，选择左侧「📡 导入直播源」Tab\n2. 选择「输入链接」：手机和电视连同一 Wi‑Fi，用手机扫码或访问电视上的局域网地址，粘贴 M3U / M3U8 / JSON 直链后提交\n3. 电视会自动解析并预览分组，勾选想看的分组后导入\n4. 也可以选择「☁️ 云端共享」，浏览大家分享的直播源，一键导入本地\n5. 导入完成后，在收藏页「📡 直播」合集中查看</string>
+    <string name="help_dialog_footer">小提示：如果没有找到设备，可以检查网络、重启 App，或在设置里换一个更醒目的设备名。</string>
+
+    <string name="diag_ssdp_header">网络诊断（SSDP）</string>
+    <string name="diag_ssdp_hint">用于排查“手机搜不到投屏设备”。进入本页后，手机发起投屏搜索/刷新，观察是否收到 M-SEARCH、是否回包，以及是否有 description.xml 拉取记录。</string>
+    <!-- v1.1.120 网络诊断顶部工具栏 -->
+    <string name="diag_search_hint">搜索日志关键词</string>
+    <string name="diag_copy_log">复制日志</string>
+    <string name="diag_clear_log">清空日志</string>
+    <string name="diag_copy_toast">已复制日志</string>
+
+    <!-- Notification -->
+    <string name="notif_channel_name">投屏服务</string>
+    <string name="notif_title">投屏接收服务运行中</string>
+    <string name="notif_text">设备名称：%1$s</string>
+    <string name="notif_cast_channel_name">投屏拉起</string>
+    <string name="notif_cast_title">收到投屏请求</string>
+    <string name="notif_cast_text">点击开始播放「%1$s」</string>
+    <string name="notif_boot_title">投屏后台监听已开启</string>
+    <string name="notif_boot_text">开机自启动中，设备名称：%1$s</string>
+
+    <!-- 程序坞（Dock）一级菜单入口标题 -->
+    <string name="dock_home">主页</string>
+    <string name="dock_favorites">收藏</string>
+    <string name="dock_phone">连接手机</string>
+    <string name="dock_history">历史记录</string>
+    <string name="dock_settings">设置</string>
+    <string name="dock_help">帮助</string>
+    <string name="dock_diagnostics">网络诊断</string>
+    <string name="settings_save">保存设置</string>
+    <string name="content_enter_hint">按「上」键进入，操作下方内容</string>
+</resources>

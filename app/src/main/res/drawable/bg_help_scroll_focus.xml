@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    v1.1.125 帮助页可滚动内容容器背景（selector）：
+    - 焦点态 / 选中态：暖黄实线边框 + 全透明底（选中+焦点样式叠加）
+    - 默认态：透明底 + 透明边框（保留原有观感）
+    圆角与容器（badge / 圆角面板）保持一致，均为 10dp。
+    不使用 Material 组件。
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <solid android:color="@android:color/transparent" />
+            <corners android:radius="10dp" />
+            <stroke
+                android:width="2dp"
+                android:color="@color/crayon_yellow" />
+        </shape>
+    </item>
+    <item android:state_selected="true">
+        <shape android:shape="rectangle">
+            <solid android:color="@android:color/transparent" />
+            <corners android:radius="10dp" />
+            <stroke
+                android:width="2dp"
+                android:color="@color/crayon_yellow" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@android:color/transparent" />
+            <corners android:radius="10dp" />
+            <stroke
+                android:width="2dp"
+                android:color="@android:color/transparent" />
+        </shape>
+    </item>
+</selector>

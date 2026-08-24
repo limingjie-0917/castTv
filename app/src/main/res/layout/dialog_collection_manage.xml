@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    v1.1.125 合集管理弹窗：
+    - 风格与批量操作弹窗完全一致：bg_dialog_crayon_panel 暖黄描边深色面板 + 暖黄强调色。
+    - 顶部标题 + 副标题 + 已选计数。
+    - 中部横向：左侧是非预置合集列表（每行前置复选框），右侧是「上移 / 下移」按钮组。
+    - 底部动作条：全选 / 取消勾选 / 删除 / 取消 / 确认（复用 BatchBottomButton 样式）。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/collectionManageDialogRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_dialog_crayon_panel"
+    android:orientation="vertical"
+    android:paddingLeft="28dp"
+    android:paddingTop="20dp"
+    android:paddingRight="28dp"
+    android:paddingBottom="18dp">
+
+    <!-- 顶部标题行 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/fav_collection_manage_title"
+            android:textColor="@color/text_primary"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/collectionManageCount"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:text="@string/fav_collection_manage_selected_count"
+            android:textColor="@color/crayon_yellow"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- 副标题（说明文案） -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:text="@string/fav_collection_manage_subtitle"
+        android:textColor="@color/text_secondary"
+        android:textSize="14sp" />
+
+    <!-- 中部：合集列表（左，weight=1） + 上下移动按钮组（右） -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="12dp"
+        android:layout_weight="1"
+        android:orientation="horizontal">
+
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:background="@android:color/transparent"
+            android:padding="8dp">
+
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/collectionManageList"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipToPadding="false"
+                android:descendantFocusability="afterDescendants"
+                android:focusable="true"
+                android:focusableInTouchMode="false" />
+
+            <TextView
+                android:id="@+id/collectionManageEmpty"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:gravity="center"
+                android:text="@string/fav_collection_manage_empty"
+                android:textColor="@color/text_secondary"
+                android:textSize="15sp"
+                android:visibility="gone" />
+        </FrameLayout>
+
+        <!-- 右侧：上/下移动按钮竖向排列 -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:layout_marginStart="14dp"
+            android:gravity="center_vertical"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/btnCollectionManageMoveUp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_batch_bottom_btn"
+                android:clickable="true"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:gravity="center"
+                android:minWidth="96dp"
+                android:paddingLeft="18dp"
+                android:paddingTop="12dp"
+                android:paddingRight="18dp"
+                android:paddingBottom="12dp"
+                android:text="↑ 上移"
+                android:textColor="@color/batch_bottom_btn_text"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/btnCollectionManageMoveDown"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_batch_bottom_btn"
+                android:clickable="true"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:gravity="center"
+                android:minWidth="96dp"
+                android:paddingLeft="18dp"
+                android:paddingTop="12dp"
+                android:paddingRight="18dp"
+                android:paddingBottom="12dp"
+                android:text="↓ 下移"
+                android:textColor="@color/batch_bottom_btn_text"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- 底部动作条：全选 / 取消勾选 / 删除 / 取消 / 确认 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:gravity="center_horizontal"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/btnCollectionManageSelectAll"
+            style="@style/BatchBottomButton"
+            android:text="@string/fav_collection_manage_select_all" />
+
+        <TextView
+            android:id="@+id/btnCollectionManageClear"
+            style="@style/BatchBottomButton"
+            android:text="@string/fav_collection_manage_clear" />
+
+        <TextView
+            android:id="@+id/btnCollectionManageDelete"
+            style="@style/BatchBottomButton"
+            android:text="@string/fav_collection_manage_delete" />
+
+        <TextView
+            android:id="@+id/btnCollectionManageCancel"
+            style="@style/BatchBottomButton"
+            android:text="@string/fav_collection_manage_cancel" />
+
+        <TextView
+            android:id="@+id/btnCollectionManageConfirm"
+            style="@style/BatchBottomButton"
+            android:text="@string/fav_collection_manage_confirm" />
+    </LinearLayout>
+</LinearLayout>

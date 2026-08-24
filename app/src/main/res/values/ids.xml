@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 用于 ImageView 加载异步任务的 tag key，避免 Recycler 复用时错图。 -->
+    <item name="tag_thumb_request" type="id" />
+    <item name="sideActionGlowUnderline" type="id" />
+    <item name="sideActionText" type="id" />
+    <item name="sideActionIcon" type="id" />
+    <!-- FocusFxHelper：标记 View 已挂载焦点态视觉增强，避免二次链式注册。 -->
+    <item name="tag_focus_fx_applied" type="id" />
+</resources>

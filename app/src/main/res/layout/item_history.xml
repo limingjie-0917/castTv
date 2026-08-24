@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  历史记录卡片（横向滚动列表，每张卡片）：
+  - 16:9 缩略图 + 正中圆形半透明播放叠加图标
+  - 缩略图正下方蓝色播放进度条（上次观看进度）
+  - 标题 + 「上次观看到：X小时X分」副标题
+  - 主按钮（继续播放 / 重新播放）+「稍后播放」按钮
+  - 卡片焦点态蓝色边框高亮（bg_history_card_selector）
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/historyItemRoot"
+    android:layout_width="256dp"
+    android:layout_height="wrap_content"
+    android:layout_marginEnd="13dp"
+    android:background="@drawable/bg_history_card_selector"
+    android:clickable="false"
+    android:descendantFocusability="afterDescendants"
+    android:focusable="false"
+    android:focusableInTouchMode="false"
+    android:padding="8dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:clipToPadding="false"
+        android:descendantFocusability="afterDescendants"
+        android:focusable="false"
+        android:focusableInTouchMode="false"
+        android:gravity="center_horizontal"
+        android:orientation="vertical">
+
+        <!-- 16:9 缩略图 + 正中圆形播放叠加 -->
+        <androidx.constraintlayout.widget.ConstraintLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <ImageView
+                android:id="@+id/itemThumb"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:adjustViewBounds="false"
+                android:background="@drawable/bg_thumb_frame"
+                android:contentDescription="history thumbnail"
+                android:scaleType="centerCrop"
+                app:layout_constraintDimensionRatio="16:9"
+                app:layout_constraintEnd_toEndOf="parent"
+                app:layout_constraintStart_toStartOf="parent"
+                app:layout_constraintTop_toTopOf="parent" />
+
+            <ImageView
+                android:layout_width="42dp"
+                android:layout_height="42dp"
+                android:contentDescription="@null"
+                android:src="@drawable/ic_play_overlay_circle"
+                app:layout_constraintBottom_toBottomOf="@id/itemThumb"
+                app:layout_constraintEnd_toEndOf="@id/itemThumb"
+                app:layout_constraintStart_toStartOf="@id/itemThumb"
+                app:layout_constraintTop_toTopOf="@id/itemThumb" />
+
+            <TextView
+                android:id="@+id/itemLiveBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/bg_live_badge"
+                android:paddingLeft="6dp"
+                android:paddingTop="2dp"
+                android:paddingRight="6dp"
+                android:paddingBottom="2dp"
+                android:text="直播"
+                android:textColor="#FFFFFFFF"
+                android:textSize="10sp"
+                android:textStyle="bold"
+                android:visibility="gone"
+                app:layout_constraintStart_toStartOf="@id/itemThumb"
+                app:layout_constraintTop_toTopOf="@id/itemThumb" />
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+        <!-- 缩略图正下方蓝色播放进度条 -->
+        <ProgressBar
+            android:id="@+id/itemProgress"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="5dp"
+            android:layout_marginTop="4dp"
+            android:max="100"
+            android:progress="0"
+            android:progressDrawable="@drawable/bg_history_progress" />
+
+        <TextView
+            android:id="@+id/itemTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:minLines="1"
+            android:textColor="@color/text_primary"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/itemMeta"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="@color/text_secondary"
+            android:textSize="10sp" />
+
+        <TextView
+            android:id="@+id/itemPlayButton"
+            android:layout_width="match_parent"
+            android:layout_height="32dp"
+            android:layout_marginTop="7dp"
+            android:background="@drawable/bg_history_play_button"
+            android:clickable="true"
+            android:focusable="true"
+            android:focusableInTouchMode="false"
+            android:gravity="center"
+            android:nextFocusDown="@id/itemBtnLater"
+            android:text="@string/history_continue_play"
+            android:textColor="@color/history_replay_text"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/itemBtnLater"
+            android:layout_width="match_parent"
+            android:layout_height="32dp"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_watch_later_button"
+            android:clickable="true"
+            android:focusable="true"
+            android:focusableInTouchMode="false"
+            android:gravity="center"
+            android:nextFocusUp="@id/itemPlayButton"
+            android:text="＋ 稍后播放"
+            android:textColor="@color/crayon_yellow"
+            android:textSize="12sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+</FrameLayout>

@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    新建合集 tab（侧栏第 1 项，固定入口）。
+    v1.1.69 tab-layout「百分比宽度」：宽度 match_parent，与合集 item 视觉同款、同宽。
+    tab 宽度 = 父容器 sidebarPanel 内边距外剩余宽度 = 80%
+    （200dp 父 × 80% = 160dp 视觉基准），改父容器宽度即等比扩缩。
+    实际宽度、margin 由 dialog_favorites.xml 中的 <include> 覆盖控制。
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="38dp"
+    android:background="@drawable/bg_sidebar_item"
+    android:clickable="true"
+    android:focusable="true">
+
+    <com.bd.casttv.ui.GlowUnderlineView
+        android:id="@+id/newCollectionGlowUnderline"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <TextView
+        android:id="@+id/newCollectionText"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:duplicateParentState="true"
+        android:drawableEnd="@drawable/ic_crayon_dot_blue"
+        android:drawablePadding="7dp"
+        android:ellipsize="end"
+        android:gravity="center"
+        android:maxLines="1"
+        android:singleLine="true"
+        android:paddingLeft="8dp"
+        android:paddingTop="9dp"
+        android:paddingRight="8dp"
+        android:paddingBottom="9dp"
+        android:text="＋ 新建合集"
+        android:textColor="@color/sidebar_item_text"
+        android:textSize="12sp" />
+</FrameLayout>

@@ -1,0 +1,111 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="520dp"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_dialog_crayon_panel"
+    android:orientation="vertical"
+    android:padding="26dp">
+
+    <TextView
+        android:id="@+id/favoriteAddHeader"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_dialog_crayon_header"
+        android:gravity="center_vertical"
+        android:paddingLeft="18dp"
+        android:paddingTop="10dp"
+        android:paddingRight="18dp"
+        android:paddingBottom="10dp"
+        android:text="@string/favorite_add_header"
+        android:textColor="#101217"
+        android:textSize="21sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:text="@string/favorite_add_subtitle"
+        android:textColor="@color/text_secondary"
+        android:textSize="14sp" />
+
+    <!-- 自定义标题（必填） -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:drawableStart="@drawable/ic_crayon_dot"
+        android:drawablePadding="8dp"
+        android:gravity="center_vertical"
+        android:text="@string/favorite_title_label"
+        android:textColor="@color/crayon_yellow"
+        android:textSize="15sp" />
+
+    <EditText
+        android:id="@+id/inputFavoriteTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:background="@drawable/bg_dialog_input"
+        android:hint="@string/favorite_title_hint"
+        android:inputType="textNoSuggestions"
+        android:maxLines="1"
+        android:textColor="@color/text_primary"
+        android:textColorHint="@color/text_hint"
+        android:textSize="16sp" />
+
+    <!-- 选择合集：默认「默认合集」，横向蜡笔小新风格 chip，遥控器可左右聚焦并 OK 选择 -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="18dp"
+        android:drawableStart="@drawable/ic_crayon_dot"
+        android:drawablePadding="8dp"
+        android:gravity="center_vertical"
+        android:text="@string/favorite_collection_label"
+        android:textColor="@color/crayon_green"
+        android:textSize="15sp" />
+
+    <HorizontalScrollView
+        android:id="@+id/collectionChipsScroll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:fillViewport="true"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:id="@+id/collectionChipContainer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:paddingTop="2dp"
+            android:paddingBottom="2dp" />
+    </HorizontalScrollView>
+
+    <!-- 资源地址（只读） -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="18dp"
+        android:drawableStart="@drawable/ic_crayon_dot"
+        android:drawablePadding="8dp"
+        android:gravity="center_vertical"
+        android:text="@string/favorite_uri_label"
+        android:textColor="@color/crayon_blue"
+        android:textSize="15sp" />
+
+    <TextView
+        android:id="@+id/textFavoriteUri"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:background="@drawable/bg_dialog_input"
+        android:ellipsize="middle"
+        android:maxLines="2"
+        android:paddingTop="10dp"
+        android:paddingBottom="10dp"
+        android:textColor="@color/text_secondary"
+        android:textIsSelectable="false"
+        android:textSize="13sp" />
+</LinearLayout>

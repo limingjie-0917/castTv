@@ -1,0 +1,21 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1024" height="1024" rx="220" fill="#000000"/>
+
+  <!-- TV fills the icon area as the main subject -->
+  <rect x="90" y="162" width="760" height="500" rx="78" stroke="#FFFFFF" stroke-width="40"/>
+
+  <!-- TV text in the center, bold rounded minimalist style -->
+  <path d="M292 352H424" stroke="#FFFFFF" stroke-width="48" stroke-linecap="round"/>
+  <path d="M358 352V520" stroke="#FFFFFF" stroke-width="48" stroke-linecap="round"/>
+  <path d="M480 352L544 520L608 352" stroke="#FFFFFF" stroke-width="48" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Simple triangular TV stand -->
+  <path d="M522 634L398 804H646L522 634Z" fill="#FFFFFF"/>
+  <path d="M442 804H602" stroke="#FFFFFF" stroke-width="36" stroke-linecap="round"/>
+
+  <!-- Phone in front of TV, smaller and bottom aligned with TV/base visual line -->
+  <rect x="664" y="500" width="170" height="304" rx="34" fill="#000000"/>
+  <rect x="664" y="500" width="170" height="304" rx="34" stroke="#FFFFFF" stroke-width="30"/>
+  <circle cx="749" cy="766" r="10" fill="#FFFFFF"/>
+  <circle cx="748" cy="535" r="7" fill="#FFFFFF"/>
+</svg>

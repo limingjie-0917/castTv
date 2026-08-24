@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 历史卡片焦点态：宝蓝色 (#3B82F6) 实线高亮描边（参考图效果）。 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#182031" />
+            <corners android:radius="16dp" />
+            <stroke android:width="3dp" android:color="#3B82F6" />
+        </shape>
+    </item>
+</layer-list>

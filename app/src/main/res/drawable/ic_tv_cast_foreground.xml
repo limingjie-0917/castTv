@@ -1,0 +1,32 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+    <group
+        android:pivotX="512"
+        android:pivotY="512"
+        android:scaleX="0.55"
+        android:scaleY="0.55"
+        android:translateX="0"
+        android:translateY="4.5">
+
+        <!-- TV 外框 -->
+        <path android:pathData="M210,181 H814 A78,78 0 0 1 892,259 V603 A78,78 0 0 1 814,681 H210 A78,78 0 0 1 132,603 V259 A78,78 0 0 1 210,181 Z" android:strokeColor="#FFFFFF" android:strokeWidth="40" android:strokeLineJoin="round"/>
+        <!-- T -->
+        <path android:pathData="M326,371 H458" android:strokeColor="#FFFFFF" android:strokeWidth="48" android:strokeLineCap="round"/>
+        <path android:pathData="M392,371 V539" android:strokeColor="#FFFFFF" android:strokeWidth="48" android:strokeLineCap="round"/>
+        <!-- V -->
+        <path android:pathData="M514,371 L578,539 L642,371" android:strokeColor="#FFFFFF" android:strokeWidth="48" android:strokeLineCap="round" android:strokeLineJoin="round"/>
+        <!-- 底部横线 -->
+        <path android:pathData="M388,793 H636" android:strokeColor="#FFFFFF" android:strokeWidth="36" android:strokeLineCap="round"/>
+
+        <!-- 手机屏幕蓝色填充（遮挡背后的电视边框） -->
+        <path android:pathData="M734,529 H836 A34,34 0 0 1 870,563 V799 A34,34 0 0 1 836,833 H734 A34,34 0 0 1 700,799 V563 A34,34 0 0 1 734,529 Z" android:fillColor="#4089FD"/>
+        <!-- 手机白色描边 -->
+        <path android:pathData="M734,529 H836 A34,34 0 0 1 870,563 V799 A34,34 0 0 1 836,833 H734 A34,34 0 0 1 700,799 V563 A34,34 0 0 1 734,529 Z" android:strokeColor="#FFFFFF" android:strokeWidth="30" android:strokeLineJoin="round"/>
+        <!-- 听筒 / 摄像头点 -->
+        <path android:pathData="M775,795 a10,10 0 1 0 20,0 a10,10 0 1 0 -20,0 Z" android:fillColor="#FFFFFF"/>
+        <path android:pathData="M777,564 a7,7 0 1 0 14,0 a7,7 0 1 0 -14,0 Z" android:fillColor="#FFFFFF"/>
+    </group>
+</vector>

@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  手机连接入口图标（历史记录弹窗左侧）背景。焦点时蜡笔黄虚线描边高亮。
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_focused="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#332FA8C9" />
+            <corners android:radius="18dp" />
+            <stroke android:width="2.5dp" android:color="#F6C445" android:dashWidth="7dp" android:dashGap="4dp" />
+        </shape>
+    </item>
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <solid android:color="#552E63C4" />
+            <corners android:radius="18dp" />
+            <stroke android:width="2.5dp" android:color="#F2913D" android:dashWidth="7dp" android:dashGap="4dp" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#22101217" />
+            <corners android:radius="18dp" />
+            <stroke android:width="1.5dp" android:color="#66F6C445" android:dashWidth="6dp" android:dashGap="4dp" />
+        </shape>
+    </item>
+</selector>

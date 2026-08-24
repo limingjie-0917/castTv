@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 播放器侧边栏 收藏/稍后播放 文字/图标三态色：选中态（已收藏/已加入稍后播放）暖黄；默认态浅色。
+     焦点态不改文字色（焦点态由背景暖黄边框体现）。子 View 需 duplicateParentState 才能收到父容器状态。 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_selected="true" android:color="@color/crayon_yellow" />
+    <item android:color="@color/text_primary" />
+</selector>

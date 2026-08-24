@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    缩略图右下角播放叠加图标：黑色半透明矩形背景 + 白色播放三角。
+    尺寸 32x32，用于卡片缩略图右下叠加。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="32dp"
+    android:height="32dp"
+    android:viewportWidth="32"
+    android:viewportHeight="32">
+    <path
+        android:fillColor="#B3000000"
+        android:pathData="M4,4 h24 a2,2 0 0 1 2,2 v20 a2,2 0 0 1 -2,2 h-24 a2,2 0 0 1 -2,-2 v-20 a2,2 0 0 1 2,-2 z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M13,10 L13,22 L23,16 Z" />
+</vector>

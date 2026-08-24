@@ -1,0 +1,336 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  蜡笔小新主题收藏卡片（3 列网格）：
+  - 顶部 16:9 封面 + 播放叠加图标 + 多选框
+  - 中部标题单行省略号
+  - 底部 5 个操作按钮分 2 行展示：播放 / 改名 / 移动 / 稍后播放 / 删除
+-->
+<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/favoriteGridItemRoot"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="#12FFFFFF"
+    android:clickable="true"
+    android:clipChildren="false"
+    android:clipToPadding="false"
+    android:descendantFocusability="afterDescendants"
+    android:focusable="false"
+    android:padding="10dp">
+
+    <ImageView
+        android:id="@+id/gridThumb"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:adjustViewBounds="true"
+        android:background="@drawable/bg_thumb_frame"
+        android:contentDescription="@null"
+        android:scaleType="centerCrop"
+        android:src="@drawable/ic_thumb_default"
+        app:layout_constraintDimensionRatio="16:9"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <ImageView
+        android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:contentDescription="@null"
+        android:src="@drawable/ic_play_overlay_circle"
+        app:layout_constraintBottom_toBottomOf="@id/gridThumb"
+        app:layout_constraintEnd_toEndOf="@id/gridThumb"
+        app:layout_constraintStart_toStartOf="@id/gridThumb"
+        app:layout_constraintTop_toTopOf="@id/gridThumb" />
+
+    <CheckBox
+        android:id="@+id/gridSelectBox"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_marginStart="4dp"
+        android:buttonTint="@color/crayon_yellow"
+        android:clickable="false"
+        android:focusable="false"
+        android:gravity="center_vertical"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/gridThumb"
+        app:layout_constraintStart_toStartOf="@id/gridThumb"
+        app:layout_constraintTop_toTopOf="@id/gridThumb" />
+
+    <TextView
+        android:id="@+id/gridLiveBadge"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="6dp"
+        android:layout_marginTop="6dp"
+        android:background="@drawable/bg_live_badge"
+        android:paddingLeft="6dp"
+        android:paddingTop="2dp"
+        android:paddingRight="6dp"
+        android:paddingBottom="2dp"
+        android:text="直播"
+        android:textColor="#FFFFFFFF"
+        android:textSize="10sp"
+        android:textStyle="bold"
+        android:visibility="gone"
+        app:layout_constraintStart_toStartOf="@id/gridThumb"
+        app:layout_constraintTop_toTopOf="@id/gridThumb" />
+
+    <TextView
+        android:id="@+id/gridDuration"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="6dp"
+        android:layout_marginBottom="6dp"
+        android:background="@drawable/bg_duration_badge"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:paddingLeft="4dp"
+        android:paddingTop="2dp"
+        android:paddingRight="4dp"
+        android:paddingBottom="2dp"
+        android:textColor="#FFFFFF"
+        android:textSize="10sp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/gridThumb"
+        app:layout_constraintEnd_toEndOf="@id/gridThumb" />
+
+    <LinearLayout
+        android:id="@+id/gridTitleRow"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/gridThumb">
+
+        <TextView
+            android:id="@+id/gridTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="#FFFFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/gridResolution"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="4dp"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="#AAAAAA"
+            android:textSize="11sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/gridDescription"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="#AAAAAA"
+        android:textSize="11sp"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/gridTitleRow" />
+
+    <LinearLayout
+        android:id="@+id/gridButtonRow1"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:orientation="horizontal"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/gridDescription">
+
+        <FrameLayout
+            android:id="@+id/gridBtnPlayContainer"
+            android:layout_width="0dp"
+            android:layout_height="28dp"
+            android:layout_marginEnd="4dp"
+            android:layout_weight="1">
+
+            <com.bd.casttv.ui.GlowUnderlineView
+                android:id="@+id/gridBtnPlayUnderline"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/gridBtnPlay"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/bg_favorite_card_button_grid"
+                android:clickable="true"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:paddingLeft="4dp"
+                android:paddingRight="4dp"
+                android:text="播放"
+                android:textColor="#AAAAAA"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:id="@+id/gridBtnEditContainer"
+            android:layout_width="0dp"
+            android:layout_height="28dp"
+            android:layout_marginEnd="4dp"
+            android:layout_weight="1">
+
+            <com.bd.casttv.ui.GlowUnderlineView
+                android:id="@+id/gridBtnEditUnderline"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/gridBtnEdit"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/bg_favorite_card_button_grid"
+                android:clickable="true"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:paddingLeft="4dp"
+                android:paddingRight="4dp"
+                android:text="改名"
+                android:textColor="#AAAAAA"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:id="@+id/gridBtnMoveContainer"
+            android:layout_width="0dp"
+            android:layout_height="28dp"
+            android:layout_weight="1">
+
+            <com.bd.casttv.ui.GlowUnderlineView
+                android:id="@+id/gridBtnMoveUnderline"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/gridBtnMove"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/bg_favorite_card_button_grid"
+                android:clickable="true"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:paddingLeft="4dp"
+                android:paddingRight="4dp"
+                android:text="移动"
+                android:textColor="#AAAAAA"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </FrameLayout>
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/gridButtonRow2"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:orientation="horizontal"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/gridButtonRow1">
+
+        <FrameLayout
+            android:id="@+id/gridBtnLaterContainer"
+            android:layout_width="0dp"
+            android:layout_height="28dp"
+            android:layout_marginEnd="4dp"
+            android:layout_weight="1">
+
+            <com.bd.casttv.ui.GlowUnderlineView
+                android:id="@+id/gridBtnLaterUnderline"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/gridBtnLater"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/bg_favorite_card_button_grid"
+                android:clickable="true"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:paddingLeft="4dp"
+                android:paddingRight="4dp"
+                android:text="稍后播放"
+                android:textColor="#F5C451"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </FrameLayout>
+
+        <FrameLayout
+            android:id="@+id/gridBtnDeleteContainer"
+            android:layout_width="0dp"
+            android:layout_height="28dp"
+            android:layout_weight="1">
+
+            <com.bd.casttv.ui.GlowUnderlineView
+                android:id="@+id/gridBtnDeleteUnderline"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/gridBtnDelete"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/bg_favorite_card_button_grid"
+                android:clickable="true"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:gravity="center"
+                android:includeFontPadding="false"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:paddingLeft="4dp"
+                android:paddingRight="4dp"
+                android:text="删除"
+                android:textColor="#FF4444"
+                android:textSize="11sp"
+                android:textStyle="bold" />
+        </FrameLayout>
+    </LinearLayout>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

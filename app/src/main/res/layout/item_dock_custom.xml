@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/dockCustomRoot"
+    style="@style/DockItemFrame">
+
+    <com.bd.casttv.ui.GlowUnderlineView
+        android:id="@+id/dockCustomGlow"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clickable="false"
+        android:focusable="false" />
+
+    <LinearLayout style="@style/DockItemContent">
+
+        <ImageView
+            android:id="@+id/dockCustomIcon"
+            style="@style/DockItemIcon"
+            android:contentDescription="自定义 Tab"
+            android:src="@drawable/ic_collection_list"
+            android:tint="@color/dock_icon_tint" />
+
+        <TextView
+            android:id="@+id/dockCustomLabel"
+            style="@style/DockItemLabel"
+            android:text="Tab" />
+
+    </LinearLayout>
+
+</FrameLayout>

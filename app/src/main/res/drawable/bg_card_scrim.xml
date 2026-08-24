@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 左卡片蒙层：顶部透明露出照片，底部渐深保证底部对齐文字可读。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <gradient
+        android:startColor="#00000000"
+        android:centerColor="#59000000"
+        android:endColor="#E6000000"
+        android:type="linear"
+        android:angle="270" />
+</shape>

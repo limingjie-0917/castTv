@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 云同步主弹窗：标题 + 下载/上传按钮 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="400dp"
+    android:layout_height="wrap_content"
+    android:background="@drawable/bg_cloud_sync_dialog_panel"
+    android:orientation="vertical"
+    android:paddingLeft="32dp"
+    android:paddingTop="24dp"
+    android:paddingRight="32dp"
+    android:paddingBottom="24dp">
+
+    <!-- 标题：连续点击 5 次进入管理员模式 -->
+    <TextView
+        android:id="@+id/syncTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@android:color/transparent"
+        android:gravity="center"
+        android:paddingLeft="18dp"
+        android:paddingTop="12dp"
+        android:paddingRight="18dp"
+        android:paddingBottom="12dp"
+        android:text="☁️ 云同步"
+        android:textColor="#FFD700"
+        android:textSize="20sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/syncSubtitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:gravity="center"
+        android:text="通过 Gitee 仓库同步收藏合集"
+        android:textColor="@color/text_secondary"
+        android:textSize="14sp" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:fillViewport="true"
+        android:maxHeight="360dp"
+        android:fadeScrollbars="false"
+        android:scrollbars="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- 从云端下载 -->
+            <TextView
+                android:id="@+id/btnDownload"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@drawable/bg_cloud_sync_btn"
+                android:focusable="true"
+                android:gravity="center"
+                android:padding="16dp"
+                android:text="⬇️ 从云端下载"
+                android:textColor="@color/settings_button_text"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+
+            <!-- 上传到云端 -->
+            <TextView
+                android:id="@+id/btnUpload"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_cloud_sync_btn"
+                android:focusable="true"
+                android:gravity="center"
+                android:padding="16dp"
+                android:text="⬆️ 上传到云端"
+                android:textColor="@color/settings_button_text"
+                android:textSize="17sp"
+                android:textStyle="bold" />
+
+            <!-- 管理员：删除云端合集（默认隐藏） -->
+            <TextView
+                android:id="@+id/btnDeleteCloud"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_cloud_sync_btn"
+                android:focusable="true"
+                android:gravity="center"
+                android:padding="16dp"
+                android:text="🗑️ 删除云端合集"
+                android:textColor="#FF6B6B"
+                android:textSize="17sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+            <!-- 管理员：修改下载上限（默认隐藏，位于删除云端合集下方） -->
+            <TextView
+                android:id="@+id/btnEditDownloadLimit"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_cloud_sync_btn"
+                android:focusable="true"
+                android:gravity="center"
+                android:padding="16dp"
+                android:text="⚙️ 修改下载上限"
+                android:textColor="@color/crayon_yellow"
+                android:textSize="17sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/btnManageLiveSources"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:background="@drawable/bg_cloud_sync_btn"
+                android:focusable="true"
+                android:gravity="center"
+                android:padding="16dp"
+                android:text="📡管理直播源地址"
+                android:textColor="@color/crayon_yellow"
+                android:textSize="17sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+        </LinearLayout>
+    </ScrollView>
+
+</LinearLayout>

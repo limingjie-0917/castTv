@@ -1,0 +1,163 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <style name="Theme.CastTV" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">@color/bg_dark</item>
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorPrimaryDark">@color/primary_variant</item>
+        <item name="colorAccent">@color/accent</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <!--
+            v1.1.116 深灰主题（默认，DarkGray）主题属性：
+            深灰主背景 + 暖黄唯一强调色，与批量操作弹窗设计语言统一。
+        -->
+        <item name="themeMainBg">@drawable/bg_main_gradient</item>
+        <item name="themeFavoriteGridCardBg">@drawable/bg_favorite_grid_card</item>
+    </style>
+
+    <!--
+        v1.1.116 经典主题（Classic）：保留 v1.1.115 及以前的深蓝焦点/选中样式。
+        由 ThemeManager 根据 SharedPreferences 中的 THEME_STYLE 设置在 Activity.onCreate
+        中通过 setTheme(R.style.Theme_CastTV_Classic) 生效，切换后调用 recreate()。
+    -->
+    <style name="Theme.CastTV.Classic" parent="Theme.CastTV">
+        <item name="themeMainBg">@drawable/bg_main_gradient_classic</item>
+        <item name="themeFavoriteGridCardBg">@drawable/bg_favorite_grid_card_classic</item>
+    </style>
+
+    <style name="Theme.CastTV.Launch" parent="Theme.CastTV">
+        <item name="android:windowBackground">@drawable/bg_main_gradient</item>
+        <item name="android:windowDisablePreview">false</item>
+    </style>
+
+    <style name="Theme.CastTV.Fullscreen" parent="Theme.CastTV">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:windowContentOverlay">@null</item>
+    </style>
+
+    <!-- App 内海报墙（PosterWallActivity）全屏无标题主题，纯 AppCompat 无 Material 组件。 -->
+    <style name="Theme.CastTv.PosterWall" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:windowContentOverlay">@null</item>
+    </style>
+
+    <!-- Focusable TV button style with visible focus highlight -->
+    <style name="TvButton" parent="Widget.AppCompat.Button">
+        <item name="android:background">@drawable/bg_tv_button</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:paddingLeft">28dp</item>
+        <item name="android:paddingRight">28dp</item>
+        <item name="android:paddingTop">12dp</item>
+        <item name="android:paddingBottom">12dp</item>
+        <item name="android:focusable">true</item>
+        <item name="android:focusableInTouchMode">true</item>
+    </style>
+
+    <!--
+        左侧侧边栏 Dock 一级入口样式：
+        - v1.1.80 前：LinearLayout 单层结构，仅靠 bg_dock_item selector 展示焦点/选中。
+        - v1.1.80 起：改为 FrameLayout 包裹（DockItemFrame），底部覆盖 GlowUnderlineView，
+          图标 + 文字放在 DockItemContent 里；焦点态由 Glow 下划线 + 光晕承载，
+          选中/焦点态图标与文字使用 @color/crayon_yellow。DockItem 保留为向下兼容占位。
+    -->
+    <style name="DockItem">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">54dp</item>
+        <item name="android:layout_marginTop">4dp</item>
+        <item name="android:layout_marginBottom">4dp</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:paddingLeft">12dp</item>
+        <item name="android:paddingRight">10dp</item>
+        <item name="android:background">@drawable/bg_dock_item</item>
+        <item name="android:focusable">true</item>
+        <item name="android:focusableInTouchMode">true</item>
+        <item name="android:clickable">true</item>
+    </style>
+
+    <!-- Dock 外层 FrameLayout：承担焦点、点击、背景、外边距。 -->
+    <style name="DockItemFrame">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">54dp</item>
+        <!-- v1.1.118：Dock 各 Tab 间距缩小 25%（原 4dp → 3dp），视觉更紧凑。 -->
+        <item name="android:layout_marginTop">3dp</item>
+        <item name="android:layout_marginBottom">3dp</item>
+        <item name="android:background">@drawable/bg_dock_item</item>
+        <item name="android:focusable">true</item>
+        <item name="android:focusableInTouchMode">true</item>
+        <item name="android:clickable">true</item>
+        <item name="android:clipChildren">false</item>
+        <item name="android:clipToPadding">false</item>
+    </style>
+
+    <!-- Dock 内层 LinearLayout：横排图标 + 文字，不再承担焦点。 -->
+    <style name="DockItemContent">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:paddingLeft">12dp</item>
+        <item name="android:paddingRight">10dp</item>
+        <item name="android:duplicateParentState">true</item>
+    </style>
+
+    <style name="DockItemIcon">
+        <item name="android:layout_width">28dp</item>
+        <item name="android:layout_height">28dp</item>
+        <item name="android:duplicateParentState">true</item>
+    </style>
+
+    <style name="DockItemLabel">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:layout_marginLeft">10dp</item>
+        <item name="android:textColor">@color/sidebar_item_text</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:singleLine">true</item>
+        <item name="android:duplicateParentState">true</item>
+    </style>
+
+    <!--
+        批量操作弹窗底部动作按钮：暖黄三态（默认/选中/焦点），
+        背景 bg_batch_bottom_btn + 文字色 batch_bottom_btn_text，不使用 Material 组件。
+    -->
+    <style name="BatchBottomButton">
+        <item name="android:layout_width">wrap_content</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginLeft">6dp</item>
+        <item name="android:layout_marginRight">6dp</item>
+        <item name="android:background">@drawable/bg_batch_bottom_btn</item>
+        <item name="android:textColor">@color/batch_bottom_btn_text</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:gravity">center</item>
+        <item name="android:minWidth">88dp</item>
+        <item name="android:paddingLeft">18dp</item>
+        <item name="android:paddingRight">18dp</item>
+        <item name="android:paddingTop">10dp</item>
+        <item name="android:paddingBottom">10dp</item>
+        <item name="android:focusable">true</item>
+        <item name="android:focusableInTouchMode">true</item>
+        <item name="android:clickable">true</item>
+    </style>
+
+    <!--
+        v1.1.115 批量操作弹窗 / 移动目标选择器专用深色主题：
+        App 深色底 + 暖黄强调色，避免系统默认 AlertDialog 浅色主题（白底黑字）。不引入 Material。
+    -->
+    <style name="Theme.CastTV.Dialog" parent="Theme.AppCompat.Dialog.Alert">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:colorBackground">@color/bg_dark</item>
+        <item name="colorAccent">@color/crayon_yellow</item>
+        <item name="android:textColorPrimary">#EEFFFFFF</item>
+        <item name="android:textColorSecondary">#B3FFFFFF</item>
+        <item name="android:textColor">#EEFFFFFF</item>
+    </style>
+
+</resources>

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 蜡笔小新主题手绘蜡笔线条：红黄蓝三色，与宝蓝主题协调。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="118dp"
+    android:height="18dp"
+    android:viewportWidth="118"
+    android:viewportHeight="18">
+    <path
+        android:strokeColor="#FFE8453C"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M4,6 C18,3 29,9 43,5 C53,2 61,5 70,7" />
+    <path
+        android:strokeColor="#FFF6C445"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M12,13 C26,10 37,15 51,12 C62,9 72,12 82,14" />
+    <path
+        android:strokeColor="#FF4089FD"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M64,5 C76,2 86,7 97,5 C105,4 111,5 114,7" />
+</vector>

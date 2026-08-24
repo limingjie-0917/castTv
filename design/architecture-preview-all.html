@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>CastTV 重构 · 全模块预览</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #0e0f13; color: #e6e6e6;
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    padding: 32px 28px 48px; }
+  h1 { font-size: 22px; color: #f5c451; margin-bottom: 6px; }
+  h1 small { color: #888; font-size: 13px; margin-left: 8px; }
+  .desc { color: #9aa; font-size: 13px; margin-bottom: 22px; }
+  h2 { color: #f5c451; font-size: 16px; margin: 30px 0 6px; letter-spacing: 0.5px; }
+  .anno { color: #ff8a80; font-size: 12px; margin: 4px 0 12px; }
+
+  /* TV 屏幕 */
+  .tv { width: 100%; max-width: 1280px; aspect-ratio: 16 / 9;
+    background: #1a1c22; border-radius: 10px; position: relative; overflow: hidden;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5); margin-bottom: 8px; }
+  .wallpaper { position: absolute; inset: 0;
+    background:
+      radial-gradient(1200px 700px at 20% 20%, rgba(245,196,81,0.10), transparent 60%),
+      radial-gradient(900px 600px at 80% 80%, rgba(80,120,255,0.10), transparent 60%),
+      linear-gradient(160deg, #1c2030 0%, #0d1018 100%); }
+  .wallpaper::after { content:""; position:absolute; inset:0; background: rgba(0,0,0,0.35); }
+
+  .page { position: absolute; inset: 0; padding: 34px 56px 34px;
+    display: flex; flex-direction: column; color: #fff; z-index: 1; }
+
+  .root-bar { height: 4px; width: 110px; background:#666; border-radius:2px; opacity:0.5; margin-bottom:8px; }
+  .root-bar.active { background: #f5c451; box-shadow: 0 0 12px rgba(245,196,81,0.6); opacity:1; }
+  .root-hint { color:#888; font-size: 12px; margin-bottom: 16px; }
+  .root-hint.active { color: #f5c451; }
+
+  .page-header { display:flex; align-items:baseline; gap:12px; margin-bottom: 16px; }
+  .page-title { font-size: 28px; font-weight: 600; }
+  .page-sub { color:#aaa; font-size: 12px; }
+
+  .modules { flex:1; display:flex; flex-direction: column; gap:14px; overflow:hidden; }
+  .section-title { color:#ccc; font-size: 14px; margin-bottom: 8px; }
+
+  .row { display: flex; gap: 14px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .grid-5 { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+
+  .card { background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 12px;
+    color: #ddd; font-size: 12px; flex:1; min-height: 110px;
+    display:flex; flex-direction:column; justify-content: flex-end; }
+  .card .thumb { flex:1; background: linear-gradient(135deg, #333, #111); border-radius: 6px; margin-bottom: 8px; }
+  .card .name { color:#eee; font-size: 13px; }
+  .card .meta { color:#888; font-size: 11px; margin-top: 2px; }
+
+  .focused { border-color:#f5c451;
+    box-shadow: 0 0 0 2px #f5c451, 0 8px 24px rgba(245,196,81,0.25);
+    transform: scale(1.04); background: rgba(245,196,81,0.06); z-index:2; }
+
+  /* 通用按钮（图标+文字/纯图标） */
+  .btn { display:inline-flex; align-items:center; gap:6px; padding: 8px 14px;
+    border: 1px solid #99BFC3CC; border-radius: 999px; color: #BFC3CC; font-size: 12px;
+    background: transparent; }
+  .btn.icon-only { padding: 8px; width: 34px; height:34px; justify-content:center; }
+  .btn.focused { border-color:#f5c451; color:#BFC3CC; }
+  .btn.selected { color:#f5c451; }
+  .btn.selected.focused { color:#f5c451; border-color:#f5c451; }
+  .btn.danger { color:#ff6b6b; border-color:#ff6b6b60; }
+
+  /* 设置项 */
+  .settings-list { display:flex; flex-direction: column; gap: 8px; overflow:auto; }
+  .settings-item { background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; padding: 12px 14px;
+    display:flex; justify-content: space-between; align-items:center; font-size: 13px; }
+  .settings-item .val { color:#f5c451; font-size: 12px; }
+  .settings-group { color:#f5c451; font-size: 12px; margin: 6px 0 4px; letter-spacing: 0.3px; }
+
+  /* 悬浮胶囊指示栏 */
+  .indicator {
+    position: absolute; left: 50%; transform: translateX(-50%); bottom: 20px;
+    width: 50%; min-width: 460px; padding: 8px 16px 8px; z-index: 3;
+    background: rgba(20, 22, 30, 0.55); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 20px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease; }
+  .indicator .icons { display:flex; align-items:center; padding: 0 4px 6px; }
+  .indicator .icon-item { flex:1; display:flex; flex-direction:column;
+    align-items:center; justify-content:center; text-align:center; gap:3px;
+    color:#b8b8b8; font-size: 10px; }
+  .indicator .icon-item .ico { width:22px; height:22px; border-radius:6px;
+    background: transparent; display:flex; align-items:center; justify-content:center;
+    font-size: 13px; }
+  .indicator .icon-item.active { color:#f5c451; }
+  .indicator .icon-item.active .ico { background: rgba(245,196,81,0.18); color:#f5c451; }
+  .indicator .track { height:3px; border-radius:2px; background: rgba(255,255,255,0.14); position:relative; }
+  .indicator .track .thumb-bar { position:absolute; top:0; bottom:0; background:#f5c451;
+    border-radius:2px; box-shadow: 0 0 8px rgba(245,196,81,0.7); transition: left 0.25s ease; }
+  .indicator.root-active { transform: translate(-50%, -6px);
+    border-color: rgba(245,196,81,0.35);
+    box-shadow: 0 12px 28px rgba(0,0,0,0.45), 0 0 0 1px rgba(245,196,81,0.25); }
+  .indicator.root-active .icon-item.active .ico { outline: 2px solid #f5c451; outline-offset: 2px; }
+
+  /* 频道/合集列表左右两栏 */
+  .split { flex:1; display: flex; gap: 14px; overflow:hidden; }
+  .split .left { width: 240px; display:flex; flex-direction: column; gap:6px; overflow: auto; }
+  .split .right { flex:1; display:flex; flex-direction: column; gap: 10px; }
+  .list-item { padding: 10px 12px; border-radius: 8px;
+    background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+    font-size: 13px; color: #ccc; }
+  .list-item.focused { border-color:#f5c451; color:#f5c451;
+    box-shadow: 0 0 0 2px #f5c451; }
+  .list-item.selected { color:#f5c451; }
+
+  /* 手机连接页 */
+  .qr-box { display:flex; gap: 20px; }
+  .qr { width: 180px; height: 180px; background:#fff; border-radius: 10px;
+    display:flex; align-items:center; justify-content:center; color:#222; font-size: 12px; }
+  .conn-info { flex:1; font-size: 13px; color:#ddd; line-height: 1.9; }
+  .conn-info b { color:#f5c451; }
+
+  /* 网络诊断 */
+  .diag-list { display:flex; flex-direction: column; gap: 8px; }
+  .diag-row { display:flex; justify-content: space-between; padding: 10px 14px;
+    background: rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.08); border-radius: 8px; font-size: 13px; }
+  .diag-row .st { color:#67d17b; font-size: 12px; }
+  .diag-row .st.warn { color:#ffb85e; }
+  .diag-row .st.err { color:#ff6b6b; }
+
+  /* 帮助 */
+  .help-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .help-card { background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px;
+    font-size: 13px; color:#ddd; }
+  .help-card h4 { color:#f5c451; font-size: 13px; margin-bottom: 6px; }
+  .help-card p { color:#aaa; font-size: 12px; line-height: 1.6; }
+
+  /* 历史 */
+  .history-list { display:flex; flex-direction: column; gap: 8px; overflow:auto; }
+  .history-row { display:flex; gap: 12px; padding: 8px; background: rgba(255,255,255,0.04);
+    border:1px solid rgba(255,255,255,0.08); border-radius:8px; font-size: 12px; align-items:center; }
+  .history-row .h-thumb { width: 96px; height: 54px; border-radius: 4px;
+    background: linear-gradient(135deg, #333, #111); flex-shrink: 0; }
+  .history-row .h-info { flex:1; }
+  .history-row .h-info .h-title { color:#eee; font-size: 13px; margin-bottom: 4px; }
+  .history-row .h-info .h-meta { color:#888; font-size: 11px; }
+  .history-row .h-progress { height: 3px; background: rgba(255,255,255,0.1); border-radius:2px; margin-top:4px; position:relative; overflow: hidden; }
+  .history-row .h-progress .bar { position:absolute; left:0; top:0; bottom:0; background:#f5c451; }
+  .history-row.focused { border-color:#f5c451; box-shadow: 0 0 0 2px #f5c451; transform: scale(1.02); }
+
+</style>
+</head>
+<body>
+
+<h1>CastTV 重构 · 8 大模块完整预览 <small>新框架 · 悬浮胶囊指示栏 · 全局壁纸</small></h1>
+<div class="desc">每个模块单独一屏；指示栏当前页高亮 + 滑块跟随；每屏都标注了核心焦点态和交互说明</div>
+
+<!-- ==================== ① 主页 ==================== -->
+<h2>① 主页 Home</h2>
+<div class="anno">功能：继续观看 · 收藏合集入口 · 云端共享推荐 · 快速工具</div>
+<div class="tv">
+  <div class="wallpaper"></div>
+  <div class="page">
+    <div class="root-bar"></div>
+    <div class="root-hint">焦点在内容 · 「继续观看」第 2 张卡片</div>
+    <div class="page-header"><div class="page-title">主页</div><div class="page-sub">推荐 · 快速访问</div></div>
+    <div class="modules">
+      <div>
+        <div class="section-title">继续观看</div>
+        <div class="grid-4">
+          <div class="card"><div class="thumb"></div><div class="name">视频 A</div><div class="meta">已看 32%</div></div>
+          <div class="card focused"><div class="thumb"></div><div class="name">视频 B · 焦点</div><div class="meta">已看 78%</div></div>
+          <div class="card"><div class="thumb"></div><div class="name">视频 C</div><div class="meta">已看 12%</div></div>
+          <div class="card"><div class="thumb"></div><div class="name">视频 D</div><div class="meta">未看完</div></div>
+        </div>
+      </div>
+      <div>
+        <div class="section-title">我的合集</div>
+        <div class="grid-4">
+          <div class="card"><div class="thumb"></div><div class="name">港片经典</div></div>
+          <div class="card"><div class="thumb"></div><div class="name">纪录片</div></div>
+          <div class="card"><div class="thumb"></div><div class="name">动漫合集</div></div>
+          <div class="card"><div class="thumb"></div><div class="name">春晚回顾</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="indicator">
+    <div class="icons">
+      <div class="icon-item active"><div class="ico">🏠</div>主页</div>
+      <div class="icon-item"><div class="ico">⭐</div>收藏</div>
+      <div class="icon-item"><div class="ico">📺</div>自定义</div>
+      <div class="icon-item"><div class="ico">📱</div>连接手机</div>
+      <div class="icon-item"><div class="ico">🕓</div>历史</div>
+      <div class="icon-item"><div class="ico">🩺</div>网络诊断</div>
+      <div class="icon-item"><div class="ico">❔</div>帮助</div>
+      <div class="icon-item"><div class="ico">⚙️</div>设置</div>
+    </div>
+    <div class="track"><div class="thumb-bar" style="left:0%; width:12.5%;"></div></div>
+  </div>
+</div>
+
+<!-- ==================== ② 收藏 ==================== -->
+<h2>② 收藏 Favorites</h2>
+<div class="anno">左侧：合集 Tab（个人合集 / 云端共享 / 导入直播源） · 右侧：合集内视频卡片；底部悬浮：新建合集 / 导入 / 导出 / 多选</div>
+<div class="tv">
+  <div class="wallpaper"></div>
+  <div class="page">
+    <div class="root-bar"></div>
+    <div class="root-hint">焦点在左侧合集 Tab · 「港片经典」</div>
+    <div class="page-header"><div class="page-title">收藏</div><div class="page-sub">我的合集 · 云端共享 · 直播源</div></div>
+    <div class="split">
+      <div class="left">
+        <button class="btn" style="width:100%; margin-bottom:6px;">＋ 新建合集</button>
+        <div class="list-item selected focused">港片经典</div>
+        <div class="list-item">春晚回顾</div>
+        <div class="list-item">纪录片精选</div>
+        <div class="list-item">动漫合集</div>
+        <div class="list-item">☁ 云端共享</div>
+        <div class="list-item">📡 直播源</div>
+      </div>
+      <div class="right">
+        <div class="section-title">港片经典 · 12 部</div>
+        <div class="grid-4">
+          <div class="card"><div class="thumb"></div><div class="name">古惑仔 1</div><div class="meta">播放·编辑·移动</div></div>
+          <div class="card"><div class="thumb"></div><div class="name">英雄本色</div></div>
+          <div class="card"><div class="thumb"></div><div class="name">无间道</div></div>
+          <div class="card"><div class="thumb"></div><div class="name">纵横四海</div></div>
+        </div>
+        <div class="row" style="justify-content: flex-end; gap: 10px;">
+          <button class="btn">📥 导入</button>
+          <button class="btn">📤 导出</button>
+          <button class="btn">☑️ 多选</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="indicator">
+    <div class="icons">
+      <div class="icon-item"><div class="ico">🏠</div>主页</div>
+      <div class="icon-item active"><div class="ico">⭐</div>收藏</div>
+      <div class="icon-item"><div class="ico">📺</div>自定义</div>
+      <div class="icon-item"><div class="ico">📱</div>连接手机</div>
+      <div class="icon-item"><div class="ico">🕓</div>历史</div>
+      <div class="icon-item"><div class="ico">🩺</div>网络诊断</div>
+      <div class="icon-item"><div class="ico">❔</div>帮助</div>
+      <div class="icon-item"><div class="ico">⚙️</div>设置</div>
+    </div>
+    <div class="track"><div class="thumb-bar" style="left:12.5%; width:12.5%;"></div></div>
+  </div>
+</div>
+
+<!-- ==================== ③ 自定义 Tab ==================== -->
+<h2>③ 自定义 Tab CustomTab（每个自定义 Tab 独立 Page）</h2>
+<div class="anno">左侧：频道列表（合集内视频 = 频道） · 右侧：预览播放器 + 频道信息；滑动只切换焦点，停止后再预览（防 ANR）</div>
+<div class="tv">
+  <div class="wallpaper"></div>
+  <div class="page">
+    <div class="root-bar"></div>
+    <div class="root-hint">焦点在频道列表 · 「CCTV1 综合」</div>
+    <div class="page-header"><div class="page-title">📺 自定义电视</div><div class="page-sub">绑定合集：直播源</div></div>
+    <div class="split">
+      <div class="left">
+        <div class="list-item selected focused">1 · CCTV1 综合</div>
+        <div class="list-item">2 · CCTV2 财经</div>
+        <div class="list-item">3 · CCTV3 综艺</div>
+        <div class="list-item">4 · CCTV4 中文</div>
+        <div class="list-item">5 · CCTV5 体育</div>
+        <div class="list-item">6 · 湖南卫视</div>
+        <div class="list-item">7 · 浙江卫视</div>
+        <div class="list-item">8 · 江苏卫视</div>
+      </div>
+      <div class="right">
+        <div class="card" style="flex:1; min-height: 300px;">
+          <div class="thumb" style="min-height: 260px; background: linear-gradient(135deg,#222,#000);"></div>
+          <div class="name">CCTV1 综合 · 预览中</div>
+          <div class="meta">1920×1080 · h264 · 缓冲 45%</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="indicator">
+    <div class="icons">
+      <div class="icon-item"><div class="ico">🏠</div>主页</div>
+      <div class="icon-item"><div class="ico">⭐</div>收藏</div>
+      <div class="icon-item active"><div class="ico">📺</div>自定义</div>
+      <div class="icon-item"><div class="ico">📱</div>连接手机</div>
+      <div class="icon-item"><div class="ico">🕓</div>历史</div>
+      <div class="icon-item"><div class="ico">🩺</div>网络诊断</div>
+      <div class="icon-item"><div class="ico">❔</div>帮助</div>
+      <div class="icon-item"><div class="ico">⚙️</div>设置</div>
+    </div>
+    <div class="track"><div class="thumb-bar" style="left:25%; width:12.5%;"></div></div>
+  </div>
+</div>
+
+<!-- ==================== ④ 连接手机 ==================== -->
+<h2>④ 连接手机 PhoneHub</h2>
+<div class="anno">功能：显示局域网二维码 + IP:端口 + WiFi 名 · HTTP 页面同步 · 一键刷新</div>
+<div class="tv">
+  <div class="wallpaper"></div>
+  <div class="page">
+    <div class="root-bar"></div>
+    <div class="root-hint">焦点在「刷新二维码」按钮</div>
+    <div class="page-header"><div class="page-title">连接手机</div><div class="page-sub">扫码使用手机端</div></div>
+    <div class="modules">
+      <div class="qr-box">
+        <div class="qr">[ 二维码 ]</div>
+        <div class="conn-info">
+          <div>局域网地址：<b>http://192.168.1.108:8080</b></div>
+          <div>WiFi 名称：<b>MyHome-5G</b></div>
+          <div>手机端可访问：<b>合集 / 历史 / 云端共享 / 设置</b></div>
+          <div>状态：<span style="color:#67d17b;">● 在线</span> · 已连接 <b>2 台</b>手机</div>
+          <div style="margin-top: 10px; display:flex; gap:10px;">
+            <button class="btn focused">🔄 刷新二维码</button>
+            <button class="btn">📖 使用说明</button>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="section-title">已连接设备</div>
+        <div class="settings-list">
+          <div class="settings-item"><span>iPhone 15 · 192.168.1.23</span><span class="val">主机</span></div>
+          <div class="settings-item"><span>Xiaomi 14 · 192.168.1.44</span><span class="val">从机</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="indicator">
+    <div class="icons">
+      <div class="icon-item"><div class="ico">🏠</div>主页</div>
+      <div class="icon-item"><div class="ico">⭐</div>收藏</div>
+      <div class="icon-item"><div class="ico">📺</div>自定义</div>
+      <div class="icon-item active"><div class="ico">📱</div>连接手机</div>
+      <div class="icon-item"><div class="ico">🕓</div>历史</div>
+      <div class="icon-item"><div class="ico">🩺</div>网络诊断</div>
+      <div class="icon-item"><div class="ico">❔</div>帮助</div>
+      <div class="icon-item"><div class="ico">⚙️</div>设置</div>
+    </div>
+    <div class="track"><div class="thumb-bar" style="left:37.5%; width:12.5%;"></div></div>
+  </div>
+</div>
+
+<!-- ==================== ⑤ 历史记录 ==================== -->
+<h2>⑤ 历史记录 History</h2>
+<div class="anno">单列列表，卡片包含缩略图 + 标题 + 观看时间 + 已看进度；操作按钮：继续播放 · 加入收藏 · 删除</div>
+<div class="tv">
+  <div class="wallpaper"></div>
+  <div class="page">
+    <div class="root-bar"></div>
+    <div class="root-hint">焦点在第 1 条 · 「无间道 2003」</div>
+    <div class="page-header">
+      <div class="page-title">历史记录</div><div class="page-sub">按最近观看排序 · 共 48 条</div>
+    </div>
+    <div class="modules">
+      <div style="display:flex; gap:10px; margin-bottom: 6px;">
+        <button class="btn">🗑️ 清空历史</button>
+        <button class="btn">📥 导出</button>
+      </div>
+      <div class="history-list">
+        <div class="history-row focused">
+          <div class="h-thumb"></div>
+          <div class="h-info">
+            <div class="h-title">无间道 2003 · 焦点</div>
+            <div class="h-meta">2 小时前 · 已看 78%</div>
+            <div class="h-progress"><div class="bar" style="width: 78%;"></div></div>
+          </div>
+          <button class="btn icon-only">▶</button>
+          <button class="btn icon-only">⭐</button>
+          <button class="btn icon-only danger">🗑</button>
+        </div>
+        <div class="history-row">
+          <div class="h-thumb"></div>
+          <div class="h-info">
+            <div class="h-title">英雄本色</div>
+            <div class="h-meta">昨天 · 已看 32%</div>
+            <div class="h-progress"><div class="bar" style="width: 32%;"></div></div>
+          </div>
+          <button class="btn icon-only">▶</button>
+          <button class="btn icon-only">⭐</button>
+          <button class="btn icon-only danger">🗑</button>
+        </div>
+        <div class="history-row">
+          <div class="h-thumb"></div>
+          <div class="h-info">
+            <div class="h-title">CCTV1 综合 · 新闻联播</div>
+            <div class="h-meta">前天 · 直播源</div>
+            <div class="h-progress"><div class="bar" style="width: 100%;"></div></div>
+          </div>
+          <button class="btn icon-only">▶</button>
+          <button class="btn icon-only">⭐</button>
+          <button class="btn icon-only danger">🗑</button>
+        </div>
+        <div class="history-row">
+          <div class="h-thumb"></div>
+          <div class="h-info">
+            <div class="h-title">纪录片 · 蓝色星球</div>
+            <div class="h-meta">3 天前 · 已看 65%</div>
+            <div class="h-progress"><div class="bar" style="width: 65%;"></div></div>
+          </div>
+          <button class="btn icon-only">▶</button>
+          <button class="btn icon-only">⭐</button>
+          <button class="btn icon-only danger">🗑</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="indicator">
+    <div class="icons">
+      <div class="icon-item"><div class="ico">🏠</div>主页</div>
+      <div class="icon-item"><div class="ico">⭐</div>收藏</div>
+      <div class="icon-item"><div class="ico">📺</div>自定义</div>
+      <div class="icon-item"><div class="ico">📱</div>连接手机</div>
+      <div class="icon-item active"><div class="ico">🕓</div>历史</div>
+      <div class="icon-item"><div class="ico">🩺</div>网络诊断</div>
+      <div class="icon-item"><div class="ico">❔</div>帮助</div>
+      <div class="icon-item"><div class="ico">⚙️</div>设置</div>
+    </div>
+    <div class="track"><div class="thumb-bar" style="left:50%; width:12.5%;"></div></div>
+  </div>
+</div>
+
+<!-- ==================== ⑥ 网络诊断 ==================== -->
+<h2>⑥ 网络诊断 Diagnostics</h2>
+<div class="anno">一键检测 · 逐项显示状态（本地网络 / DNS / 云端连通 / Gitee 更新 / 直播源可用）</div>
+<div class="tv">
+  <div class="wallpaper"></div>
+  <div class="page">
+    <div class="root-bar"></div>
+    <div class="root-hint">焦点在「一键诊断」按钮</div>
+    <div class="page-header"><div class="page-title">网络诊断</div><div class="page-sub">检查连接与服务可达性</div></div>
+    <div class="modules">
+      <div style="display:flex; gap:10px; margin-bottom: 8px;">
+        <button class="btn focused">🔍 一键诊断</button>
+        <button class="btn">📋 复制结果</button>
+        <button class="btn">📤 上报日志</button>
+      </div>
+      <div class="diag-list">
+        <div class="diag-row"><span>1. WiFi / 有线连接</span><span class="st">● 正常 · MyHome-5G · -52dBm</span></div>
+        <div class="diag-row"><span>2. 本地 IP 分配</span><span class="st">● 正常 · 192.168.1.108</span></div>
+        <div class="diag-row"><span>3. DNS 解析（gitee.com）</span><span class="st">● 正常 · 32ms</span></div>
+        <div class="diag-row"><span>4. 外网连通性（ping 223.5.5.5）</span><span class="st">● 正常 · 平均 18ms</span></div>
+        <div class="diag-row"><span>5. Gitee 更新服务</span><span class="st">● 正常 · 版本 1.1.144</span></div>
+        <div class="diag-row"><span>6. 云端共享服务</span><span class="st warn">⚠ 稍慢 · 380ms</span></div>
+        <div class="diag-row"><span>7. 手机端 HTTP 服务器</span><span class="st">● 正常 · :8080</span></div>
+        <div class="diag-row"><span>8. 直播源可用性抽检</span><span class="st err">✕ 3/48 不可用</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="indicator">
+    <div class="icons">
+      <div class="icon-item"><div class="ico">🏠</div>主页</div>
+      <div class="icon-item"><div class="ico">⭐</div>收藏</div>
+      <div class="icon-item"><div class="ico">📺</div>自定义</div>
+      <div class="icon-item"><div class="ico">📱</div>连接手机</div>
+      <div class="icon-item"><div class="ico">🕓</div>历史</div>
+      <div class="icon-item active"><div class="ico">🩺</div>网络诊断</div>
+      <div class="icon-item"><div class="ico">❔</div>帮助</div>
+      <div class="icon-item"><div class="ico">⚙️</div>设置</div>
+    </div>
+    <div class="track"><div class="thumb-bar" style="left:62.5%; width:12.5%;"></div></div>
+  </div>
+</div>
+
+<!-- ==================== ⑦ 帮助 ==================== -->
+<h2>⑦ 帮助 Help</h2>
+<div class="anno">功能：使用引导 · 遥控器按键说明 · 常见问题 · 更新日志 · 联系反馈</div>
+<div class="tv">
+  <div class="wallpaper"></div>
+  <div class="page">
+    <div class="root-bar"></div>
+    <div class="root-hint">焦点在「遥控器按键说明」</div>
+    <div class="page-header"><div class="page-title">帮助</div><div class="page-sub">使用引导 · FAQ · 更新日志</div></div>
+    <div class="modules">
+      <div class="help-grid">
+        <div class="help-card"><h4>🚀 快速开始</h4><p>3 步导入你的第一份直播源，5 分钟建立第一个自定义 Tab。</p></div>
+        <div class="help-card focused" style="border-color:#f5c451; box-shadow: 0 0 0 2px #f5c451;">
+          <h4>🎮 遥控器按键说明</h4>
+          <p>方向键切换焦点 · OK 进入 · 返回退出 · 长按 OK 弹操作菜单 · 焦点。</p>
+        </div>
+        <div class="help-card"><h4>❓ 常见问题</h4><p>直播源为什么打不开？如何跨设备同步收藏？升级失败怎么办？</p></div>
+        <div class="help-card"><h4>☁ 云端共享</h4><p>如何加密、下载上限、密码找回、管理员模式说明。</p></div>
+        <div class="help-card"><h4>📱 手机联动</h4><p>手机扫码后可以做什么，如何在电脑浏览器上使用。</p></div>
+        <div class="help-card"><h4>📜 更新日志</h4><p>v1.1.144 · v1.1.143 · v1.1.142 · v1.1.141 ...</p></div>
+        <div class="help-card"><h4>📮 联系反馈</h4><p>提交问题 / 建议 / Bug，附带一键上报日志。</p></div>
+        <div class="help-card"><h4>ℹ 关于</h4><p>版本号、构建号、隐私政策、开源许可。</p></div>
+      </div>
+    </div>
+  </div>
+  <div class="indicator">
+    <div class="icons">
+      <div class="icon-item"><div class="ico">🏠</div>主页</div>
+      <div class="icon-item"><div class="ico">⭐</div>收藏</div>
+      <div class="icon-item"><div class="ico">📺</div>自定义</div>
+      <div class="icon-item"><div class="ico">📱</div>连接手机</div>
+      <div class="icon-item"><div class="ico">🕓</div>历史</div>
+      <div class="icon-item"><div class="ico">🩺</div>网络诊断</div>
+      <div class="icon-item active"><div class="ico">❔</div>帮助</div>
+      <div class="icon-item"><div class="ico">⚙️</div>设置</div>
+    </div>
+    <div class="track"><div class="thumb-bar" style="left:75%; width:12.5%;"></div></div>
+  </div>
+</div>
+
+<!-- ==================== ⑧ 设置 ==================== -->
+<h2>⑧ 设置 Settings</h2>
+<div class="anno">分组：通用 · 播放 · 外观（新增全局壁纸） · 云同步 · 高级 · 关于</div>
+<div class="tv">
+  <div class="wallpaper"></div>
+  <div class="page">
+    <div class="root-bar"></div>
+    <div class="root-hint">焦点在「全局壁纸」</div>
+    <div class="page-header"><div class="page-title">设置</div><div class="page-sub">通用 · 播放 · 外观 · 云同步 · 高级 · 关于</div></div>
+    <div class="modules">
+      <div class="settings-list">
+        <div class="settings-group">通用</div>
+        <div class="settings-item"><span>开机启动</span><span class="val">已开启</span></div>
+        <div class="settings-item"><span>返回键行为</span><span class="val">回主页</span></div>
+        <div class="settings-item"><span>Tab 排序管理</span><span class="val">→ 打开</span></div>
+
+        <div class="settings-group">播放</div>
+        <div class="settings-item"><span>默认清晰度</span><span class="val">自动</span></div>
+        <div class="settings-item"><span>预览播放延迟</span><span class="val">360ms</span></div>
+        <div class="settings-item"><span>硬件解码</span><span class="val">已开启</span></div>
+
+        <div class="settings-group">外观（新增）</div>
+        <div class="settings-item focused"><span>全局壁纸</span><span class="val">已开启 · 焦点</span></div>
+        <div class="settings-item"><span>壁纸来源</span><span class="val">预置 · 星空</span></div>
+        <div class="settings-item"><span>遮罩浓度</span><span class="val">35%</span></div>
+        <div class="settings-item"><span>模糊度</span><span class="val">10%</span></div>
+
+        <div class="settings-group">云同步</div>
+        <div class="settings-item"><span>云端共享</span><span class="val">已登录</span></div>
+        <div class="settings-item"><span>下载上限</span><span class="val">预置 5 + 自定义 5</span></div>
+        <div class="settings-item"><span>管理员模式</span><span class="val">未启用</span></div>
+
+        <div class="settings-group">高级</div>
+        <div class="settings-item"><span>诊断日志</span><span class="val">最近 7 天</span></div>
+        <div class="settings-item"><span>清除缓存</span><span class="val">128 MB</span></div>
+
+        <div class="settings-group">关于</div>
+        <div class="settings-item"><span>版本</span><span class="val">1.1.144</span></div>
+        <div class="settings-item"><span>检查更新</span><span class="val">→</span></div>
+      </div>
+    </div>
+  </div>
+  <div class="indicator">
+    <div class="icons">
+      <div class="icon-item"><div class="ico">🏠</div>主页</div>
+      <div class="icon-item"><div class="ico">⭐</div>收藏</div>
+      <div class="icon-item"><div class="ico">📺</div>自定义</div>
+      <div class="icon-item"><div class="ico">📱</div>连接手机</div>
+      <div class="icon-item"><div class="ico">🕓</div>历史</div>
+      <div class="icon-item"><div class="ico">🩺</div>网络诊断</div>
+      <div class="icon-item"><div class="ico">❔</div>帮助</div>
+      <div class="icon-item active"><div class="ico">⚙️</div>设置</div>
+    </div>
+    <div class="track"><div class="thumb-bar" style="left:87.5%; width:12.5%;"></div></div>
+  </div>
+</div>
+
+</body>
+</html>

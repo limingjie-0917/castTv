@@ -1,0 +1,82 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="120" y1="100" x2="900" y2="940" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2E3138"/>
+      <stop offset="0.45" stop-color="#171A20"/>
+      <stop offset="1" stop-color="#090B10"/>
+    </linearGradient>
+    <linearGradient id="frameMetal" x1="540" y1="220" x2="860" y2="760" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F5F7FA"/>
+      <stop offset="0.22" stop-color="#C7CDD6"/>
+      <stop offset="0.55" stop-color="#858D98"/>
+      <stop offset="1" stop-color="#40464F"/>
+    </linearGradient>
+    <linearGradient id="phoneMetal" x1="150" y1="260" x2="380" y2="770" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E7ECF2"/>
+      <stop offset="0.25" stop-color="#B5BDC8"/>
+      <stop offset="0.7" stop-color="#5C646F"/>
+      <stop offset="1" stop-color="#2C3138"/>
+    </linearGradient>
+    <linearGradient id="screenGlow" x1="560" y1="280" x2="820" y2="620" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#596273"/>
+      <stop offset="1" stop-color="#161C27"/>
+    </linearGradient>
+    <linearGradient id="phoneScreen" x1="188" y1="292" x2="330" y2="636" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2F3744"/>
+      <stop offset="1" stop-color="#0F141C"/>
+    </linearGradient>
+    <linearGradient id="signal" x1="390" y1="430" x2="596" y2="620" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E9EEF4"/>
+      <stop offset="0.5" stop-color="#B5BEC8"/>
+      <stop offset="1" stop-color="#6A7480"/>
+    </linearGradient>
+    <filter id="shadow" x="96" y="120" width="860" height="780" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="26" stdDeviation="28" flood-color="#000000" flood-opacity="0.34"/>
+    </filter>
+    <filter id="softGlow" x="320" y="340" width="336" height="260" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+  </defs>
+
+  <rect x="80" y="80" width="864" height="864" rx="212" fill="url(#bg)"/>
+  <rect x="118" y="118" width="788" height="788" rx="184" fill="white" fill-opacity="0.04"/>
+  <path d="M184 170C260 128 354 110 512 110C696 110 790 134 856 180" stroke="white" stroke-opacity="0.08" stroke-width="18" stroke-linecap="round"/>
+
+  <g filter="url(#shadow)">
+    <!-- phone -->
+    <rect x="154" y="250" width="206" height="428" rx="44" fill="url(#phoneMetal)"/>
+    <rect x="172" y="268" width="170" height="392" rx="31" fill="#151920"/>
+    <rect x="184" y="286" width="146" height="356" rx="24" fill="url(#phoneScreen)"/>
+    <rect x="228" y="272" width="58" height="8" rx="4" fill="#D9E0E8" fill-opacity="0.7"/>
+    <circle cx="257" cy="651" r="11" fill="#CDD3DB" fill-opacity="0.72"/>
+    <rect x="196" y="298" width="98" height="14" rx="7" fill="white" fill-opacity="0.12"/>
+    <rect x="198" y="330" width="70" height="92" rx="18" fill="white" fill-opacity="0.08"/>
+
+    <!-- tv -->
+    <rect x="512" y="222" width="342" height="284" rx="52" fill="url(#frameMetal)"/>
+    <rect x="534" y="244" width="298" height="240" rx="34" fill="#0F141B"/>
+    <rect x="548" y="258" width="270" height="212" rx="26" fill="url(#screenGlow)"/>
+    <rect x="566" y="278" width="160" height="18" rx="9" fill="white" fill-opacity="0.14"/>
+    <ellipse cx="630" cy="338" rx="78" ry="52" fill="white" fill-opacity="0.06"/>
+    <path d="M646 526C665 505 688 494 714 494C740 494 763 505 782 526" stroke="#C5CCD5" stroke-width="24" stroke-linecap="round"/>
+    <rect x="626" y="540" width="176" height="30" rx="15" fill="#6C7480"/>
+  </g>
+
+  <!-- interaction arrow / cast signal -->
+  <g>
+    <path d="M372 510C408 470 448 446 498 436" stroke="url(#signal)" stroke-width="26" stroke-linecap="round"/>
+    <path d="M398 448C430 416 472 395 526 388" stroke="#B1B8C2" stroke-width="20" stroke-linecap="round" opacity="0.9"/>
+    <path d="M430 398C462 375 501 360 548 356" stroke="#7D8793" stroke-width="16" stroke-linecap="round" opacity="0.88"/>
+    <g filter="url(#softGlow)">
+      <path d="M386 532L544 532" stroke="#C9D0D8" stroke-opacity="0.35" stroke-width="24" stroke-linecap="round"/>
+    </g>
+    <path d="M382 532H542" stroke="url(#signal)" stroke-width="30" stroke-linecap="round"/>
+    <path d="M515 495L580 532L515 569" fill="url(#signal)"/>
+    <circle cx="360" cy="532" r="22" fill="#D9DEE5" fill-opacity="0.95"/>
+  </g>
+
+  <!-- tiny glossy accents -->
+  <circle cx="564" cy="218" r="10" fill="#F6FAFF" fill-opacity="0.85"/>
+  <circle cx="592" cy="206" r="6" fill="#E2E7EE" fill-opacity="0.8"/>
+  <circle cx="620" cy="218" r="4" fill="#BFC7D2" fill-opacity="0.8"/>
+</svg>

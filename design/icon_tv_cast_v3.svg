@@ -1,0 +1,84 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="110" y1="90" x2="910" y2="944" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#30343C"/>
+      <stop offset="0.42" stop-color="#171A20"/>
+      <stop offset="1" stop-color="#080A0E"/>
+    </linearGradient>
+    <linearGradient id="tvMetal" x1="216" y1="206" x2="770" y2="768" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F4F7FA"/>
+      <stop offset="0.18" stop-color="#D9DEE5"/>
+      <stop offset="0.45" stop-color="#9199A5"/>
+      <stop offset="1" stop-color="#3B4149"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="248" y1="246" x2="702" y2="624" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4B5463"/>
+      <stop offset="1" stop-color="#121821"/>
+    </linearGradient>
+    <linearGradient id="phoneMetal" x1="622" y1="586" x2="830" y2="896" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#EEF2F6"/>
+      <stop offset="0.22" stop-color="#BEC6D0"/>
+      <stop offset="0.65" stop-color="#67707A"/>
+      <stop offset="1" stop-color="#2F343B"/>
+    </linearGradient>
+    <linearGradient id="phoneScreen" x1="646" y1="608" x2="788" y2="840" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2B333F"/>
+      <stop offset="1" stop-color="#0D1219"/>
+    </linearGradient>
+    <linearGradient id="signal" x1="576" y1="580" x2="780" y2="770" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#EDF2F7"/>
+      <stop offset="0.5" stop-color="#B8C1CB"/>
+      <stop offset="1" stop-color="#6B7480"/>
+    </linearGradient>
+    <filter id="shadowTv" x="110" y="140" width="722" height="664" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="24" stdDeviation="26" flood-color="#000000" flood-opacity="0.34"/>
+    </filter>
+    <filter id="shadowPhone" x="562" y="548" width="320" height="406" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="22" stdDeviation="20" flood-color="#000000" flood-opacity="0.38"/>
+    </filter>
+  </defs>
+
+  <rect x="80" y="80" width="864" height="864" rx="212" fill="url(#bg)"/>
+  <rect x="118" y="118" width="788" height="788" rx="184" fill="white" fill-opacity="0.04"/>
+  <path d="M176 170C256 126 360 108 526 108C702 108 804 138 862 186" stroke="white" stroke-opacity="0.08" stroke-width="18" stroke-linecap="round"/>
+
+  <!-- TV as main subject -->
+  <g filter="url(#shadowTv)">
+    <rect x="178" y="200" width="586" height="432" rx="72" fill="url(#tvMetal)"/>
+    <rect x="212" y="234" width="518" height="364" rx="48" fill="#0E131A"/>
+    <rect x="230" y="252" width="482" height="328" rx="36" fill="url(#screen)"/>
+    <rect x="258" y="282" width="286" height="22" rx="11" fill="white" fill-opacity="0.14"/>
+    <ellipse cx="388" cy="350" rx="112" ry="64" fill="white" fill-opacity="0.07"/>
+    <path d="M390 670C414 637 448 620 486 620C524 620 558 637 582 670" stroke="#C9D0D8" stroke-width="28" stroke-linecap="round"/>
+    <rect x="342" y="686" width="288" height="34" rx="17" fill="#6B7480"/>
+  </g>
+
+  <!-- Cast signal / direction, visually behind the phone -->
+  <g opacity="0.96">
+    <path d="M530 572C572 552 609 552 646 565" stroke="#AAB3BD" stroke-width="18" stroke-linecap="round"/>
+    <path d="M520 530C577 500 639 498 697 524" stroke="#7C8692" stroke-width="14" stroke-linecap="round"/>
+    <path d="M504 488C585 448 675 447 754 486" stroke="#5E6774" stroke-width="11" stroke-linecap="round" opacity="0.9"/>
+    <path d="M544 610H694" stroke="url(#signal)" stroke-width="26" stroke-linecap="round"/>
+    <path d="M664 576L742 610L664 644" fill="url(#signal)"/>
+    <circle cx="522" cy="610" r="18" fill="#D9DEE5" fill-opacity="0.94"/>
+  </g>
+
+  <!-- Phone in front, smaller than TV, overlapping TV lower-right corner -->
+  <g filter="url(#shadowPhone)">
+    <rect x="612" y="586" width="208" height="286" rx="42" fill="url(#phoneMetal)"/>
+    <rect x="630" y="604" width="172" height="250" rx="28" fill="#141920"/>
+    <rect x="642" y="618" width="148" height="222" rx="22" fill="url(#phoneScreen)"/>
+    <rect x="686" y="612" width="60" height="8" rx="4" fill="#D9E0E8" fill-opacity="0.74"/>
+    <circle cx="716" cy="848" r="10" fill="#D1D7DF" fill-opacity="0.78"/>
+    <rect x="654" y="632" width="92" height="14" rx="7" fill="white" fill-opacity="0.10"/>
+    <rect x="658" y="662" width="70" height="86" rx="16" fill="white" fill-opacity="0.06"/>
+  </g>
+
+  <!-- subtle layer contact shadow on TV where phone overlaps -->
+  <ellipse cx="650" cy="670" rx="116" ry="46" fill="#000000" fill-opacity="0.16"/>
+
+  <!-- small metallic spark accents -->
+  <circle cx="240" cy="194" r="10" fill="#F4F8FC" fill-opacity="0.86"/>
+  <circle cx="268" cy="180" r="6" fill="#E2E7EE" fill-opacity="0.82"/>
+  <circle cx="294" cy="194" r="4" fill="#BCC4CE" fill-opacity="0.82"/>
+</svg>

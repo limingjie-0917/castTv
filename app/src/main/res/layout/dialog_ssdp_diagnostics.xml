@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:layout_margin="28dp"
+    android:background="@drawable/bg_dialog_crayon_panel"
+    android:orientation="vertical"
+    android:padding="40dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_dialog_crayon_header"
+        android:gravity="center_vertical"
+        android:paddingLeft="18dp"
+        android:paddingTop="10dp"
+        android:paddingRight="18dp"
+        android:paddingBottom="10dp"
+        android:text="@string/diag_ssdp_header"
+        android:textColor="#101217"
+        android:textSize="22sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:text="@string/diag_ssdp_hint"
+        android:textColor="@color/text_secondary"
+        android:textSize="14sp" />
+
+    <!-- v1.1.120 新增：文本框上方工具栏（搜索框 / 复制日志 / 清空日志），三态样式统一。 -->
+    <LinearLayout
+        android:id="@+id/diagToolbar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <!-- 搜索框：实时过滤日志，OK 进入编辑模式输入关键词 -->
+        <EditText
+            android:id="@+id/searchDiagnostics"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:background="@drawable/bg_diag_toolbar_btn"
+            android:drawableStart="@drawable/ic_diag_search"
+            android:drawablePadding="8dp"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:hint="@string/diag_search_hint"
+            android:imeOptions="actionSearch|flagNoExtractUi"
+            android:inputType="text"
+            android:maxLines="1"
+            android:paddingLeft="14dp"
+            android:paddingTop="10dp"
+            android:paddingRight="14dp"
+            android:paddingBottom="10dp"
+            android:singleLine="true"
+            android:textColor="@color/diag_toolbar_btn_text"
+            android:textColorHint="@color/text_secondary"
+            android:textSize="15sp" />
+
+        <!-- 复制日志：无关键字复制全量、有关键字仅复制过滤结果 -->
+        <TextView
+            android:id="@+id/btnCopyDiagnostics"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:background="@drawable/bg_diag_toolbar_btn"
+            android:drawableStart="@drawable/ic_diag_copy"
+            android:drawablePadding="6dp"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:gravity="center"
+            android:paddingLeft="18dp"
+            android:paddingTop="10dp"
+            android:paddingRight="18dp"
+            android:paddingBottom="10dp"
+            android:text="@string/diag_copy_log"
+            android:textColor="@color/diag_toolbar_btn_text"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+
+        <!-- 清空日志：从底部移动到工具栏，功能不变 -->
+        <TextView
+            android:id="@+id/btnClearDiagnostics"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="10dp"
+            android:background="@drawable/bg_diag_toolbar_btn"
+            android:drawableStart="@drawable/ic_diag_clear"
+            android:drawablePadding="6dp"
+            android:focusable="true"
+            android:focusableInTouchMode="true"
+            android:gravity="center"
+            android:paddingLeft="18dp"
+            android:paddingTop="10dp"
+            android:paddingRight="18dp"
+            android:paddingBottom="10dp"
+            android:text="@string/diag_clear_log"
+            android:textColor="@color/diag_toolbar_btn_text"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <ScrollView
+        android:id="@+id/diagnosticsScroll"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="14dp"
+        android:layout_weight="1"
+        android:background="@drawable/bg_dialog_badge"
+        android:focusable="true"
+        android:focusableInTouchMode="true"
+        android:padding="12dp"
+        android:scrollbars="vertical">
+
+        <TextView
+            android:id="@+id/textDiagnostics"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/text_primary"
+            android:textSize="14sp"
+            android:typeface="monospace"
+            android:lineSpacingExtra="8dp" />
+
+    </ScrollView>
+</LinearLayout>

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    经典主题主背景（保留旧的深蓝渐变体系）：
+    与 v1.1.115 及之前版本一致，仅在「设置 → 主题风格 = 经典」时生效。
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="135"
+                android:startColor="@color/grad_top"
+                android:centerColor="@color/grad_mid"
+                android:endColor="@color/grad_bottom"
+                android:type="linear" />
+        </shape>
+    </item>
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:type="radial"
+                android:gradientRadius="720dp"
+                android:centerX="0.86"
+                android:centerY="0.12"
+                android:startColor="#22F6C445"
+                android:endColor="#00F6C445" />
+        </shape>
+    </item>
+</layer-list>

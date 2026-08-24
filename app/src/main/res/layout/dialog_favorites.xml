@@ -1,0 +1,741 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    收藏弹窗：两段式水平布局（v1.1.65 tab-layout 第 4 版：回到 v1.1.64 的左右顺序）。
+    root LinearLayout(horizontal) 内两个子节点从左到右：
+      1) sidebarPanel(200dp)      —— 左侧：紧贴弹窗左边缘、200dp 定宽的一竖列侧栏。
+      2) contentPanel(weight=1)   —— 右侧：双模式内容（合集网格 / 新建合集表单 + 贴纸），
+                                     吃掉除 sidebar 外的全部宽度。
+    sidebar 内部（v1.1.69 tab-layout「百分比宽度」版）：
+      - tab 宽度 = 父容器 sidebarPanel 内边距外剩余宽度 = 80%
+        （200dp 父 × 80% = 160dp 视觉基准）；改父容器宽度即等比扩缩。
+      - 由 sidebarPanel 承担 paddingLeft=20dp / paddingRight=20dp（占 20% 宽），
+        tab 用 match_parent 天然得到剩余 160dp；RecyclerView 不再自带左右 padding，避免叠加。
+      - 每个 tab 文字 gravity=center；GlowUnderlineView 走默认 center 模式，光晕水平居中。
+      - 「＋ 新建合集」tab 同款 match_parent，与合集 item 同宽。
+    贴纸容器 newCollectionStickers 保持 contentPanel 全宽（match_parent），
+    底部 5 张圆贴纸 + 顶右合影横幅使用 v1.1.64 的原始 gravity/margin，未再动。
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:clipChildren="false"
+    android:clipToPadding="false">
+
+    <FrameLayout
+        android:id="@+id/favoritesDialogPanel"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="fill"
+        android:layout_marginLeft="6dp"
+        android:layout_marginTop="28dp"
+        android:layout_marginRight="40dp"
+        android:layout_marginBottom="10dp"
+        android:background="@drawable/bg_favorites_dialog_root_crayon"
+        android:clipChildren="false"
+        android:clipToPadding="false">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="horizontal"
+        android:clipChildren="false"
+        android:clipToPadding="false">
+
+    <!-- ============== 左侧侧边栏（v1.1.69 tab-layout「百分比宽度」版） ============== -->
+    <!--
+        侧栏宽度 200dp，自身承担左右各 20dp padding（占父宽 20%），
+        tab 用 match_parent 天然吃掉剩余 160dp（= 200dp × 80% 视觉基准），
+        父容器改宽时 tab 按 80% 等比扩缩；RecyclerView 不再自带左右 padding，避免叠加。
+    -->
+    <LinearLayout
+        android:id="@+id/sidebarPanel"
+        android:layout_width="200dp"
+        android:layout_height="match_parent"
+        android:background="@drawable/bg_favorites_sidebar"
+        android:orientation="vertical"
+        android:paddingLeft="20dp"
+        android:paddingTop="16dp"
+        android:paddingRight="20dp"
+        android:paddingBottom="10dp">
+
+        <!-- 标题区域：参考设置弹窗标题，使用圆角渐变背景 + 实线边框 + 小图形点缀 -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="12dp"
+            android:background="@drawable/bg_dialog_crayon_header"
+            android:gravity="center"
+            android:paddingLeft="12dp"
+            android:paddingTop="7dp"
+            android:paddingRight="12dp"
+            android:paddingBottom="7dp"
+            android:text="@string/favorites_title"
+            android:textColor="#101217"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <!-- 第 1 项：新建合集入口（作为固定 tab，焦点/OK 键触发新建合集表单）
+             v1.1.69 tab-layout「百分比宽度」：宽度 match_parent，天然吃掉 sidebarPanel 左右 20dp
+             padding 外的剩余 160dp（= 父宽 80%），与合集 item 同宽 -->
+        <include
+            android:id="@+id/btnSidebarNewCollection"
+            layout="@layout/view_favorites_new_collection_tab"
+            android:layout_width="match_parent"
+            android:layout_height="38dp"
+            android:layout_marginBottom="4dp" />
+
+        <!-- 「📡 导入直播源」入口：粘贴 M3U/M3U8 或直播源 JSON 直播源链接，
+             按 group-title 分组导入为合集。 -->
+        <FrameLayout
+            android:id="@+id/btnSidebarImportLive"
+            android:layout_width="match_parent"
+            android:layout_height="38dp"
+            android:layout_marginBottom="4dp"
+            android:background="@drawable/bg_sidebar_item"
+            android:clickable="true"
+            android:focusable="true">
+
+            <com.bd.casttv.ui.GlowUnderlineView
+                android:id="@+id/importLiveGlowUnderline"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+
+            <TextView
+                android:id="@+id/importLiveText"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:duplicateParentState="true"
+                android:drawableEnd="@drawable/ic_crayon_dot_blue"
+                android:drawablePadding="7dp"
+                android:ellipsize="end"
+                android:gravity="center"
+                android:maxLines="1"
+                android:paddingLeft="8dp"
+                android:paddingTop="9dp"
+                android:paddingRight="8dp"
+                android:paddingBottom="9dp"
+                android:singleLine="true"
+                android:text="📡 导入直播源"
+                android:textColor="@color/sidebar_item_text"
+                android:textSize="12sp" />
+        </FrameLayout>
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginLeft="0dp"
+            android:layout_marginRight="0dp"
+            android:layout_marginBottom="8dp"
+            android:background="#33FFFFFF" />
+
+        <!-- 合集 tab 列表：RecyclerView 不再自带左右 padding（改由 sidebarPanel 的 20dp
+             内边距统一卡出 tab 宽度），item 用 match_parent 天然填满剩余 160dp。 -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/sidebarCollectionList"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:clipToPadding="false"
+            android:paddingTop="4dp"
+            android:paddingBottom="4dp"
+            android:scrollbars="none" />
+
+        <!-- 底部「导入 / 导出」入口：局域网 HTTP + 二维码，手机扫码传输收藏。 -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:layout_marginLeft="16dp"
+            android:layout_marginRight="16dp"
+            android:layout_marginBottom="8dp"
+            android:background="#33FFFFFF" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginLeft="8dp"
+            android:layout_marginRight="8dp"
+            android:orientation="horizontal">
+
+            <!-- v1.1.70 焦点越界修复：按「上」键时显式回到合集列表 RecyclerView，
+                 由其把焦点还给最近聚焦 / 可见的合集 tab，形成与「最后一个 tab 按下键
+                 落到导出」互逆、闭环的焦点链，避免焦点在导出按钮与 Dock 之间乱跳。 -->
+            <FrameLayout
+                android:id="@+id/btnFavExport"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_marginEnd="4dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_sidebar_item"
+                android:clickable="true"
+                android:focusable="true"
+                android:nextFocusUp="@id/sidebarCollectionList">
+
+                <com.bd.casttv.ui.GlowUnderlineView
+                    android:id="@+id/favExportGlowUnderline"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <TextView
+                    android:id="@+id/favExportText"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:duplicateParentState="true"
+                    android:ellipsize="end"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:text="⬆ 导出"
+                    android:textColor="@color/sidebar_item_text"
+                    android:textSize="15sp" />
+            </FrameLayout>
+
+            <FrameLayout
+                android:id="@+id/btnFavImport"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="4dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_sidebar_item"
+                android:clickable="true"
+                android:focusable="true"
+                android:nextFocusUp="@id/sidebarCollectionList">
+
+                <com.bd.casttv.ui.GlowUnderlineView
+                    android:id="@+id/favImportGlowUnderline"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <TextView
+                    android:id="@+id/favImportText"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:duplicateParentState="true"
+                    android:ellipsize="end"
+                    android:gravity="center"
+                    android:maxLines="1"
+                    android:text="⬇ 导入"
+                    android:textColor="@color/sidebar_item_text"
+                    android:textSize="15sp" />
+            </FrameLayout>
+
+            <!-- v1.1.125 新增：合集管理入口。矢量图标（VectorDrawable），
+                 尺寸与「导入 / 导出」按钮完全一致，与其形成 3 列等宽底部工具栏。 -->
+            <FrameLayout
+                android:id="@+id/btnFavCollectionManage"
+                android:layout_width="0dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="4dp"
+                android:layout_weight="1"
+                android:background="@drawable/bg_sidebar_item"
+                android:clickable="true"
+                android:focusable="true"
+                android:nextFocusUp="@id/sidebarCollectionList">
+
+                <com.bd.casttv.ui.GlowUnderlineView
+                    android:id="@+id/favCollectionManageGlowUnderline"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent" />
+
+                <ImageView
+                    android:id="@+id/favCollectionManageIcon"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:duplicateParentState="true"
+                    android:contentDescription="@string/fav_collection_manage_desc"
+                    android:padding="10dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/ic_collection_manage"
+                    android:tint="@color/favorites_button_icon_tint" />
+            </FrameLayout>
+        </LinearLayout>
+    </LinearLayout>
+
+
+    <!-- ============== 右侧内容区域（双模式，v1.1.65 tab-layout 第 4 版：sidebar 回到左侧、contentPanel 挪回右侧） ============== -->
+    <FrameLayout
+        android:id="@+id/contentPanel"
+        android:layout_width="0dp"
+        android:layout_height="match_parent"
+        android:layout_weight="1"
+        android:clipChildren="false"
+        android:clipToPadding="false">
+
+        <!-- 模式 A：合集内容（网格） -->
+        <LinearLayout
+            android:id="@+id/contentModeContainer"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:paddingLeft="40dp"
+            android:paddingTop="28dp"
+            android:paddingRight="40dp"
+            android:paddingBottom="20dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingLeft="12dp"
+                android:paddingRight="12dp">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/currentCollectionTitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:text="收藏内容"
+                        android:textColor="@color/text_primary"
+                        android:textSize="18sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/currentCollectionCount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
+                        android:maxLines="1"
+                        android:text="(共0集)"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp"
+                        android:visibility="gone" />
+                </LinearLayout>
+
+                <ImageButton
+                    android:id="@+id/btnCollectionSelect"
+                    android:layout_width="28dp"
+                    android:layout_height="30dp"
+                    android:layout_marginStart="6dp"
+                    android:background="@drawable/bg_collection_icon_shadow"
+                    android:clickable="true"
+                    android:contentDescription="批量选择"
+                    android:elevation="3dp"
+                    android:focusable="true"
+                    android:paddingLeft="4dp"
+                    android:paddingTop="2dp"
+                    android:paddingRight="4dp"
+                    android:paddingBottom="6dp"
+                    android:scaleType="centerInside"
+                    android:src="@drawable/ic_collection_list" />
+
+                <ImageButton
+                    android:id="@+id/btnCollectionRename"
+                    android:layout_width="28dp"
+                    android:layout_height="30dp"
+                    android:layout_marginStart="6dp"
+                    android:background="@drawable/bg_collection_icon_shadow"
+                    android:clickable="true"
+                    android:contentDescription="编辑合集"
+                    android:elevation="3dp"
+                    android:focusable="true"
+                    android:paddingLeft="4dp"
+                    android:paddingTop="2dp"
+                    android:paddingRight="4dp"
+                    android:paddingBottom="6dp"
+                    android:scaleType="centerInside"
+                    android:src="@drawable/ic_collection_edit"
+                    android:visibility="gone" />
+
+                <ImageButton
+                    android:id="@+id/btnCollectionDelete"
+                    android:layout_width="28dp"
+                    android:layout_height="30dp"
+                    android:layout_marginStart="6dp"
+                    android:background="@drawable/bg_collection_icon_shadow"
+                    android:clickable="true"
+                    android:contentDescription="删除合集"
+                    android:elevation="3dp"
+                    android:focusable="true"
+                    android:paddingLeft="4dp"
+                    android:paddingTop="2dp"
+                    android:paddingRight="4dp"
+                    android:paddingBottom="6dp"
+                    android:scaleType="centerInside"
+                    android:src="@drawable/ic_collection_delete"
+                    android:visibility="gone" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="遥控器 ← / → 切换到左侧选择合集；卡片上按 OK 播放，或选择改名 / 移动 / 删除。"
+                android:textColor="@color/text_secondary"
+                android:textSize="13sp" />
+
+            <FrameLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_marginTop="16dp"
+                android:layout_weight="1"
+                android:clipChildren="false"
+                android:clipToPadding="false">
+
+                <LinearLayout
+                    android:id="@+id/favoritesLandingGuide"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/bg_dialog_crayon_panel"
+                    android:gravity="center_vertical"
+                    android:orientation="vertical"
+                    android:paddingLeft="42dp"
+                    android:paddingTop="36dp"
+                    android:paddingRight="42dp"
+                    android:paddingBottom="36dp">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center"
+                        android:text="📁 我的收藏"
+                        android:textColor="@color/text_primary"
+                        android:textSize="26sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="22dp"
+                        android:gravity="center"
+                        android:text="播放视频时，按菜单键可将视频收藏到合集"
+                        android:textColor="@color/text_primary"
+                        android:textSize="17sp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:gravity="center"
+                        android:text="支持创建多个合集、批量管理、移动视频到不同合集"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="15sp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:gravity="center"
+                        android:text="每个合集最多可收藏 300 个视频"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="15sp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="22dp"
+                        android:gravity="center"
+                        android:text="遥控器按 OK 或右键进入合集，← / → 切换合集"
+                        android:textColor="@color/crayon_yellow"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/favoritesGrid"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:clipChildren="false"
+                    android:clipToPadding="false"
+                    android:clipToOutline="false"
+                    android:paddingLeft="8dp"
+                    android:paddingRight="8dp"
+                    android:paddingBottom="12dp"
+                    android:scrollbars="none" />
+
+                <LinearLayout
+                    android:id="@+id/favoritesContentLoading"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:visibility="gone">
+
+                    <ProgressBar
+                        android:layout_width="42dp"
+                        android:layout_height="42dp"
+                        android:indeterminate="true" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:text="正在加载合集…"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="16sp" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/favoritesDialogEmpty"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:gravity="center"
+                    android:text="@string/collection_empty_crayon"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="17sp"
+                    android:visibility="gone" />
+            </FrameLayout>
+        </LinearLayout>
+
+        <!-- 模式 B：新建合集表单（默认隐藏，选中左侧「＋ 新建合集」时展示） -->
+        <FrameLayout
+            android:id="@+id/createModeContainer"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:visibility="gone">
+
+            <!-- 贴纸装饰层：z-order 在表单之下（先声明先绘制）。
+                 v1.1.62：把小新 / 风间从右上角挪到底部，与妮妮+小白 / 阿呆 / 正男 一起
+                          形成底部一排 5 张贴纸的错落阵列，避免与顶部关闭按钮 / tab 相互遮挡。
+                          控件类型全部改用零依赖的 ClippedImageView，用 canvas.clipPath 做
+                          真正的圆形/圆角裁切，规避 clipToOutline 在部分 TV 盒子上不生效的问题。
+                 v1.1.65 tab-layout 第 3 版：两段式布局下 contentPanel 恢复为「除 sidebar 外
+                          的全部宽度」，贴纸横向 margin 恢复到 v1.1.64 的原始数值
+                          （Bochan=28 / NeneShiro=140 / Shinchan=132 / Kazama=24），
+                          尺寸、旋转、marginBottom 均未动。顶右合影 stickerSquadWall 仍
+                          top|end，右边缘自动贴 sidebar 左侧（因为 sidebar 就在 contentPanel 右邻）。 -->
+            <FrameLayout
+                android:id="@+id/newCollectionStickers"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:clipChildren="false"
+                android:clipToPadding="false">
+
+                <!-- ============ 顶部：春日部防卫队合影横幅 ============ -->
+                <!-- 相对 contentPanel top|end：右边缘自动贴 sidebar 左侧，保留 20dp 呼吸。 -->
+                <com.bd.casttv.ui.ClippedImageView
+                    android:id="@+id/stickerSquadWall"
+                    android:layout_width="220dp"
+                    android:layout_height="56dp"
+                    android:layout_gravity="top|end"
+                    android:layout_marginTop="18dp"
+                    android:layout_marginEnd="20dp"
+                    android:src="@drawable/sticker_squad_wall"
+                    android:scaleType="centerCrop"
+                    android:rotation="4"
+                    android:alpha="0.92"
+                    android:elevation="3dp"
+                    android:contentDescription="@null"
+                    android:duplicateParentState="false"
+                    android:focusable="false"
+                    android:focusableInTouchMode="false"
+                    android:clickable="false"
+                    android:foreground="@drawable/fg_sticker_rounded_rect_border"
+                    android:importantForAccessibility="no"
+                    app:civIsCircle="false"
+                    app:civCornerRadius="14dp" />
+
+                <!-- ============ 底部一排 5 张圆形贴纸（错落分布） ============ -->
+                <!-- 从左到右：阿呆(-13°) → 妮妮+小白(+8°) → 正男(-6°) → 小新(-10°) → 风间(+12°) -->
+                <!-- marginBottom 在 16~40dp 之间错开（奇数张更靠上、偶数张更靠下） -->
+
+                <!-- 1. 阿呆（最左，最大） -->
+                <com.bd.casttv.ui.ClippedImageView
+                    android:id="@+id/stickerBochan"
+                    android:layout_width="96dp"
+                    android:layout_height="96dp"
+                    android:layout_gravity="bottom|start"
+                    android:layout_marginStart="28dp"
+                    android:layout_marginBottom="34dp"
+                    android:src="@drawable/sticker_bochan"
+                    android:scaleType="centerCrop"
+                    android:rotation="-13"
+                    android:alpha="0.90"
+                    android:elevation="2dp"
+                    android:contentDescription="@null"
+                    android:duplicateParentState="false"
+                    android:focusable="false"
+                    android:focusableInTouchMode="false"
+                    android:clickable="false"
+                    android:foreground="@drawable/fg_sticker_circle_border"
+                    android:importantForAccessibility="no"
+                    app:civIsCircle="true" />
+
+                <!-- 2. 妮妮+小白 -->
+                <com.bd.casttv.ui.ClippedImageView
+                    android:id="@+id/stickerNeneShiro"
+                    android:layout_width="88dp"
+                    android:layout_height="88dp"
+                    android:layout_gravity="bottom|start"
+                    android:layout_marginStart="140dp"
+                    android:layout_marginBottom="18dp"
+                    android:src="@drawable/sticker_nene_shiro"
+                    android:scaleType="centerCrop"
+                    android:rotation="8"
+                    android:alpha="0.88"
+                    android:elevation="2dp"
+                    android:contentDescription="@null"
+                    android:duplicateParentState="false"
+                    android:focusable="false"
+                    android:focusableInTouchMode="false"
+                    android:clickable="false"
+                    android:foreground="@drawable/fg_sticker_circle_border"
+                    android:importantForAccessibility="no"
+                    app:civIsCircle="true" />
+
+                <!-- 3. 正男（中间，稍靠上） -->
+                <com.bd.casttv.ui.ClippedImageView
+                    android:id="@+id/stickerMasao"
+                    android:layout_width="92dp"
+                    android:layout_height="92dp"
+                    android:layout_gravity="bottom|center_horizontal"
+                    android:layout_marginBottom="38dp"
+                    android:src="@drawable/sticker_masao"
+                    android:scaleType="centerCrop"
+                    android:rotation="-6"
+                    android:alpha="0.89"
+                    android:elevation="2dp"
+                    android:contentDescription="@null"
+                    android:duplicateParentState="false"
+                    android:focusable="false"
+                    android:focusableInTouchMode="false"
+                    android:clickable="false"
+                    android:foreground="@drawable/fg_sticker_circle_border"
+                    android:importantForAccessibility="no"
+                    app:civIsCircle="true" />
+
+                <!-- 4. 小新（右侧偏内） -->
+                <com.bd.casttv.ui.ClippedImageView
+                    android:id="@+id/stickerShinchan"
+                    android:layout_width="96dp"
+                    android:layout_height="96dp"
+                    android:layout_gravity="bottom|end"
+                    android:layout_marginEnd="132dp"
+                    android:layout_marginBottom="20dp"
+                    android:src="@drawable/sticker_shinchan"
+                    android:scaleType="centerCrop"
+                    android:rotation="-10"
+                    android:alpha="0.92"
+                    android:elevation="2dp"
+                    android:contentDescription="@null"
+                    android:duplicateParentState="false"
+                    android:focusable="false"
+                    android:focusableInTouchMode="false"
+                    android:clickable="false"
+                    android:foreground="@drawable/fg_sticker_circle_border"
+                    android:importantForAccessibility="no"
+                    app:civIsCircle="true" />
+
+                <!-- 5. 风间（最右） -->
+                <com.bd.casttv.ui.ClippedImageView
+                    android:id="@+id/stickerKazama"
+                    android:layout_width="84dp"
+                    android:layout_height="84dp"
+                    android:layout_gravity="bottom|end"
+                    android:layout_marginEnd="24dp"
+                    android:layout_marginBottom="36dp"
+                    android:src="@drawable/sticker_kazama"
+                    android:scaleType="centerCrop"
+                    android:rotation="12"
+                    android:alpha="0.90"
+                    android:elevation="2dp"
+                    android:contentDescription="@null"
+                    android:duplicateParentState="false"
+                    android:focusable="false"
+                    android:focusableInTouchMode="false"
+                    android:clickable="false"
+                    android:foreground="@drawable/fg_sticker_circle_border"
+                    android:importantForAccessibility="no"
+                    app:civIsCircle="true" />
+
+            </FrameLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:paddingLeft="40dp"
+                android:paddingTop="40dp"
+                android:paddingRight="40dp"
+                android:paddingBottom="32dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🖍 新建合集"
+                    android:textColor="@color/text_primary"
+                    android:textSize="28sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:text="给你的收藏起个可爱的名字吧～小新会帮你记住的 🌻"
+                    android:textColor="@color/text_secondary"
+                    android:textSize="15sp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="24dp"
+                    android:drawableStart="@drawable/ic_crayon_dot"
+                    android:drawablePadding="8dp"
+                    android:gravity="center_vertical"
+                    android:text="合集名称"
+                    android:textColor="@color/crayon_yellow"
+                    android:textSize="15sp" />
+
+                <!-- 合集名称输入框：TV 遥控器可聚焦，OK 键触发系统输入。 -->
+                <EditText
+                    android:id="@+id/inputCreateCollectionName"
+                    android:layout_width="match_parent"
+                    android:layout_height="56dp"
+                    android:layout_marginTop="12dp"
+                    android:background="@drawable/bg_dialog_input"
+                    android:focusable="true"
+                    android:focusableInTouchMode="true"
+                    android:hint="@string/collection_name_hint"
+                    android:imeOptions="actionDone"
+                    android:inputType="text"
+                    android:maxLength="24"
+                    android:maxLines="1"
+                    android:paddingLeft="16dp"
+                    android:paddingTop="14dp"
+                    android:paddingRight="16dp"
+                    android:paddingBottom="14dp"
+                    android:textColor="@color/text_primary"
+                    android:textColorHint="@color/text_hint"
+                    android:textSize="17sp" />
+
+                <!-- 确认按钮 -->
+                <TextView
+                    android:id="@+id/btnConfirmCreateCollection"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="28dp"
+                    android:background="@drawable/bg_dialog_focus_item"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:paddingLeft="24dp"
+                    android:paddingTop="12dp"
+                    android:paddingRight="24dp"
+                    android:paddingBottom="12dp"
+                    android:text="🎉 确定新建"
+                    android:textColor="@color/crayon_yellow"
+                    android:textSize="16sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="20dp"
+                    android:text="* 合集最多可创建 30 个，每个合集最多 300 条收藏"
+                    android:textColor="@color/text_hint"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </FrameLayout>
+    </FrameLayout>
+</LinearLayout>
+    </FrameLayout>
+</FrameLayout>

@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  批量操作弹窗（接近全屏）：
+  - 顶部标题 + 已选计数
+  - 中部 5 列网格展示当前合集全部视频（可上下滚动）
+  - 底部动态动作按钮区（全选/取消勾选/删除/移动/稍后播放/取消）
+  风格与收藏页右侧视频列表区域统一：宝蓝面板 + 暖黄标题。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/batchDialogRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_favorites_dialog_panel"
+    android:orientation="vertical"
+    android:paddingLeft="28dp"
+    android:paddingTop="20dp"
+    android:paddingRight="28dp"
+    android:paddingBottom="18dp">
+
+    <!-- 标题行 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <com.bd.casttv.ui.ClippedImageView
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_marginEnd="10dp"
+            android:alpha="0.92"
+            android:contentDescription="@null"
+            android:focusable="false"
+            android:focusableInTouchMode="false"
+            android:foreground="@drawable/fg_sticker_circle_border"
+            android:importantForAccessibility="no"
+            android:rotation="-8"
+            android:scaleType="centerCrop"
+            android:src="@drawable/sticker_bochan"
+            app:civIsCircle="true" />
+
+        <TextView
+            android:id="@+id/batchDialogTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@android:color/transparent"
+            android:paddingLeft="16dp"
+            android:paddingTop="8dp"
+            android:paddingRight="16dp"
+            android:paddingBottom="8dp"
+            android:text="批量操作"
+            android:textColor="#FFD700"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/batchDialogCount"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="14dp"
+            android:layout_weight="1"
+            android:maxLines="1"
+            android:text="已选择 0 项"
+            android:textColor="#FFD700"
+            android:textSize="15sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+
+    <!-- 视频网格（5 列，代码侧设置 GridLayoutManager） -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/batchGrid"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="14dp"
+        android:layout_weight="1"
+        android:clipChildren="false"
+        android:clipToPadding="false"
+        android:descendantFocusability="afterDescendants"
+        android:overScrollMode="never"
+        android:paddingBottom="4dp" />
+
+    <!-- 空态提示 -->
+    <TextView
+        android:id="@+id/batchEmptyHint"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_marginTop="14dp"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:text="当前合集暂无视频"
+        android:textColor="@color/text_secondary"
+        android:textSize="16sp"
+        android:visibility="gone" />
+
+    <!-- 底部动作按钮区（动态显隐） -->
+    <LinearLayout
+        android:id="@+id/batchBottomBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:gravity="center"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/batchBtnSelectAll"
+            style="@style/BatchBottomButton"
+            android:text="全选" />
+
+        <TextView
+            android:id="@+id/batchBtnUnselect"
+            style="@style/BatchBottomButton"
+            android:text="取消勾选"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/batchBtnDelete"
+            style="@style/BatchBottomButton"
+            android:text="删除"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/batchBtnMove"
+            style="@style/BatchBottomButton"
+            android:text="移动"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/batchBtnLater"
+            style="@style/BatchBottomButton"
+            android:text="稍后播放"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/batchBtnCancel"
+            style="@style/BatchBottomButton"
+            android:text="取消" />
+    </LinearLayout>
+</LinearLayout>

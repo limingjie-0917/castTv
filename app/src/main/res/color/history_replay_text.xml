@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    v1.1.124 历史卡片「重新播放/继续播放」按钮文字色 selector：
+    根因修复：卡片 root 获焦时 setSelected 会传播到子按钮，旧版 state_selected→暖黄
+    会让未获焦的「继续播放」在「稍后播放」获焦时错误变成暖黄字。
+    需求：焦点在「稍后播放」时，「继续播放」应为白色字体（普通默认态）；焦点态本按钮文字也保持白色。
+    因此文字统一为白色，不再随 selected 变色。
+-->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:color="#FFFFFF" />
+</selector>

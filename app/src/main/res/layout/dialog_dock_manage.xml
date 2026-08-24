@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/dockManageRoot"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@android:color/transparent"
+    android:clipChildren="false"
+    android:clipToPadding="false"
+    android:focusable="true"
+    android:focusableInTouchMode="false"
+    android:padding="4dp">
+
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingLeft="28dp"
+        android:paddingTop="24dp"
+        android:paddingRight="28dp"
+        android:paddingBottom="24dp">
+
+        <!-- 顶部标题区域（圆形贴纸 + 标题，深色主题） -->
+        <LinearLayout
+            android:id="@+id/dockManageHeader"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingLeft="6dp"
+            android:paddingTop="0dp"
+            android:paddingRight="6dp"
+            android:paddingBottom="0dp">
+
+            <com.bd.casttv.ui.ClippedImageView
+                android:id="@+id/dockManageSticker"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:src="@drawable/sticker_shinchan" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/dockManageTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="自定义 Tab 管理"
+                    android:textColor="#FFFFFF"
+                    android:textSize="22sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/dockManageSubtitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="配置首页侧边栏自定义 Tab，仅用于浏览绑定合集资源（只读）。"
+                    android:textColor="#D9FFFFFF"
+                    android:textSize="13sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- 中部 Tab 列表滚动区域 -->
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/dockTabList"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:clipToPadding="false"
+            android:descendantFocusability="afterDescendants"
+            android:focusable="true"
+            android:focusableInTouchMode="false"
+            android:nestedScrollingEnabled="false"
+            android:overScrollMode="never"
+            android:paddingBottom="8dp" />
+
+        <!-- 底部操作区（增加显式取消按钮，按钮样式由代码统一渲染为深色暖黄） -->
+        <LinearLayout
+            android:id="@+id/dockManageFooter"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:gravity="end|center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/textDockManageHint"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="12dp"
+                android:text="OK：编辑   BACK：关闭弹窗"
+                android:textColor="#B3FFFFFF"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/btnCancelDockManage"
+                android:layout_width="110dp"
+                android:layout_height="44dp"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:gravity="center"
+                android:text="取消" />
+
+            <TextView
+                android:id="@+id/btnAddDockTab"
+                android:layout_width="170dp"
+                android:layout_height="44dp"
+                android:layout_marginStart="12dp"
+                android:focusable="true"
+                android:focusableInTouchMode="false"
+                android:gravity="center"
+                android:text="＋ 新建 Tab" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>
