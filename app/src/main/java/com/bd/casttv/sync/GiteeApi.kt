@@ -307,6 +307,83 @@ object GiteeApi {
         }
     }
 
+    // ===================== Releases API =====================
+
+    private const val RELEASES_URL = "https://gitee.com/api/v5/repos/bdCasttv/video-source/releases"
+
+    /**
+     * 从 Gitee Releases 下载指定版本的 APK。
+     * 流程：列出所有 release → 找到 tag_name == "v{versionName}" 的 release → 下载其 .apk 附件。
+     */
+    fun downloadReleaseApk(versionName: String): ApiResult<BinaryFileResult> {
+        val tag = "v$versionName"
+        var conn: HttpURLConnection? = null
+        return try {
+            // 1. 列出 releases，找到目标 tag
+            conn = (URL(RELEASES_URL).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = CONNECT_TIMEOUT
+                readTimeout = READ_TIMEOUT
+                setRequestProperty("Accept", "application/json")
+                setAuthHeader()
+            }
+            val code = conn.responseCode
+            if (code != 200) {
+                return ApiResult.Error("列出 releases 失败，HTTP $code")
+            }
+            val body = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            conn.disconnect()
+
+            val releases = JSONArray(body)
+            var downloadUrl: String? = null
+            for (i in 0 until releases.length()) {
+                val release = releases.optJSONObject(i) ?: continue
+                if (release.optString("tag_name") == tag) {
+                    val assets = release.optJSONArray("assets")
+                    if (assets != null) {
+                        for (j in 0 until assets.length()) {
+                            val asset = assets.optJSONObject(j) ?: continue
+                            val name = asset.optString("name", "")
+                            if (name.endsWith(".apk")) {
+                                downloadUrl = asset.optString("browser_download_url", "")
+                                break
+                            }
+                        }
+                    }
+                    break
+                }
+            }
+
+            if (downloadUrl.isNullOrBlank()) {
+                return ApiResult.NotFound
+            }
+
+            // 2. 下载 APK 附件
+            conn = (URL(downloadUrl).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = CONNECT_TIMEOUT
+                readTimeout = 300_000
+                setRequestProperty("Accept", "application/octet-stream")
+                setAuthHeader()
+            }
+            val dlCode = conn.responseCode
+            if (dlCode != 200) {
+                return ApiResult.Error("下载 APK 失败，HTTP $dlCode")
+            }
+            val bytes = conn.inputStream.use { it.readBytes() }
+            if (bytes.isEmpty()) {
+                return ApiResult.Error("下载 APK 失败：文件内容为空")
+            }
+            SsdpDiagnostics.logCloudSync("Releases 下载 APK 成功：$tag，bytes=${bytes.size}")
+            ApiResult.Success(BinaryFileResult(bytes = bytes, sha = ""))
+        } catch (e: Exception) {
+            SsdpDiagnostics.logCloudSync("Releases 下载 APK 异常：${e.javaClass.simpleName}${e.message?.let { ": $it" }.orEmpty()}")
+            ApiResult.Error("下载 APK 异常：${e.javaClass.simpleName}${e.message?.let { ": $it" }.orEmpty()}")
+        } finally {
+            conn?.disconnect()
+        }
+    }
+
     data class FileResult(val content: String, val sha: String)
     data class BinaryFileResult(val bytes: ByteArray, val sha: String)
 

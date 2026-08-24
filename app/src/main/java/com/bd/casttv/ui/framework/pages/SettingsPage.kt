@@ -1659,8 +1659,7 @@ class SettingsPage(context: Context) : BasePage(context) {
         button.isEnabled = false
         button.text = "下载中..."
         Thread({
-            val remotePath = "releases/casttv-v${info.versionName}.apk"
-            when (val result = GiteeApi.getBinaryFileResult(remotePath)) {
+            when (val result = GiteeApi.downloadReleaseApk(info.versionName)) {
                 is GiteeApi.ApiResult.Success -> {
                     try {
                         val updateDir = File(context.cacheDir, "updates").apply { mkdirs() }

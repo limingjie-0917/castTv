@@ -133,11 +133,7 @@ val syncReleaseToGitee = tasks.register("syncReleaseToGitee") {
         if (!versionFile.exists()) {
             throw GradleException("version.json not found: ${versionFile.absolutePath}")
         }
-        putGiteeBinaryFile(
-            "releases/casttv-v${versionName}.apk",
-            apkFile.readBytes(),
-            "release: upload casttv v${versionName}"
-        )
+        uploadReleaseApk(versionName, apkFile)
         putGiteeTextFile(
             "version.json",
             versionFile.readText(Charsets.UTF_8),
@@ -162,6 +158,121 @@ fun putGiteeTextFile(path: String, content: String, message: String) {
 
 fun putGiteeBinaryFile(path: String, bytes: ByteArray, message: String) {
     putGiteeContentsFile(path, bytes, message)
+}
+
+// ===================== Gitee Releases API =====================
+
+/**
+ * 上传 APK 到 Gitee Releases（contents API 限制 1MB，APK 通常 20MB+，必须走 Releases 附件接口）。
+ * 流程：查找或创建 tag=v{version} 的 release → 上传 APK 附件。
+ */
+fun uploadReleaseApk(versionName: String, apkFile: java.io.File) {
+    val tag = "v$versionName"
+    val token = giteeAccessToken()
+    val releaseId = findOrCreateRelease(token, tag, versionName)
+    uploadReleaseAttachment(token, releaseId, apkFile, "casttv-v${versionName}.apk")
+    println("Releases: APK uploaded to release $tag (id=$releaseId)")
+}
+
+fun findOrCreateRelease(token: String, tag: String, versionName: String): Int {
+    val listUrl = URL("https://gitee.com/api/v5/repos/bdCasttv/video-source/releases?tag=$tag")
+    val listConn = (listUrl.openConnection() as HttpURLConnection).apply {
+        requestMethod = "GET"
+        connectTimeout = 15_000
+        readTimeout = 30_000
+        setRequestProperty("Accept", "application/json")
+        setRequestProperty("Authorization", "Bearer $token")
+    }
+    try {
+        val code = listConn.responseCode
+        if (code == 200) {
+            val body = listConn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            // 用 Regex 从 JSON 中提取 id（与 fetchGiteeFileSha 风格一致，避免引入 org.json）
+            val idMatch = Regex("\"id\"\\s*:\\s*(\\d+)").find(body)
+            if (idMatch != null) {
+                val id = idMatch.groupValues[1].toInt()
+                println("Releases: found existing release $tag (id=$id)")
+                return id
+            }
+        }
+    } finally {
+        listConn.disconnect()
+    }
+    // Create new release
+    val createJson = buildString {
+        append('{')
+        append("\"tag_name\":\"").append(jsonEscape(tag)).append("\",")
+        append("\"name\":\"").append(jsonEscape("v$versionName")).append("\",")
+        append("\"body\":\"").append(jsonEscape("casttv-receiver v$versionName")).append("\",")
+        append("\"target_commitish\":\"master\"")
+        append('}')
+    }
+    val createConn = (URL("https://gitee.com/api/v5/repos/bdCasttv/video-source/releases").openConnection() as HttpURLConnection).apply {
+        requestMethod = "POST"
+        connectTimeout = 15_000
+        readTimeout = 30_000
+        doInput = true
+        doOutput = true
+        setRequestProperty("Accept", "application/json")
+        setRequestProperty("Content-Type", "application/json")
+        setRequestProperty("Authorization", "Bearer $token")
+    }
+    try {
+        val bodyBytes = createJson.toByteArray(Charsets.UTF_8)
+        createConn.setFixedLengthStreamingMode(bodyBytes.size)
+        createConn.outputStream.use { it.write(bodyBytes) }
+        val code = createConn.responseCode
+        if (code !in 200..201) {
+            throw GradleException("Create release failed: HTTP $code ${createConn.readErrorBodyForGradle()}")
+        }
+        val resp = createConn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+        val idMatch = Regex("\"id\"\\s*:\\s*(\\d+)").find(resp)
+        val id = idMatch?.groupValues?.getOrNull(1)?.toInt() ?: -1
+        if (id <= 0) throw GradleException("Create release failed: no id in response")
+        println("Releases: created release $tag (id=$id)")
+        return id
+    } finally {
+        createConn.disconnect()
+    }
+}
+
+fun uploadReleaseAttachment(token: String, releaseId: Int, file: java.io.File, fileName: String) {
+    val boundary = "----CasttvBoundary${System.currentTimeMillis()}"
+    val url = URL("https://gitee.com/api/v5/repos/bdCasttv/video-source/releases/$releaseId/attach_files")
+    val conn = (url.openConnection() as HttpURLConnection).apply {
+        requestMethod = "POST"
+        connectTimeout = 30_000
+        readTimeout = 300_000
+        doInput = true
+        doOutput = true
+        setRequestProperty("Accept", "application/json")
+        setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+        setRequestProperty("Authorization", "Bearer $token")
+    }
+    try {
+        val out = conn.outputStream
+        val crlf = "\r\n".toByteArray(Charsets.UTF_8)
+        // name field
+        out.write("--$boundary$crlf".toByteArray(Charsets.UTF_8))
+        out.write("Content-Disposition: form-data; name=\"name\"$crlf$crlf".toByteArray(Charsets.UTF_8))
+        out.write(fileName.toByteArray(Charsets.UTF_8))
+        out.write(crlf)
+        // file field
+        out.write("--$boundary$crlf".toByteArray(Charsets.UTF_8))
+        out.write("Content-Disposition: form-data; name=\"file\"; filename=\"$fileName\"$crlf".toByteArray(Charsets.UTF_8))
+        out.write("Content-Type: application/vnd.android.package-archive$crlf$crlf".toByteArray(Charsets.UTF_8))
+        file.inputStream().use { it.copyTo(out) }
+        out.write(crlf)
+        out.write("--$boundary--$crlf".toByteArray(Charsets.UTF_8))
+        out.flush()
+        val code = conn.responseCode
+        if (code !in 200..201) {
+            throw GradleException("Upload attachment failed: HTTP $code ${conn.readErrorBodyForGradle()}")
+        }
+        println("Releases: attachment uploaded ($fileName, ${file.length()} bytes)")
+    } finally {
+        conn.disconnect()
+    }
 }
 
 fun putGiteeContentsFile(path: String, bytes: ByteArray, message: String) {
