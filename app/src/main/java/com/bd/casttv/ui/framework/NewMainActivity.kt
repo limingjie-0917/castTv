@@ -235,6 +235,11 @@ class NewMainActivity : AppCompatActivity(), SettingsChangeBus.Listener, PageCon
                 putExtra(PlayerActivity.EXTRA_URI, item.uri)
                 putExtra(PlayerActivity.EXTRA_TITLE, item.title)
                 putExtra(PlayerActivity.EXTRA_SOURCE, item.source)
+                // focusRootOnReturn=false 表示由页面自行恢复焦点，需要跳过页面重建，
+                // 否则 onResume 走 else 分支不会调用 refreshCurrentPageAfterPlayerReturn()。
+                if (!focusRootOnReturn) {
+                    putExtra(PlayerActivity.EXTRA_RETURN_SKIP_PAGE_RELOAD, true)
+                }
             })
             if (!toastText.isNullOrBlank()) {
                 Toast.makeText(this, toastText, Toast.LENGTH_SHORT).show()

@@ -1,7 +1,7 @@
 {
-  "versionCode":401,
-  "versionName":"1.2.126",
-  "releaseNote": "1. 新框架UI优化：更多功能页面局部刷新避免焦点闪烁\n2. 合集管理页面背景色接入主题风格设置\n3. 云端共享点赞功能迁移到新框架\n4. 抖音投屏/连接手机图标优化\n5. 网页解析保存弹窗布局优化\n6. OTA升级支持Gitee Releases下载",
-  "apkUrl":"casttv-v1.2.126.apk",
+  "versionCode":424,
+  "versionName":"1.2.149",
+  "releaseNote": "JSON适配器规则扩展nextPageSelector参数：AI生成规则支持下一页selector，适配加载更多",
+  "apkUrl":"casttv-v1.2.149.apk",
   "forceUpdate": false
 }

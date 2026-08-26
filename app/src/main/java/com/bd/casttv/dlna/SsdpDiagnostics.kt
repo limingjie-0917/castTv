@@ -74,6 +74,13 @@ object SsdpDiagnostics {
     private val queryThrottleLock = Any()
     private var queryLogCount = 0
     private var lastQueryLogMs = 0L
+    // Throttle DESCRIPTION_GET cast events: same IP re-fetching description.xml
+    // within this window only logs once, preventing log flooding when the control
+    // point re-discovers due to frequent NOTIFY alive.
+    private const val DESC_GET_THROTTLE_MS = 30_000L
+    private val descGetThrottleLock = Any()
+    private var lastDescGetIp: String = ""
+    private var lastDescGetMs: Long = 0L
 
     private fun <T> push(buf: ArrayDeque<T>, v: T, cap: Int = MAX_LOG) {
         buf.addLast(v)
@@ -98,7 +105,15 @@ object SsdpDiagnostics {
 
     fun logDescriptionGet(fromIp: String) {
         synchronized(descLogs) { push(descLogs, DescGetLog(System.currentTimeMillis(), fromIp)) }
-        logCastEvent(CastEvent.Kind.DESCRIPTION_GET, "$fromIp 拉取 /description.xml，准备读取设备描述")
+        // Throttle cast events for repeated description.xml fetches from the same IP.
+        val now = System.currentTimeMillis()
+        val shouldLog = synchronized(descGetThrottleLock) {
+            if (fromIp == lastDescGetIp && now - lastDescGetMs < DESC_GET_THROTTLE_MS) false
+            else { lastDescGetIp = fromIp; lastDescGetMs = now; true }
+        }
+        if (shouldLog) {
+            logCastEvent(CastEvent.Kind.DESCRIPTION_GET, "$fromIp 拉取 /description.xml，准备读取设备描述")
+        }
     }
 
     fun logHttpGet(fromIp: String, uri: String, status: String) {

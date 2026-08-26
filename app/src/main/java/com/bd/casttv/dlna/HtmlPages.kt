@@ -419,20 +419,20 @@ object HtmlPages {
             <a href="javascript:;" id="ctabDown" onclick="switchCloudTab('download')">⬇️ 下载</a>
           </div>
           <div id="cloudUpload">
-            <div class="muted" style="line-height:1.7">自己创建的合集，可进行加密上传<br/>其他用户设为共享的合集，可修改内容上传（不可操作加密）</div>
-            <div id="upList" style="margin-top:10px"><div class="muted">正在加载本地合集…</div></div>
+            <div id="upList"><div class="muted">正在加载本地合集…</div></div>
             <div class="row" style="margin-top:14px">
               <button class="btn primary" onclick="doUpload()">⬆️ 上传所选合集</button>
               <button class="btn sm" onclick="loadUpload()">🔄 刷新</button>
             </div>
+            <div class="muted" style="line-height:1.7;margin-top:12px">上传说明：<ul style="margin:4px 0 0 18px;padding:0"><li>本人创建的合集，可选择加密上传</li><li>其他用户设置为共享的合集，可修改内容后上传，不可修改加密状态</li></ul></div>
           </div>
           <div id="cloudDownload" style="display:none">
-            <div class="muted" id="downHint" style="line-height:1.7">正在加载云端合集…</div>
-            <div id="downList" style="margin-top:10px"><div class="muted">正在加载云端合集…</div></div>
+            <div id="downList"><div class="muted">正在加载云端合集…</div></div>
             <div class="row" style="margin-top:14px">
               <button class="btn primary" onclick="doDownload()">⬇️ 下载所选合集</button>
               <button class="btn sm" onclick="loadDownload()">🔄 刷新</button>
             </div>
+            <div class="muted" id="downHint" style="line-height:1.7;margin-top:12px">正在加载云端合集…</div>
           </div>
         </div>
 
@@ -534,7 +534,7 @@ object HtmlPages {
             if(d&&d.status==='loading'){setTimeout(loadDownload,300);return;}
             if(!d.available){downData=null;document.getElementById('downHint').textContent='获取云端列表失败，请检查网络或 Gitee 配置';el.innerHTML='<div class="empty"><span class="emoji">☁️</span>'+esc(d.message||'获取云端列表失败')+'<button class="btn sm" style="margin-top:10px;display:block;margin-left:auto;margin-right:auto" onclick="loadDownload()">🔄 重试</button></div>';return;}
             downData=d;
-            document.getElementById('downHint').innerHTML='预置合集，可直接勾选，进行下载<br/>自己创建的合集，可下载<br/>其他用户共享的加密合集，需解锁后勾选，进行下载';
+            document.getElementById('downHint').innerHTML='下载说明：<ul style="margin:4px 0 0 18px;padding:0"><li>下载范围：本人创建的合集、预置合集、共享合集</li><li>其他用户设置为加密的共享合集，需解锁后下载</li></ul>';
             renderDownload();
           }).catch(function(e){el.innerHTML='<div class="empty"><span class="emoji">⚠️</span>加载失败，请重试 🔄<div class="muted" style="margin-top:6px">'+esc(e&&e.message||'')+'</div><button class="btn sm" style="margin-top:10px" onclick="loadDownload()">🔄 重试</button></div>';});
         }
@@ -550,8 +550,8 @@ object HtmlPages {
           if(!downData){return;}
           var pg=downData.presetGroup||[],ng=downData.nonPresetGroup||[];
           var html='';
-          if(pg.length){html+='<div class="muted" style="margin:6px 0;font-weight:700;color:var(--o)">【预置合集】可直接勾选，无需解锁</div>';html+=pg.map(function(it){return downRow(it,true);}).join('');}
-          if(ng.length){html+='<div class="muted" style="margin:12px 0 6px;font-weight:700;color:var(--y)">【非预置合集】最多选择 '+downData.maxNonPresetDownload+' 个；加密合集点击输入一次密码后本组均可勾选</div>';html+=ng.map(function(it){return downRow(it,false);}).join('');}
+          if(pg.length){html+='<div class="muted" style="margin:6px 0;font-weight:700;color:var(--o)">预置合集</div>';html+=pg.map(function(it){return downRow(it,true);}).join('');}
+          if(ng.length){html+='<div class="muted" style="margin:12px 0 6px;font-weight:700;color:var(--y)">非预置合集</div>';html+=ng.map(function(it){return downRow(it,false);}).join('');}
           if(!pg.length&&!ng.length){html='<div class="empty"><span class="emoji">☁️</span>云端暂无可下载合集</div>';}
           el.innerHTML=html;
         }

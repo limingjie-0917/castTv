@@ -25,7 +25,10 @@ class GenaEventManager {
     )
 
     private val subscribers = ConcurrentHashMap<String, SubscriberInfo>()
-    private val executor = Executors.newSingleThreadExecutor { r ->
+    // 2 线程池：抖音同时订阅 AVTransport + RenderingControl 两个服务，
+    // 单线程串行发送 NOTIFY 时如果 callback URL 响应慢会排队延迟，
+    // 控制点可能因收不到事件而判定设备离线。
+    private val executor = Executors.newFixedThreadPool(2) { r ->
         Thread(r, "gena-notify").apply { isDaemon = true }
     }
 
@@ -78,8 +81,8 @@ class GenaEventManager {
                 val data = body.toByteArray(Charsets.UTF_8)
                 conn = (URL(info.callbackUrl).openConnection() as HttpURLConnection).apply {
                     requestMethod = "NOTIFY"
-                    connectTimeout = 2_000
-                    readTimeout = 2_000
+                    connectTimeout = 1_000
+                    readTimeout = 1_000
                     doOutput = true
                     setRequestProperty("HOST", URL(info.callbackUrl).let { "${it.host}:${if (it.port > 0) it.port else it.defaultPort}" })
                     setRequestProperty("CONTENT-TYPE", "text/xml; charset=\"utf-8\"")

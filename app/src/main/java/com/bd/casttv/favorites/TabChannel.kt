@@ -1,5 +1,7 @@
 package com.bd.casttv.favorites
 
+import com.bd.casttv.util.NaturalSorter
+
 /**
  * 频道聚合模型（仅作用于首页「自定义 Tab」的展示层，不改动收藏数据本身）。
  *
@@ -168,6 +170,13 @@ object TabChannelAggregator {
                 ?: groupItems.first().title
 
             channels.add(TabChannel(channelKey = key, displayName = display, sources = sources))
+        }
+        // 按频道 displayName 自然排序正序（第1集→第30集），与收藏页 sortedFavoriteItems 行为一致。
+        // 修复：addToCollection 每条目 add(0,item) 导致磁盘存储倒序，自定义Tab此前未做排序，
+        //       因此呈现 30→1；收藏页通过自然排序纠正为 1→30。此处统一策略，确保两端展示一致。
+        channels.sortWith { a, b ->
+            val cmp = NaturalSorter.compare(a.displayName, b.displayName)
+            if (cmp != 0) cmp else a.channelKey.compareTo(b.channelKey)
         }
         return channels
     }

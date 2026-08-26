@@ -29,7 +29,13 @@ import kotlin.random.Random
 class SsdpService(
     private val interfaceProvider: () -> List<LanInterface>,
     private val httpPort: Int,
-    private val udnProvider: () -> String
+    private val udnProvider: () -> String,
+    /**
+     * 动态提供 SSDP NOTIFY / 200 OK 中的 SERVER 头。
+     * 由设备身份组按品牌给出真机常见字符串（Cling / Allegro / Rygel …），
+     * 绝对不要返回 "CastTV"，否则抖音会按字符串黑名单过滤。
+     */
+    private val serverProvider: () -> String
 ) {
     companion object {
         private const val TAG = "SsdpService"
@@ -38,17 +44,20 @@ class SsdpService(
         private const val MAX_AGE = 1800
         // Douyin is more aggressive than many DLNA control points: if it misses
         // multicast advertisements on Wi-Fi for a short period, it may re-search
-        // and re-fetch /description.xml during playback. Keep alive frequent
-        // enough while still far below CACHE-CONTROL max-age.
-        private const val ALIVE_INTERVAL_MS = 10_000L
+        // and re-fetch /description.xml during playback. But 10s was too aggressive
+        // — it caused Douyin to constantly re-discover and re-fetch description.xml,
+        // flooding diagnostics and wasting CPU/network. 30s is still far below
+        // CACHE-CONTROL max-age=1800 while being calm enough to avoid re-discovery storms.
+        private const val ALIVE_INTERVAL_MS = 30_000L
         // Number of times each SSDP answer / advertisement is repeated to
         // survive UDP multicast packet loss (unreliable on Wi-Fi).
-        private const val RESPONSE_REPEATS = 3
+        // Reduced from 3 to 2: 3 copies × 6 targets per M-SEARCH caused the
+        // control point to receive duplicate responses and re-fetch description.xml.
+        private const val RESPONSE_REPEATS = 2
         // Initial NOTIFY ssdp:alive burst (rounds) sent quickly on startup so
         // control points that are already searching discover us immediately.
         private const val ALIVE_BURST_ROUNDS = 3
         private const val ALIVE_BURST_INTERVAL_MS = 250L
-        private const val SERVER = "Android/9 UPnP/1.0 CastTV/1.0"
         private const val BOOTID = 1
         private const val CONFIGID = 1
 
@@ -266,7 +275,7 @@ class SsdpService(
             "DATE: ${httpDate()}\r\n" +
             "EXT:\r\n" +
             "LOCATION: $location\r\n" +
-            "SERVER: $SERVER\r\n" +
+            "SERVER: ${serverProvider()}\r\n" +
             "ST: $st\r\n" +
             "USN: $usn\r\n" +
             "BOOTID.UPNP.ORG: $BOOTID\r\n" +
@@ -343,7 +352,7 @@ class SsdpService(
         msg.append("LOCATION: $location\r\n")
         msg.append("NT: $nt\r\n")
         msg.append("NTS: $nts\r\n")
-        msg.append("SERVER: $SERVER\r\n")
+        msg.append("SERVER: ${serverProvider()}\r\n")
         msg.append("USN: $usn\r\n")
         msg.append("BOOTID.UPNP.ORG: $BOOTID\r\n")
         msg.append("CONFIGID.UPNP.ORG: $CONFIGID\r\n")

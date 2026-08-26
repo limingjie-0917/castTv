@@ -24,7 +24,7 @@ object JsonAdapterSpecBuilder {
     private fun listPageSpec(): String = """
         ## 影片列表页 JSON 解析规范
 
-        > ⚠️ **重要：列表页只生成可直接执行的轻量 JSON。** 最终 JSON 必须能被 App 的 `parseWithJsonRule` 直接接受；字段名必须逐字匹配，只能使用 `type`、`titleSelector`、`detailUrlSelector`、`coverSelector`、`baseUrl`。禁止生成 `schemaVersion`、`meta`、`match`、`detail`、`sources`、`playResolve` 等详情页 Adapter 字段；这些字段属于详情页规则，列表页解析器不会读取。
+        > ⚠️ **重要：列表页只生成可直接执行的轻量 JSON。** 最终 JSON 必须能被 App 的 `parseWithJsonRule` 直接接受；字段名必须逐字匹配，只能使用 `type`、`titleSelector`、`detailUrlSelector`、`coverSelector`、`baseUrl`、`nextPageSelector`。禁止生成 `schemaVersion`、`meta`、`match`、`detail`、`sources`、`playResolve` 等详情页 Adapter 字段；这些字段属于详情页规则，列表页解析器不会读取。
 
         ### 必填字段
         - `type`: 固定值 "list"
@@ -34,11 +34,18 @@ object JsonAdapterSpecBuilder {
         ### 可选字段
         - `coverSelector`: CSS selector，用于提取封面图。优先读取 data-original / data-src / src / poster 属性；当前不支持从 style background / background-image 中提取封面
         - `baseUrl`: 相对链接补全用的基础地址。可不填，不填时使用当前列表页 URL
+        - `nextPageSelector`: CSS selector，用于从列表页 HTML 中提取"下一页"链接。命中元素后按 href → data-href → data-url → src 顺序读取链接地址，基于 baseUrl 补全为绝对 URL。用户上滑到列表底部时自动加载下一页数据并追加到现有列表。如果页面有分页导航（如 `<a class="next" href="...">下一页</a>`），应填写此字段指向该 `<a>` 元素；如果页面无分页或只有单页，留空即可
+
+        ### nextPageSelector 使用指南
+        - 如果列表页 HTML 中存在明确的分页导航元素（如 `<a class="next" href="...?page=2">下一页</a>` 或 `<a class="page-next" href="...">下页</a>`），应填写 `nextPageSelector` 指向该 `<a>` 标签
+        - `nextPageSelector` 必须直接命中自身带 `href` 的 `<a>` 元素，不要命中外层 `div` / `li`
+        - 如果页面没有分页或只有单页内容，`nextPageSelector` 留空或不生成即可；App 会在底部显示"没有更多了"
+        - 当 `nextPageSelector` 为空时，解析器也会尝试通用提取（匹配 class 含 next/page-next 或文字含"下一页"的 `<a>` 标签），但显式填写更精准
 
         ### 字段类型与可空规则
         - 所有字段都是字符串
         - `type`、`titleSelector`、`detailUrlSelector` 必须非空
-        - `coverSelector`、`baseUrl` 可省略或为空字符串
+        - `coverSelector`、`baseUrl`、`nextPageSelector` 可省略或为空字符串
         - 每条结果要求 title 与补全后的 detailUrl 非空；coverUrl 可为空，UI 会展示默认封面
 
         ### selector 支持范围与禁止写法
@@ -61,7 +68,8 @@ object JsonAdapterSpecBuilder {
         - `baseUrl` 只能写纯 URL，例如 `https://example.com/`；禁止写成 Markdown 超链接（如 `[https://example.com/](https://example.com/)`）或带说明文字。App 会尽量清洗 Markdown 超链接，但最终 JSON 仍必须优先输出纯 URL
 
         ### 当前能力边界
-        - 当前列表页 JSON 只解析当前页面源码，不会自动翻页，也不支持下一页 selector
+        - 支持通过 `nextPageSelector` 或通用提取获取"下一页"地址，用户上滑到列表底部时自动加载下一页数据并追加到现有列表
+        - 跨页结果按 `detailUrl` 去重，避免重复条目；下一页解析为空或请求失败时底部显示对应提示
         - 不支持滚动懒加载后的 DOM；如果影片列表由 JS 运行后生成且不在原始 HTML 中，当前轻量 JSON 无法提取
         - 不支持先选列表容器 / 卡片容器再做相对提取的嵌套结构；遇到推荐区、导航区、正片区混排时，必须通过简单 selector 尽量精准地命中正片卡片元素
         - selector 匹配为空或最终没有有效条目时，App 会显示解析失败，不会自动兜底到内置列表解析
@@ -72,7 +80,8 @@ object JsonAdapterSpecBuilder {
           "titleSelector": "string, required",
           "detailUrlSelector": "string, required",
           "coverSelector": "string, optional",
-          "baseUrl": "string, optional"
+          "baseUrl": "string, optional",
+          "nextPageSelector": "string, optional"
         }
 
         ### 最终输出示例
@@ -81,7 +90,8 @@ object JsonAdapterSpecBuilder {
           "titleSelector": "a.stui-vodlist__thumb",
           "detailUrlSelector": "a.stui-vodlist__thumb",
           "coverSelector": "a.stui-vodlist__thumb",
-          "baseUrl": "https://example.com/"
+          "baseUrl": "https://example.com/",
+          "nextPageSelector": "a[class='next']"
         }
 
         ### 可执行性要求

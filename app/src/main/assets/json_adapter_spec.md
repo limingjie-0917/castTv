@@ -10,7 +10,7 @@
 
 > ⚠️ **详情页规则必须使用当前 `RuleBasedAdapter` 完整 JSON。** 不要生成旧式顶层 `playUrlExtractor`、`playUrlPattern`、`episodeSelector`、`titleSelector`、`coverSelector` 结构；这些字段当前不会被详情页规则执行。标题、封面、简介等信息写入 `detail.fields`，线路和集数写入 `sources`，真实播放地址解析写入 `playResolve.pipeline`。
 
-> ⚠️ **列表页规则是独立轻量 JSON。** 如果当前任务是影片列表页，请只生成 `type`、`titleSelector`、`detailUrlSelector`、`coverSelector`、`baseUrl` 这些字段，禁止生成 `match`、`sources`、`playResolve` 等详情页 Adapter 字段。列表页轻量 JSON 的完整约束见下方“影片列表页轻量 JSON 规范补充”。
+> ⚠️ **列表页规则是独立轻量 JSON。** 如果当前任务是影片列表页，请只生成 `type`、`titleSelector`、`detailUrlSelector`、`coverSelector`、`baseUrl`、`nextPageSelector` 这些字段，禁止生成 `match`、`sources`、`playResolve` 等详情页 Adapter 字段。列表页轻量 JSON 的完整约束见下方"影片列表页轻量 JSON 规范补充”。
 
 正确示例：生成完整 JSON 对象，包含清晰的匹配条件、详情字段、播放资源和解析流水线。
 
@@ -1031,7 +1031,7 @@ Base64 模板如下。
 
 ## 13. 影片列表页轻量 JSON 规范补充
 
-> ⚠️ **本章节只适用于影片列表页。** 列表页 JSON 不是外部 Adapter 完整结构，最终只能包含 `type`、`titleSelector`、`detailUrlSelector`、`coverSelector`、`baseUrl`。禁止生成 `schemaVersion`、`meta`、`match`、`detail`、`sources`、`playResolve` 等详情页字段。
+> ⚠️ **本章节只适用于影片列表页。** 列表页 JSON 不是外部 Adapter 完整结构，最终只能包含 `type`、`titleSelector`、`detailUrlSelector`、`coverSelector`、`baseUrl`、`nextPageSelector`。禁止生成 `schemaVersion`、`meta`、`match`、`detail`、`sources`、`playResolve` 等详情页字段。
 
 ### 13.1 字段与 JSON Schema
 
@@ -1043,11 +1043,12 @@ Base64 模板如下。
   "titleSelector": "string, required",
   "detailUrlSelector": "string, required",
   "coverSelector": "string, optional",
-  "baseUrl": "string, optional"
+  "baseUrl": "string, optional",
+  "nextPageSelector": "string, optional"
 }
 ```
 
-所有字段都是字符串。`type`、`titleSelector`、`detailUrlSelector` 必须非空；`coverSelector`、`baseUrl` 可省略或为空字符串。每条结果要求标题和补全后的详情页 URL 非空；封面 URL 可为空，UI 会展示默认封面。
+所有字段都是字符串。`type`、`titleSelector`、`detailUrlSelector` 必须非空；`coverSelector`、`baseUrl`、`nextPageSelector` 可省略或为空字符串。每条结果要求标题和补全后的详情页 URL 非空；封面 URL 可为空，UI 会展示默认封面。`nextPageSelector` 用于从列表页 HTML 中提取"下一页"链接，支持用户上滑到底部时自动加载更多数据；为空时解析器会尝试通用提取（匹配 class 含 next/page-next 或文字含"下一页"的 `<a>` 标签）。
 
 最终输出必须是纯 JSON 对象，不要 Markdown 代码围栏、注释、省略号、解释文字或尾逗号。
 
@@ -1063,7 +1064,8 @@ Base64 模板如下。
   "titleSelector": "a[class='vod-item']",
   "detailUrlSelector": "a[href^='/detail/']",
   "coverSelector": "img[data-src]",
-  "baseUrl": "https://example.com/"
+  "baseUrl": "https://example.com/",
+  "nextPageSelector": "a[class='next']"
 }
 ```
 
@@ -1085,9 +1087,27 @@ Base64 模板如下。
 
 如果任一必填 selector 匹配为空，或最终没有形成有效条目，App 会显示解析失败，不会自动兜底到内置列表解析。AI 输出前必须基于页面源码验证至少能提取 3 个有效条目，并确认标题、详情链接和封面顺序一致。
 
-### 13.5 当前能力边界
+### 13.5 nextPageSelector 与分页加载
 
-当前列表页 JSON 只解析当前页面源码，不会自动翻页，也不支持下一页 selector。不支持滚动懒加载后的 DOM；如果影片列表由 JS 运行后生成且不在原始 HTML 中，当前轻量 JSON 无法提取。不支持先选列表容器或卡片容器再做相对提取的嵌套结构；遇到推荐区、导航区、正片区混排时，必须通过简单 selector 尽量精准地命中正片卡片元素。
+`nextPageSelector` 用于从列表页 HTML 中提取"下一页"链接地址。App 在用户上滑到列表底部时自动加载下一页数据并追加到现有列表，实现无限滚动。
+
+**提取逻辑**：`nextPageSelector` 命中的元素，按 `href` → `data-href` → `data-url` → `src` 顺序读取链接地址，基于 `baseUrl` 补全为绝对 URL。
+
+**通用兜底**：当 `nextPageSelector` 为空时，解析器会尝试通用提取——优先匹配 class 含 `next`、`page-next`、`nextpage` 的 `<a>` 标签；其次匹配文字内容含"下一页""下页""next""›""»""→"的 `<a>` 标签（限短文本 ≤12 字符，避免误命中详情链接）。
+
+**AI 生成建议**：
+- 如果列表页 HTML 中存在明确的分页导航（如 `<a class="next" href="...">下一页</a>` 或 `<a href="...?page=2">2</a>`），应填写 `nextPageSelector` 指向该元素。
+- 如果页面没有分页或只有单页，`nextPageSelector` 留空即可，App 底部会显示"没有更多了"。
+- `nextPageSelector` 应命中 `<a>` 标签自身（带 href），不要命中外层容器。
+
+**边界处理**：
+- 下一页解析结果为空时，自动停止翻页，底部显示"没有更多了"。
+- 网络请求失败时，底部显示"加载失败，按确认重试"，保留当前列表和 `nextPageUrl` 允许重试。
+- 跨页结果按 `detailUrl` 去重，避免重复条目。
+
+### 13.6 当前能力边界
+
+当前列表页 JSON 只解析当前页面源码，不支持滚动懒加载后的 DOM；如果影片列表由 JS 运行后生成且不在原始 HTML 中，当前轻量 JSON 无法提取。不支持先选列表容器或卡片容器再做相对提取的嵌套结构；遇到推荐区、导航区、正片区混排时，必须通过简单 selector 尽量精准地命中正片卡片元素。分页加载仅支持 HTML 中存在明确"下一页"链接的场景；对于纯 JS 翻页、无限滚动加载的站点，当前无法提取下一页地址。
 
 ## 14. 详情页补充约束
 

@@ -57,8 +57,8 @@ class WebParseSaveDialog(
         }
         val content = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            clipChildren = false
-            clipToPadding = false
+            clipChildren = true
+            clipToPadding = true
         }
         content.addView(titleView(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         val input = EditText(context).apply {

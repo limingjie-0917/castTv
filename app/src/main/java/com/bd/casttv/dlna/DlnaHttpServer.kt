@@ -444,7 +444,11 @@ class DlnaHttpServer(
         private const val TAG = "DlnaHttpServer"
         /** Bounds the GENA header drain on the accept thread. */
         private const val MAX_HEADER_LINES = 64
-        private const val GENA_READ_TIMEOUT_MS = 300
+        /** GENA SUBSCRIBE header read timeout. Was 300ms — too short for Wi-Fi
+         *  latency, causing the control point's event subscription to fail and
+         *  triggering "connection interrupted" after device selection. 5s gives
+         *  plenty of room without blocking the accept thread excessively. */
+        private const val GENA_READ_TIMEOUT_MS = 5000
         private const val DEFAULT_GENA_TIMEOUT_SECONDS = 1800
 
         const val MIME_XML = "text/xml; charset=\"utf-8\""

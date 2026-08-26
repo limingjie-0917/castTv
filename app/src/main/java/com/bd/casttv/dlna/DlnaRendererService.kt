@@ -99,12 +99,10 @@ class DlnaRendererService : LifecycleService() {
         }
 
         override fun onTransportStateChanged(state: PlaybackController.TransportState) {
-            if (state == PlaybackController.TransportState.PLAYING ||
-                state == PlaybackController.TransportState.PAUSED_PLAYBACK ||
-                state == PlaybackController.TransportState.TRANSITIONING
-            ) {
-                try { ssdp?.advertiseAliveNow() } catch (_: Throwable) {}
-            }
+            // 不在每次状态变化时发送 SSDP alive burst。
+            // 原实现每次 PLAYING/PAUSED/TRANSITIONING 都调用 advertiseAliveNow()，
+            // 导致抖音收到重复 NOTIFY 后重新拉取 description.xml，刷屏日志并可能触发重连。
+            // SSDP 周期广播（ALIVE_INTERVAL_MS=30s）已足够维持设备在线状态。
             if (state == PlaybackController.TransportState.NO_MEDIA_PRESENT ||
                 state == PlaybackController.TransportState.STOPPED
             ) {
@@ -206,10 +204,12 @@ class DlnaRendererService : LifecycleService() {
 
         try {
             val interfaces = NetworkUtils.getLanInterfaces()
+            val ssdpIdentityRef: () -> DeviceIdentity = { advertisedIdentity ?: identity }
             val ssdpService = SsdpService(
                 interfaceProvider = { interfaces },
                 httpPort = HTTP_PORT,
-                udnProvider = { advertisedUdn ?: udn }
+                udnProvider = { advertisedUdn ?: udn },
+                serverProvider = { ssdpIdentityRef().ssdpServer.ifBlank { DeviceIdentity.DEFAULT_SSDP_SERVER } }
             )
             ssdpService.start()
             ssdpService.advertiseAliveNow()
@@ -250,7 +250,10 @@ class DlnaRendererService : LifecycleService() {
             PlaybackController.TransportState.PLAYING,
             PlaybackController.TransportState.PAUSED_PLAYBACK,
             PlaybackController.TransportState.TRANSITIONING -> true
-            PlaybackController.TransportState.STOPPED,
+            // 抖音自动连播：视频播完上报 STOPPED 后，currentUri 仍在、等待下一条 URI。
+            // 此时不应判定为会话结束，否则会触发身份重启/服务重建，打断自动连播。
+            PlaybackController.TransportState.STOPPED ->
+                PlaybackController.currentIsDouyinCast
             PlaybackController.TransportState.NO_MEDIA_PRESENT -> false
         }
     }
@@ -336,10 +339,12 @@ class DlnaRendererService : LifecycleService() {
         try { ssdp?.stop(sendByebye = false) } catch (_: Exception) {}
         ssdp = null
         try {
+            val ssdpIdentityRef: () -> DeviceIdentity = { advertisedIdentity ?: identity }
             val ssdpService = SsdpService(
                 interfaceProvider = { interfaces },
                 httpPort = HTTP_PORT,
-                udnProvider = { udn }
+                udnProvider = { udn },
+                serverProvider = { ssdpIdentityRef().ssdpServer.ifBlank { DeviceIdentity.DEFAULT_SSDP_SERVER } }
             )
             ssdpService.start()
             ssdpService.advertiseAliveNow()
@@ -357,6 +362,13 @@ class DlnaRendererService : LifecycleService() {
         interfaces.map { "${it.name}:${it.ip}" }.sorted().joinToString("|")
 
     private fun requestNetworkRebind(reason: String) {
+        // 投屏会话活跃时跳过 SSDP rebind：网络抖动（即使瞬间恢复）会触发 socket 重建，
+        // 期间抖音如果正好在搜索会丢失设备响应，可能导致连接中断。
+        // SSDP 周期广播（30s）足以在网络稳定后恢复设备发现。
+        if (isCastSessionActive()) {
+            logD("requestNetworkRebind: skipped, cast session active (reason=$reason)")
+            return
+        }
         synchronized(rebindLock) {
             if (rebindRunning) {
                 pendingRebind = true

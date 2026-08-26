@@ -49,6 +49,17 @@ object PlaybackController {
     private val main = Handler(Looper.getMainLooper())
     private val lock = Any()
 
+    // TRANSITIONING 超时看门狗：SetAVTransportURI 后进入 TRANSITIONING，
+    // 如果 PlayerActivity 启动失败或 ExoPlayer 加载超时，状态会卡在 TRANSITIONING。
+    // 抖音轮询 GetTransportInfo 看到一直 TRANSITIONING → 判定连接超时 → 断开。
+    // 10s 后自动转为 STOPPED，让控制点知道上一次 URI 无效。
+    private val transitioningWatchdog = Runnable {
+        if (transportState == TransportState.TRANSITIONING) {
+            updateTransportState(TransportState.STOPPED)
+        }
+    }
+    private const val TRANSITIONING_TIMEOUT_MS = 10_000L
+
     // ---- 投屏历史（仅内存，进程存活期间有效，不持久化到磁盘） ----
     /** 单条投屏历史记录。
      *  thumbPath 为该次投屏首帧截图文件路径（放在 cacheDir/thumbnails_history 目录，jpg 格式）；
@@ -380,6 +391,12 @@ object PlaybackController {
     fun hasActiveCommandCallback(): Boolean = synchronized(lock) { command != null }
 
     private fun flushPending(cb: CommandCallback) {
+        // 重放 pending URI：如果 SetAVTransportURI 在 PlayerActivity 注册 callback 之前到达，
+        // URI 已存入 currentUri 但 onSetUri 未被调用。PlayerActivity 启动后必须先 setUri 再 play，
+        // 否则播放器会尝试播放旧 URI 或空 URI。
+        if (currentUri.isNotBlank()) {
+            cb.onSetUri(currentUri, currentTitle)
+        }
         val seek = pendingSeekMs
         if (seek >= 0) {
             cb.onSeek(seek)
@@ -566,6 +583,13 @@ object PlaybackController {
             uriSnapshot = currentUri
             positionSnapshot = positionMs
             durationSnapshot = durationMs
+        }
+        // 看门狗：进入 TRANSITIONING 时启动超时定时器，离开时取消。
+        if (state == TransportState.TRANSITIONING) {
+            main.removeCallbacks(transitioningWatchdog)
+            main.postDelayed(transitioningWatchdog, TRANSITIONING_TIMEOUT_MS)
+        } else {
+            main.removeCallbacks(transitioningWatchdog)
         }
         if (changed) {
             notifyAvTransportLastChange(force = true)

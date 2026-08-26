@@ -57,7 +57,22 @@ class WatchLaterPage(context: Context) : BasePage(context) {
 
     private val onQueueChanged = { if (selectedTab == 0) renderCurrentTab() }
 
+    // ---- 右侧功能按钮栏（稍后播放 Tab 专用） ----
+    private var btnPlay: TextView? = null
+    private var btnClear: TextView? = null
+    private var capsuleSortBy: LinearLayout? = null        // 名称 / 状态 胶囊组
+    private var capsuleSortByLabel1: TextView? = null     // 「按名称」
+    private var capsuleSortByLabel2: TextView? = null     // 「按状态」
+    private var capsuleOrder: LinearLayout? = null        // 正序 / 倒叙 胶囊组
+    private var capsuleOrderLabel1: TextView? = null      // 「正序」
+    private var capsuleOrderLabel2: TextView? = null      // 「倒叙」
+    private var buttonBar: LinearLayout? = null           // 按钮栏容器（右对齐），Tab!=0 时 GONE
+    private var rightPanel: LinearLayout? = null          // 右侧容器：VERTICAL = 按钮栏 + 列表
+
     init {
+        // 确保 SortConfig 已初始化（若 queueStore 单例首次在这里被 lazy 创建）。
+        queueStore.let { it }
+
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(dp(26), dp(16), dp(26), dp(26))
@@ -81,6 +96,21 @@ class WatchLaterPage(context: Context) : BasePage(context) {
         }
         root.addView(left, LinearLayout.LayoutParams(dp(210), ViewGroup.LayoutParams.MATCH_PARENT))
 
+        // 右侧区域：VERTICAL = [功能按钮栏] + [RecyclerView]
+        val right = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            clipChildren = false
+            clipToPadding = false
+        }
+        rightPanel = right
+
+        val bar = buildButtonBar()
+        buttonBar = bar
+        right.addView(bar, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(10) })
+
         val list = RecyclerView(context).apply {
             layoutManager = LinearLayoutManager(context)
             adapter = this@WatchLaterPage.adapter
@@ -91,13 +121,258 @@ class WatchLaterPage(context: Context) : BasePage(context) {
             isFocusable = false
             isFocusableInTouchMode = false
             descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
-            setPadding(dp(10), dp(6), dp(10), dp(20))
+            setPadding(dp(10), dp(2), dp(10), dp(20))
         }
         listView = list
-        root.addView(list, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+        // VERTICAL LinearLayout：宽度=MATCH_PARENT，高度=0 + weight=1（填满剩余空间）。
+        // 三参构造函数 LinearLayout.LayoutParams(width, height, weight)，VERTICAL 方向 weight 作用在 height，
+        // 所以 width 必须是 MATCH_PARENT，之前写 (0, MATCH_PARENT, 1f) 会把 width=0 导致列表完全不可见。
+        right.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+
+        root.addView(right, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
         contentContainer.addView(root, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+
+        // 根据当前排序偏好刷新胶囊组显示（默认按名称 + 正序）
+        refreshSortCapsules()
+
         switchTab(0)
         loadAsyncContent()
+    }
+
+    // ---------------------------------------------------------------
+    // 功能按钮栏：播放 / 清除 / 名称状态胶囊 / 正序倒叙胶囊 (右对齐)
+    // ---------------------------------------------------------------
+    private fun buildButtonBar(): LinearLayout {
+        val bar = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            clipChildren = false
+            clipToPadding = false
+        }
+
+        // [播放]
+        val play = roundedButton("播放").apply {
+            setOnClickListener { onPlayFirstClicked() }
+            setOnFocusChangeListener { v, h -> applyFocusFx(v, h, 18); refreshActionButtonsEnabled() }
+            setOnKeyListener listener@{ _, keyCode, event ->
+                if (event.action != KeyEvent.ACTION_DOWN) return@listener false
+                when (keyCode) {
+                    // 【播放】左键：退出按钮栏，回到左侧当前选中 Tab
+                    KeyEvent.KEYCODE_DPAD_LEFT -> focusSelectedTab()
+                    // 任意按钮 DOWN → 进入列表第 1 项
+                    KeyEvent.KEYCODE_DPAD_DOWN -> focusFirstRowOrShake(this@apply)
+                    KeyEvent.KEYCODE_DPAD_UP -> { BoundaryFocusHandler.shake(this@apply); true }
+                    else -> false
+                }
+            }
+        }
+        btnPlay = play
+        bar.addView(play, LinearLayout.LayoutParams(dp(92), dp(40)).apply { marginEnd = dp(10) })
+
+        // [清除]
+        val clear = roundedButton("清除").apply {
+            setOnClickListener { onClearAllClicked() }
+            setOnFocusChangeListener { v, h -> applyFocusFx(v, h, 18) }
+            setOnKeyListener listener@{ _, keyCode, event ->
+                if (event.action != KeyEvent.ACTION_DOWN) return@listener false
+                when (keyCode) {
+                    KeyEvent.KEYCODE_DPAD_DOWN -> focusFirstRowOrShake(this@apply)
+                    KeyEvent.KEYCODE_DPAD_UP -> { BoundaryFocusHandler.shake(this@apply); true }
+                    else -> false
+                }
+            }
+        }
+        btnClear = clear
+        bar.addView(clear, LinearLayout.LayoutParams(dp(92), dp(40)).apply { marginEnd = dp(14) })
+
+        // 组A：按名称 / 按状态（胶囊）——点击(OK)切换，左/右键移动焦点不触发切换
+        val gBy = buildCapsuleGroup(
+            labels = listOf("按名称", "按状态"),
+            onToggle = { switchSortBy(1) }
+        )
+        capsuleSortBy = gBy.first
+        capsuleSortByLabel1 = gBy.second[0]
+        capsuleSortByLabel2 = gBy.second[1]
+        bar.addView(capsuleSortBy, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { marginEnd = dp(10) })
+
+        // 组B：正序 / 倒叙（胶囊）——点击(OK)切换，左/右键移动焦点不触发切换
+        val gOrder = buildCapsuleGroup(
+            labels = listOf("正序", "倒叙"),
+            onToggle = { switchOrder(1) }
+        )
+        capsuleOrder = gOrder.first
+        capsuleOrderLabel1 = gOrder.second[0]
+        capsuleOrderLabel2 = gOrder.second[1]
+        bar.addView(capsuleOrder, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)))
+
+        // 把按钮栏作为 Tab 方向右键的 FOCUS_RIGHT 目的地（通过 NextFocusForwardId 有点冗余，
+        // 用 KeyListener 更直接，handleTabKey 在这里会处理 Tab[0] 右键进入按钮栏）。
+        return bar
+    }
+
+    /**
+     * 单个圆角按钮：16dp 暖灰描边 + 点击/聚焦时 FocusFx。
+     */
+    private fun roundedButton(text: String) = TextView(context).apply {
+        this.text = text
+        textSize = 15f
+        typeface = Typeface.DEFAULT_BOLD
+        gravity = Gravity.CENTER
+        isFocusable = true
+        isClickable = true
+        setPadding(dp(8), 0, dp(8), 0)
+        setTextColor(Color.argb(240, 245, 245, 245))
+        background = GradientDrawable().apply {
+            cornerRadius = dp(18).toFloat()
+            setColor(Color.argb(30, 255, 255, 255))
+            setStroke(dp(1), Color.argb(150, 210, 214, 222))
+        }
+    }
+
+    /**
+     * 胶囊组（横向两标签并列，共享一个外层焦点）。
+     * @param onToggle 点击(OK/ENTER)时触发切换；左/右键仅移动焦点不触发切换。
+     * @return (容器, 两个 TextView 文本标签)
+     */
+    private fun buildCapsuleGroup(
+        labels: List<String>,
+        onToggle: () -> Unit
+    ): Pair<LinearLayout, List<TextView>> {
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            isFocusable = true
+            isClickable = true
+            clipChildren = false
+            clipToPadding = false
+            background = GradientDrawable().apply {
+                cornerRadius = dp(18).toFloat()
+                setColor(Color.argb(25, 255, 255, 255))
+                setStroke(dp(1), Color.argb(140, 210, 214, 222))
+            }
+            setPadding(dp(4), 0, dp(4), 0)
+            setOnFocusChangeListener { v, h -> applyFocusFx(v, h, 18) }
+            setOnKeyListener listener@{ _, keyCode, event ->
+                if (event.action != KeyEvent.ACTION_DOWN) return@listener false
+                when (keyCode) {
+                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                        onToggle()
+                        true
+                    }
+                    KeyEvent.KEYCODE_DPAD_UP -> {
+                        BoundaryFocusHandler.shake(this@apply)
+                        true
+                    }
+                    KeyEvent.KEYCODE_DPAD_DOWN -> {
+                        return@listener focusFirstRowOrShake(this@apply)
+                    }
+                    // 左/右键不拦截，让系统正常移动焦点到相邻控件，不触发切换
+                    else -> false
+                }
+            }
+        }
+        val textViews = labels.mapIndexed { idx, label ->
+            TextView(context).apply {
+                text = label
+                textSize = 14f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                isClickable = true
+                isFocusable = false           // 焦点只停留在外层 container，不单独移动
+                setPadding(dp(14), 0, dp(14), 0)
+                setTextColor(Color.argb(220, 245, 245, 245))
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(16).toFloat()
+                    setColor(Color.TRANSPARENT)
+                }
+                setOnClickListener { onToggle() }
+                setLayoutParams(LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(32)))
+            }.also { container.addView(it) }
+        }
+        return container to textViews
+    }
+
+    private fun applyFocusFx(v: View, focused: Boolean, cornerRadiusDp: Int) {
+        val bg = GradientDrawable().apply {
+            cornerRadius = dp(cornerRadiusDp).toFloat()
+            setColor(when {
+                focused -> Color.argb(42, 255, 255, 255)
+                else -> Color.argb(25, 255, 255, 255)
+            })
+            setStroke(dp(if (focused) 3 else 1), if (focused) WARM else Color.argb(140, 210, 214, 222))
+        }
+        // 胶囊组容器：自身作为焦点载体（LinearLayout），不覆盖文字样式。
+        v.background = bg
+        FocusFxHelper.applyFocusFxState(v, focused, cornerRadiusDp = cornerRadiusDp)
+    }
+
+    /**
+     * 胶囊组点击切换：2选1循环 toggle，dir=1 切到另一个。
+     */
+    private fun switchSortBy(dir: Int): Boolean {
+        val cur = when (PlayQueueStore.SortConfig.currentBy()) {
+            PlayQueueStore.SortBy.NAME -> 0
+            PlayQueueStore.SortBy.STATUS -> 1
+        }
+        val next = (cur + dir + 2) % 2
+        if (next == cur) return false
+        PlayQueueStore.SortConfig.set(
+            if (next == 0) PlayQueueStore.SortBy.NAME else PlayQueueStore.SortBy.STATUS,
+            PlayQueueStore.SortConfig.currentAsc()
+        )
+        refreshSortCapsules()
+        renderCurrentTab()
+        return true
+    }
+
+    private fun switchOrder(dir: Int): Boolean {
+        val cur = if (PlayQueueStore.SortConfig.currentAsc()) 0 else 1
+        val next = (cur + dir + 2) % 2
+        if (next == cur) return false
+        PlayQueueStore.SortConfig.set(PlayQueueStore.SortConfig.currentBy(), next == 0)
+        refreshSortCapsules()
+        renderCurrentTab()
+        return true
+    }
+
+    /**
+     * 把当前 SortConfig 映射到胶囊组两个子标签的颜色（选中=暖黄字体 + 实胶囊背景）。
+     */
+    private fun refreshSortCapsules() {
+        val by = PlayQueueStore.SortConfig.currentBy()
+        val asc = PlayQueueStore.SortConfig.currentAsc()
+        capsuleSortByLabel1?.applyCapsuleLabel(by == PlayQueueStore.SortBy.NAME)
+        capsuleSortByLabel2?.applyCapsuleLabel(by == PlayQueueStore.SortBy.STATUS)
+        capsuleOrderLabel1?.applyCapsuleLabel(asc)
+        capsuleOrderLabel2?.applyCapsuleLabel(!asc)
+        refreshActionButtonsEnabled()
+    }
+
+    private fun TextView.applyCapsuleLabel(selected: Boolean) {
+        setTextColor(if (selected) WARM else Color.argb(220, 245, 245, 245))
+        background = GradientDrawable().apply {
+            cornerRadius = dp(16).toFloat()
+            if (selected) {
+                setColor(Color.argb(45, 245, 196, 81))
+                setStroke(dp(1), WARM)
+            } else {
+                setColor(Color.TRANSPARENT)
+                setStroke(dp(0), Color.TRANSPARENT)
+            }
+        }
+    }
+
+    /**
+     * 空列表时播放按钮 disabled（不可聚焦+灰字），其他按钮保持可操作。
+     */
+    private fun refreshActionButtonsEnabled() {
+        val items = queueStore.all()
+        val play = btnPlay ?: return
+        play.isFocusable = items.isNotEmpty()
+        play.isClickable = items.isNotEmpty()
+        play.alpha = if (items.isNotEmpty()) 1f else 0.45f
+        play.setTextColor(if (items.isNotEmpty()) Color.argb(240, 245, 245, 245)
+                            else Color.argb(120, 210, 214, 222))
     }
 
     override fun onAttachedToWindow() {
@@ -186,13 +461,32 @@ class WatchLaterPage(context: Context) : BasePage(context) {
                 BoundaryFocusHandler.shake(v)
                 true
             }
-            KeyEvent.KEYCODE_DPAD_RIGHT -> focusFirstRowOrShake(v)
+            KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                // Tab[0] 稍后播放：右键进入「功能按钮栏」（首个可聚焦控件）
+                // Tab[1..N]：右键进入列表第 1 项
+                if (index == 0 && selectedTab == 0) focusButtonBarFirstOrShake(v)
+                else focusFirstRowOrShake(v)
+            }
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
                 switchTab(index)
                 true
             }
             else -> false
         }
+    }
+
+    /**
+     * 焦点从左侧 Tab/Tab0 右键，或列表第 1 项 UP 时，进入按钮栏第一个可聚焦控件。
+     * 优先【播放】（若列表为空播放 disabled，则【清除】）。
+     */
+    private fun focusButtonBarFirstOrShake(anchor: View): Boolean {
+        val target: View? = btnPlay?.takeIf { it.isShown && it.isFocusable }
+            ?: btnClear?.takeIf { it.isShown && it.isFocusable }
+            ?: capsuleSortBy?.takeIf { it.isShown && it.isFocusable }
+            ?: capsuleOrder?.takeIf { it.isShown && it.isFocusable }
+        if (target?.requestFocus() == true) return true
+        // 按钮栏无焦点（理论不会，至少清除可聚焦），落到列表第 1 项。
+        return focusFirstRowOrShake(anchor)
     }
 
     private fun focusFirstRowOrShake(anchor: View): Boolean {
@@ -222,8 +516,11 @@ class WatchLaterPage(context: Context) : BasePage(context) {
             KeyEvent.KEYCODE_DPAD_LEFT -> focusSelectedTab()
             KeyEvent.KEYCODE_DPAD_UP -> {
                 if (position == 0) {
-                    BoundaryFocusHandler.shake(v)
-                    true
+                    // 列表第 1 项 UP：
+                    //  稍后播放 Tab → 回到按钮栏（首个可聚焦控件）；
+                    //  其他 Tab → 按钮栏不可见，顶部边界抖动。
+                    if (selectedTab == 0) focusButtonBarFirstOrShake(v)
+                    else { BoundaryFocusHandler.shake(v); true }
                 } else false
             }
             KeyEvent.KEYCODE_DPAD_DOWN -> {
@@ -250,6 +547,8 @@ class WatchLaterPage(context: Context) : BasePage(context) {
             tab.isSelected = i == selectedTab
             refreshTab(tab, tab.hasFocus(), tab.isSelected)
         }
+        // 仅稍后播放 Tab 显示功能按钮栏；推荐 / 热门 Tab 隐藏按钮栏，让列表独占高度。
+        buttonBar?.visibility = if (selectedTab == 0) View.VISIBLE else View.GONE
         renderCurrentTab()
     }
 
@@ -260,20 +559,78 @@ class WatchLaterPage(context: Context) : BasePage(context) {
             else -> buildPopularRows()
         }
         adapter.submit(rows)
+        refreshActionButtonsEnabled()
     }
 
     private fun buildQueueRows(): List<RowItem> {
-        val items = queueStore.all()
-        if (items.isEmpty()) return listOf(RowItem(null, "暂无稍后播放内容", "可以从推荐内容或收藏页加入", "", null))
-        return items.map { item ->
+        val raw = queueStore.all()
+        if (raw.isEmpty()) return listOf(RowItem(null, "暂无稍后播放内容", "可以从推荐内容或收藏页加入", "", null))
+        val sorted = PlayQueueStore.SortConfig.apply(raw)
+        return sorted.map { item ->
             RowItem(
                 queueRowKey = item.id,
                 title = item.title.ifBlank { item.uri },
                 subtitle = "${statusLabel(item.status)} · ${item.source.ifBlank { "queue" }}",
                 action = "按 OK 播放",
-                onClick = { (context as? NewMainActivity)?.startQueuePlayback(item, toastText = "已切换：${item.title}", focusRootOnReturn = false) }
+                onClick = {
+                    pendingRestoreTab = 0
+                    pendingRestoreQueueItemId = item.id
+                    val pos = sorted.indexOfFirst { it.id == item.id }
+                    if (pos >= 0) pendingRestorePosition = pos
+                    adapter.setSelectedQueueRowKey(item.id)
+                    (context as? NewMainActivity)?.startQueuePlayback(item, toastText = "已切换：${item.title}", focusRootOnReturn = false)
+                }
             )
         }
+    }
+
+    // ------------------------------------------------------------------
+    // 功能按钮栏：播放 / 清除 动作
+    // ------------------------------------------------------------------
+    /**
+     * 播放：按排序后第 1 条非 FINISHED 项起播。
+     *  - 场景 H：若排序后第 1 条是 FINISHED，跳过；全部都是 FINISHED → toast。
+     *  - 若有正在 PLAYING 的项，仍优先按排序后第 1 条非 FINISHED 启动，符合用户「从列表顶部播放」的直觉。
+     */
+    private fun onPlayFirstClicked() {
+        val sorted = PlayQueueStore.SortConfig.apply(queueStore.all())
+        val first = sorted.firstOrNull { it.status != PlayQueueStore.Status.FINISHED }
+        if (first == null) {
+            Toast.makeText(context, "队列内容均已播放完毕，可切换排序或清空列表", Toast.LENGTH_SHORT).show()
+            return
+        }
+        // 记录选中 + 焦点恢复位置（从播放器返回后落到第 1 条）
+        pendingRestoreTab = 0
+        pendingRestoreQueueItemId = first.id
+        pendingRestorePosition = sorted.indexOfFirst { it.id == first.id }.coerceAtLeast(0)
+        adapter.setSelectedQueueRowKey(first.id)
+        (context as? NewMainActivity)?.startQueuePlayback(
+            first,
+            toastText = "▶ 播放：${first.title}",
+            focusRootOnReturn = false
+        )
+    }
+
+    /**
+     * 清除：用户明确无需确认，立即删除队列全部数据。
+     *  - 场景 C：清除成功后，焦点回到【播放】按钮（首个可聚焦控件）。
+     *  - 场景 I：即使当前有项处于 PLAYING，也直接清除内存+持久化队列。
+     *    不会强制打断正在播放的 PlayerActivity，它播完下一条 tryAdvanceQueueOnEnded()
+     *    找不到下一项时会自然显示「队列播放完毕」。
+     */
+    private fun onClearAllClicked() {
+        if (queueStore.size() == 0) {
+            Toast.makeText(context, "列表已为空", Toast.LENGTH_SHORT).show()
+            return
+        }
+        queueStore.clear()
+        Toast.makeText(context, "稍后播放列表已清空", Toast.LENGTH_SHORT).show()
+        adapter.setSelectedQueueRowKey(null)
+        pendingRestoreQueueItemId = null
+        pendingRestorePosition = RecyclerView.NO_POSITION
+        // 焦点回落到【播放】按钮；如果此时播放按钮 disabled，则落到【清除】按钮。
+        val fallback: View? = btnPlay?.takeIf { it.isFocusable } ?: btnClear
+        fallback?.post { fallback.requestFocus() }
     }
 
     private fun buildRecommendationRows(): List<RowItem> {
@@ -459,10 +816,10 @@ class WatchLaterPage(context: Context) : BasePage(context) {
     }
 
     /**
-     * 行背景三态：
-     *  - focused：聚焦（最强提示，3dp 暖黄描边 + 透明底，优先保证 TV 焦点可见）
-     *  - selected && !focused：选中未焦（"上次点击的项"的稳定锚点：暖黄半透明底 + 2dp 暖黄描边）
-     *  - 其他：普通未选未焦（1dp 灰描边）
+     * 行背景二态：
+     *  - focused：聚焦（3dp 暖黄描边 + 透明底，保证 TV 焦点可见）
+     *  - 其他：普通默认态（1dp 灰描边 + 微透明白底）
+     * 选中态不再添加额外的边框与背景样式，保持列表项默认状态。
      */
     private fun rowBg(focused: Boolean, selected: Boolean = false) = GradientDrawable().apply {
         cornerRadius = dp(16).toFloat()
@@ -470,10 +827,6 @@ class WatchLaterPage(context: Context) : BasePage(context) {
             focused -> {
                 setColor(Color.TRANSPARENT)
                 setStroke(dp(3), WARM)
-            }
-            selected -> {
-                setColor(Color.argb(52, 245, 196, 81))
-                setStroke(dp(2), WARM)
             }
             else -> {
                 setColor(Color.argb(28, 255, 255, 255))

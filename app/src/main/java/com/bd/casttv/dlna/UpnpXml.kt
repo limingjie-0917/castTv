@@ -19,12 +19,29 @@ object UpnpXml {
     /** Device description document served at /description.xml.
      *
      *  Cached per (identity, udn): identity changes only via Settings, so we
-     *  avoid re-building the ~2KB string on every GET. */
+     *  avoid re-building the ~2KB string on every GET.
+     *
+     *  Key now includes ALL identity fields that appear in the XML body
+     *  (modelUrl / dlnaProfiles / icon signatures / presentationUrl …),
+     *  so switching groups always invalidates the previous cache. */
     @Volatile private var cachedDeviceDesc: String? = null
     @Volatile private var cachedDeviceKey: String? = null
 
     fun deviceDescription(identity: DeviceIdentity, udn: String): String {
-        val key = "${identity.friendlyName}|${identity.manufacturer}|${identity.modelName}|${identity.modelDescription}|${identity.modelNumber}|$udn"
+        val iconsKey = identity.icons.joinToString(";") { "${it.width}x${it.height}|${it.mimetype}|${it.url}" }
+        val key = buildString {
+            append(identity.friendlyName); append('|')
+            append(identity.manufacturer); append('|')
+            append(identity.manufacturerUrl); append('|')
+            append(identity.modelName); append('|')
+            append(identity.modelDescription); append('|')
+            append(identity.modelNumber); append('|')
+            append(identity.modelUrl); append('|')
+            append(identity.dlnaProfiles); append('|')
+            append(identity.presentationUrl); append('|')
+            append(iconsKey); append('|')
+            append(udn)
+        }
         cachedDeviceDesc?.let { if (cachedDeviceKey == key) return it }
         val doc = buildDeviceDescription(identity, udn)
         cachedDeviceDesc = doc
@@ -32,7 +49,25 @@ object UpnpXml {
         return doc
     }
 
-    private fun buildDeviceDescription(identity: DeviceIdentity, udn: String): String = """<?xml version="1.0" encoding="utf-8"?>
+    private fun buildDeviceDescription(identity: DeviceIdentity, udn: String): String {
+        val modelUrl = identity.modelUrl.ifBlank { identity.manufacturerUrl }
+        // 基于 UDN 稳定派生序列号，避免所有设备都写死 0001
+        val serialNumber = DeviceIdentity.deriveSerialNumber(udn)
+        // 组内若未配 icons，则使用一组通用占位图标，保证 iconList 存在
+        val icons = identity.icons.ifEmpty { DeviceIdentity.DEFAULT_ICONS }
+        val iconListXml = icons.joinToString(separator = "\n    ") { i ->
+            """
+      <icon>
+        <mimetype>${escape(i.mimetype)}</mimetype>
+        <width>${i.width}</width>
+        <height>${i.height}</height>
+        <depth>${i.depth}</depth>
+        <url>${escape(i.url)}</url>
+      </icon>""".trimIndent()
+        }
+        val dlnaCap = identity.dlnaProfiles.ifBlank { DeviceIdentity.DEFAULT_DLNA_PROFILES }
+        val presentationUrl = identity.presentationUrl.ifBlank { "/" }
+        return """<?xml version="1.0" encoding="utf-8"?>
 <root xmlns="urn:schemas-upnp-org:device-1-0" xmlns:dlna="urn:schemas-dlna-org:device-1-0">
   <specVersion>
     <major>1</major>
@@ -46,11 +81,15 @@ object UpnpXml {
     <modelDescription>${escape(identity.modelDescription)}</modelDescription>
     <modelName>${escape(identity.modelName)}</modelName>
     <modelNumber>${escape(identity.modelNumber)}</modelNumber>
-    <modelURL>https://casttv.local</modelURL>
-    <serialNumber>0001</serialNumber>
+    <modelURL>${escape(modelUrl)}</modelURL>
+    <serialNumber>$serialNumber</serialNumber>
     <UDN>$udn</UDN>
+    <presentationURL>${escape(presentationUrl)}</presentationURL>
     <dlna:X_DLNADOC xmlns:dlna="urn:schemas-dlna-org:device-1-0">DMR-1.50</dlna:X_DLNADOC>
-    <dlna:X_DLNACAP xmlns:dlna="urn:schemas-dlna-org:device-1-0"></dlna:X_DLNACAP>
+    <dlna:X_DLNACAP xmlns:dlna="urn:schemas-dlna-org:device-1-0">${escape(dlnaCap)}</dlna:X_DLNACAP>
+    <iconList>
+    $iconListXml
+    </iconList>
     <serviceList>
       <service>
         <serviceType>$SVC_AVTRANSPORT</serviceType>
@@ -77,6 +116,7 @@ object UpnpXml {
   </device>
 </root>
 """
+    }
 
     // ------------------------------------------------------------------
     // SCPD documents

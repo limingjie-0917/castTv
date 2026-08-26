@@ -19,6 +19,7 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -84,6 +85,11 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
     private var currentUrl: String = ""
     private var movie: ParsedMovie? = null
     private var listMovies: List<ParsedListMovie> = emptyList()
+    private var listNextPageUrl: String? = null
+    private var listNextPageJob: Job? = null
+    private var listJsonRule: String? = null
+    private var listGrid: LinearLayout? = null
+    private var listFooter: LinearLayout? = null
     private var listBackUrl: String = ""
     private var listBackMovies: List<ParsedListMovie> = emptyList()
     private var detailFromList = false
@@ -106,6 +112,14 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         clipChildren = true
         clipToPadding = false
         setPadding(dp(4), dp(4), dp(4), dp(4))
+        // 滚动到底部自动加载下一页（TV 端也可通过 footer 焦点触发）
+        viewTreeObserver.addOnScrollChangedListener {
+            if (listNextPageUrl == null) return@addOnScrollChangedListener
+            if (listNextPageJob?.isActive == true) return@addOnScrollChangedListener
+            val view = getChildAt(childCount - 1) ?: return@addOnScrollChangedListener
+            val diff = view.bottom - (height + scrollY)
+            if (diff <= dp(120)) loadNextPage()
+        }
     }
     private val contentArea = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; clipChildren = false; clipToPadding = false }
     private val emptyView = TextView(context).apply {
@@ -415,6 +429,11 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         currentUrl = url
         movie = null
         listMovies = emptyList()
+        listNextPageUrl = null
+        listNextPageJob?.cancel()
+        listJsonRule = null
+        listGrid = null
+        listFooter = null
         selectedSourceIndex = 0
         selectedEpisodeIndex = 0
         parseJob?.cancel()
@@ -431,6 +450,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                 progressDialog.update(ParseStep.RECEIVED)
                 val preselectedAdapter = AdapterSelector.select(context.applicationContext, url, "", ParsePageKind.LIST)
                 val parsedList: List<ParsedListMovie>
+                val nextPageUrl: String?
                 val adapterSelection: AdapterSelectResult
                 val htmlForHistory: String
                 if (preselectedAdapter.source == AdapterSelectResult.SelectSource.DOMAIN_BINDING &&
@@ -445,18 +465,24 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                     WebParseExtractor.lastParsedUrl = url
                     WebParseExtractor.lastParsedHtml = html
                     progressDialog.update(ParseStep.PARSING_INFO)
-                    parsedList = withContext(Dispatchers.Default) { listExtractor.parseWithJsonRule(html, jsonRule, url) }
-                    if (parsedList.isEmpty()) error("未按已绑定的自定义适配器解析到影片条目")
+                    val result = withContext(Dispatchers.Default) { listExtractor.parseWithJsonRule(html, jsonRule, url) }
+                    if (result.movies.isEmpty()) error("未按已绑定的自定义适配器解析到影片条目")
+                    parsedList = result.movies
+                    nextPageUrl = result.nextPageUrl
+                    listJsonRule = jsonRule
                     adapterSelection = preselectedAdapter
                     htmlForHistory = html
                 } else {
                     progressDialog.update(ParseStep.FETCHING_HTML)
-                    parsedList = listExtractor.extractList(url)
+                    val result = listExtractor.extractList(url)
+                    parsedList = result.movies
+                    nextPageUrl = result.nextPageUrl
                     adapterSelection = selectAdapterForHistory(url, ParsePageKind.LIST)
                     progressDialog.update(ParseStep.PARSING_INFO)
                     htmlForHistory = WebParseExtractor.lastParsedHtml.orEmpty()
                 }
                 listMovies = parsedList
+                listNextPageUrl = nextPageUrl
                 store.saveParseHistory(
                     title = "列表页 · ${parsedList.size} 个条目",
                     url = url,
@@ -689,6 +715,11 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         backToListButton.visibility = View.GONE
         movie = null
         listMovies = emptyList()
+        listNextPageUrl = null
+        listNextPageJob?.cancel()
+        listJsonRule = null
+        listGrid = null
+        listFooter = null
         selectedSourceIndex = 0
         selectedEpisodeIndex = 0
         parseJob?.cancel()
@@ -703,12 +734,15 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                 WebParseExtractor.lastParsedUrl = url
                 WebParseExtractor.lastParsedHtml = html
                 progressDialog.update(ParseStep.PARSING_INFO)
-                val parsedList = withContext(Dispatchers.Default) { listExtractor.parseWithJsonRule(html, jsonRule, url) }
+                val result = withContext(Dispatchers.Default) { listExtractor.parseWithJsonRule(html, jsonRule, url) }
+                val parsedList = result.movies
                 if (parsedList.isEmpty()) error("未按 JSON 规则解析到影片条目")
                 val host = adapterStore.normalizeHost(url)
                 val info = RuleBasedAdapter.saveRule(context.applicationContext, jsonRule, host, ParsePageKind.LIST)
                 saveCustomAdapterBinding(url, info.name, info.fileName, ParsePageKind.LIST)
                 listMovies = parsedList
+                listNextPageUrl = result.nextPageUrl
+                listJsonRule = jsonRule
                 store.saveParseHistory(
                     title = "列表页 JSON · ${parsedList.size} 个条目",
                     url = url,
@@ -870,8 +904,114 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         contentArea.addView(header, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         val grid = listMovieGrid(items)
+        listGrid = grid
         contentArea.addView(grid, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        // 底部加载更多区域
+        val footer = listFooterView()
+        listFooter = footer
+        contentArea.addView(footer, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         contentScroll.post { grid.findViewWithTag<View>("list_movie_0")?.requestFocus() }
+    }
+
+    // ---- 分页加载更多 ----
+
+    private fun listFooterView(
+        loading: Boolean = false,
+        hasError: Boolean = false,
+        message: String? = null
+    ): LinearLayout = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER
+        setPadding(0, dp(20), 0, dp(20))
+        clipChildren = false
+        clipToPadding = false
+        val hasMore = listNextPageUrl != null
+        val msg = when {
+            message != null -> message
+            loading -> "正在加载更多…"
+            hasError -> "加载失败，按确认重试"
+            hasMore -> "上滑或按↓键加载更多"
+            else -> "没有更多了"
+        }
+        addView(ProgressBar(context).apply {
+            isIndeterminate = true
+            visibility = if (loading) View.VISIBLE else View.GONE
+        }, LinearLayout.LayoutParams(dp(28), dp(28)).apply { bottomMargin = dp(6) })
+        addView(TextView(context).apply {
+            text = msg
+            textSize = 14f
+            setTextColor(Color.argb(180, 255, 255, 255))
+            isFocusable = hasMore && !loading
+            isClickable = hasMore && !loading
+            setOnClickListener { if (hasMore && !loading) loadNextPage() }
+            setOnFocusChangeListener { _, hasFocus ->
+                if (hasFocus && hasMore && !loading) loadNextPage()
+            }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+    }
+
+    private fun updateListFooter(loading: Boolean = false, hasError: Boolean = false, message: String? = null) {
+        val old = listFooter ?: return
+        val parent = old.parent as? ViewGroup ?: return
+        val index = parent.indexOfChild(old)
+        parent.removeView(old)
+        val newFooter = listFooterView(loading = loading, hasError = hasError, message = message)
+        listFooter = newFooter
+        parent.addView(newFooter, index)
+    }
+
+    private fun loadNextPage() {
+        val url = listNextPageUrl ?: return
+        if (listNextPageJob?.isActive == true) return
+        updateListFooter(loading = true)
+        listNextPageJob = scope.launch {
+            try {
+                val result = if (listJsonRule != null) {
+                    val html = withContext(Dispatchers.IO) { WebParseExtractor.fetchText(url) }
+                    withContext(Dispatchers.Default) { listExtractor.parseWithJsonRule(html, listJsonRule!!, url) }
+                } else {
+                    listExtractor.extractList(url)
+                }
+                val existing = listMovies
+                // 按 detailUrl 去重，只追加新条目
+                val newMovies = result.movies.filter { newItem ->
+                    existing.none { it.detailUrl == newItem.detailUrl }
+                }
+                if (newMovies.isEmpty()) {
+                    listNextPageUrl = null
+                    updateListFooter(message = "没有更多了")
+                    return@launch
+                }
+                val merged = existing + newMovies
+                listMovies = merged
+                listNextPageUrl = result.nextPageUrl
+                // 重建 grid（保留滚动位置）
+                val scrollY = contentScroll.scrollY
+                val oldGrid = listGrid
+                val oldFooter = listFooter
+                if (oldGrid != null) contentArea.removeView(oldGrid)
+                if (oldFooter != null) contentArea.removeView(oldFooter)
+                val newGrid = listMovieGrid(merged)
+                listGrid = newGrid
+                // 在 footer 之前插入 grid
+                val footerView = listFooterView()
+                listFooter = footerView
+                contentArea.addView(newGrid, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                contentArea.addView(footerView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                contentScroll.scrollTo(0, scrollY)
+                // 焦点移到首个新条目
+                contentScroll.post { newGrid.findViewWithTag<View>("list_movie_${existing.size}")?.requestFocus() }
+            } catch (t: Throwable) {
+                val msg = t.message ?: "网络异常"
+                val isNoMore = msg.contains("未从列表页提取到影片条目")
+                if (isNoMore) {
+                    listNextPageUrl = null
+                    updateListFooter(message = "没有更多了")
+                } else {
+                    updateListFooter(hasError = true, message = "加载失败：$msg")
+                }
+            }
+        }
     }
 
     private fun listMovieGrid(items: List<ParsedListMovie>): LinearLayout = LinearLayout(context).apply {

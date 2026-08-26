@@ -12,23 +12,31 @@ data class ParsedListMovie(
     val detailUrl: String
 )
 
+/** 列表页解析结果，含影片条目与下一页地址（无下一页时 nextPageUrl 为 null）。 */
+data class ParsedListResult(
+    val movies: List<ParsedListMovie>,
+    val nextPageUrl: String? = null
+)
+
 class WebParseListExtractor {
-    suspend fun extractList(url: String): List<ParsedListMovie> = withContext(Dispatchers.IO) {
+    suspend fun extractList(url: String): ParsedListResult = withContext(Dispatchers.IO) {
         val html = WebParseExtractor.fetchText(url)
         WebParseExtractor.lastParsedUrl = url
         WebParseExtractor.lastParsedHtml = html
         val movies = parseList(url, html)
-        Log.d(TAG, "extractList url=$url htmlLength=${html.length} movies=${movies.size}")
+        val nextPageUrl = extractNextPageUrl(url, html)
+        Log.d(TAG, "extractList url=$url htmlLength=${html.length} movies=${movies.size} nextPageUrl=$nextPageUrl")
         if (movies.isEmpty()) error("未从列表页提取到影片条目")
-        movies
+        ParsedListResult(movies, nextPageUrl)
     }
 
-    fun parseWithJsonRule(html: String, jsonRule: String, baseUrl: String): List<ParsedListMovie> {
+    fun parseWithJsonRule(html: String, jsonRule: String, baseUrl: String): ParsedListResult {
         val json = JSONObject(jsonRule)
         if (json.optString("type") != "list") error("JSON 校验失败：type 必须为 list")
         val titleSelector = json.optString("titleSelector").trim()
         val detailUrlSelector = json.optString("detailUrlSelector").trim()
         val coverSelector = json.optString("coverSelector").trim()
+        val nextPageSelector = json.optString("nextPageSelector").trim()
         if (titleSelector.isBlank()) error("JSON 校验失败：titleSelector 不能为空")
         if (detailUrlSelector.isBlank()) error("JSON 校验失败：detailUrlSelector 不能为空")
         val ruleBaseUrl = normalizeBaseUrl(json.optString("baseUrl"), baseUrl)
@@ -38,7 +46,7 @@ class WebParseListExtractor {
         if (titleElements.isEmpty()) error("JSON 解析失败：titleSelector 未命中任何元素")
         if (urlElements.isEmpty()) error("JSON 解析失败：detailUrlSelector 未命中任何元素")
         val count = maxOf(titleElements.size, urlElements.size)
-        return (0 until count).mapNotNull { index ->
+        val movies = (0 until count).mapNotNull { index ->
             val titleElement = titleElements.getOrNull(index) ?: titleElements.firstOrNull()
             val urlElement = urlElements.getOrNull(index) ?: return@mapNotNull null
             val title = elementText(titleElement).trim()
@@ -49,6 +57,17 @@ class WebParseListExtractor {
                 .let { WebParseHtml.absolute(ruleBaseUrl, it) }
             ParsedListMovie(title = title, coverUrl = cover, detailUrl = detailUrl)
         }.distinctBy { it.detailUrl }
+        // 下一页地址：优先用 nextPageSelector，无则通用提取
+        val nextPageUrl = if (nextPageSelector.isNotBlank()) {
+            selectElements(html, nextPageSelector).firstNotNullOfOrNull { el ->
+                elementUrl(el).takeIf { it.isNotBlank() }
+                    ?.let { WebParseHtml.absolute(ruleBaseUrl, it) }
+                    ?.takeIf { isValidNextPageUrl(it) }
+            }
+        } else {
+            extractNextPageUrl(ruleBaseUrl, html)
+        }
+        return ParsedListResult(movies, nextPageUrl)
     }
 
     private fun parseList(baseUrl: String, html: String): List<ParsedListMovie> {
@@ -160,6 +179,47 @@ class WebParseListExtractor {
         Regex("([a-zA-Z_:][-a-zA-Z0-9_:.]*)\\s*=\\s*(['\"])(.*?)\\2", RegexOption.DOT_MATCHES_ALL)
             .findAll(raw).forEach { map[it.groupValues[1]] = WebParseHtml.decodeEntities(it.groupValues[3]) }
         return map
+    }
+
+    // ---- 下一页地址提取 ----
+
+    /** 从列表页 HTML 中提取下一页地址：优先 class 匹配，其次文字匹配。 */
+    private fun extractNextPageUrl(baseUrl: String, html: String): String? {
+        val anchors = Regex("<a\\b([^>]*)>([\\s\\S]*?)</a>", RegexOption.IGNORE_CASE).findAll(html)
+        val nextClassKeywords = listOf("next", "page-next", "nextpage", "pagenext", "next-page")
+        val nextTextKeywords = listOf("下一页", "下页", "next", "›", "»", "→")
+        var textFallback: String? = null
+        for (match in anchors) {
+            val attrs = match.groupValues[1]
+            val innerHtml = match.groupValues[2]
+            val href = Regex("href=[\"']([^\"']+)[\"']", RegexOption.IGNORE_CASE)
+                .find(attrs)?.groupValues?.getOrNull(1)?.trim() ?: continue
+            val classVal = Regex("class=[\"']([^\"']+)[\"']", RegexOption.IGNORE_CASE)
+                .find(attrs)?.groupValues?.getOrNull(1)?.orEmpty()?.lowercase() ?: ""
+            val text = WebParseHtml.clean(innerHtml).trim()
+            // 优先：class 含 next 关键词
+            if (nextClassKeywords.any { classVal.contains(it) }) {
+                val abs = WebParseHtml.absolute(baseUrl, href)
+                if (isValidNextPageUrl(abs)) return abs
+            }
+            // 备选：文字内容含"下一页"等（限短文本，避免误命中详情链接）
+            if (textFallback == null && text.length <= 12) {
+                if (nextTextKeywords.any { text.equals(it, ignoreCase = true) || text.contains(it) }) {
+                    val abs = WebParseHtml.absolute(baseUrl, href)
+                    if (isValidNextPageUrl(abs)) textFallback = abs
+                }
+            }
+        }
+        return textFallback
+    }
+
+    private fun isValidNextPageUrl(url: String): Boolean {
+        if (url.isBlank()) return false
+        val lower = url.lowercase()
+        if (!lower.startsWith("http://") && !lower.startsWith("https://")) return false
+        if (lower.contains("javascript:")) return false
+        if (lower == "#" || lower.endsWith("#")) return false
+        return true
     }
 
     private companion object {

@@ -493,8 +493,8 @@ class PlayerActivity : AppCompatActivity() {
         // (http<->https is common on CDN links) and a UA some CDNs require.
         val httpFactory = DefaultHttpDataSource.Factory()
             .setUserAgent(httpUserAgent.ifBlank { USER_AGENT })
-            .setConnectTimeoutMs(15_000)
-            .setReadTimeoutMs(15_000)
+            .setConnectTimeoutMs(8_000)
+            .setReadTimeoutMs(8_000)
             .setAllowCrossProtocolRedirects(true)
         httpDataSourceFactory = httpFactory
         updateHttpRequestHeaders()
@@ -569,11 +569,11 @@ class PlayerActivity : AppCompatActivity() {
                 Player.STATE_ENDED -> {
                     updateProgress(forceHistoryWrite = true)
                     if (PlaybackController.currentIsDouyinCast) {
-                        // 抖音短视频会自然播完后等待用户继续上滑；若这里上报 STOPPED，
-                        // 抖音端会把投屏会话判定为结束并断开，随后的上滑不再继续投屏。
-                        // 因此在「自然播完但会话仍有效」场景下保持为 PAUSED_PLAYBACK，
-                        // 并且不触发稍后播放队列弹窗/自动续播，避免打断抖音连续上滑投屏。
-                        PlaybackController.updateTransportState(PlaybackController.TransportState.PAUSED_PLAYBACK)
+                        // 抖音自动连播依赖 STOPPED 状态触发下一条视频：
+                        // 控制点轮询 GetTransportInfo 看到 STOPPED → 发送下一条 SetAVTransportURI。
+                        // 之前上报 PAUSED_PLAYBACK 导致抖音判定为「用户暂停」，不触发自动连播。
+                        // 不调用 scheduleStreamEndTimer，保持播放器存活等待下一条 URI。
+                        PlaybackController.updateTransportState(PlaybackController.TransportState.STOPPED)
                         showCenterStatus("等待下一条短视频…", false)
                         return
                     }
@@ -1855,9 +1855,14 @@ class PlayerActivity : AppCompatActivity() {
                 store.setStatusByUri(currentUri, com.bd.casttv.queue.PlayQueueStore.Status.FINISHED)
             }
 
-            // 按持久化顺序取下一条：优先仍在 PLAYING 的资源，其次第一条 PENDING。
-            val playing = store.currentPlaying()
-            val next = playing ?: store.nextPending()
+            // 方案 B：队列播放顺序按当前 SortConfig 排序偏好计算，与 WatchLaterPage 展示顺序保持一致，
+            // 保证 UI 上第 1 条 = 实际续播时的下一条。
+            //   1) 优先 PLAYING（正常情况下只有一条，若多条则按排序偏好取首个）；
+            //   2) 否则从排序后的列表里取第一条 PENDING。
+            val sortedAll = com.bd.casttv.queue.PlayQueueStore.SortConfig.apply(store.all())
+            val playing = sortedAll.firstOrNull { it.status == com.bd.casttv.queue.PlayQueueStore.Status.PLAYING }
+            val next = playing
+                ?: sortedAll.firstOrNull { it.status == com.bd.casttv.queue.PlayQueueStore.Status.PENDING }
             if (next == null || next.uri == currentUri) {
                 // 稍后播放列表已无待播内容：保持结束态。
                 if (wasQueuePlayback) {

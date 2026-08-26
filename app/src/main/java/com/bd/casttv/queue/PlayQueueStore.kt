@@ -227,6 +227,82 @@ class PlayQueueStore(context: Context) {
     fun addListener(cb: () -> Unit) { listeners.add(cb) }
     fun removeListener(cb: () -> Unit) { listeners.remove(cb) }
 
+    // -------- 队列 UI 排序配置（持久化，PlayerActivity 续播时复用） --------
+    enum class SortBy { NAME, STATUS }
+
+    /**
+     * 稍后播放列表的排序偏好，全局共享：
+     * - WatchLaterPage 写入并用来渲染列表；
+     * - PlayerActivity.tryAdvanceQueueOnEnded() 读取后按同样规则取下一条 PENDING，
+     *   保证「屏幕上看到的顺序 = 实际续播顺序」。
+     *
+     * 默认：按名称正序。
+     */
+    object SortConfig {
+        const val PREF_NAME = "queue_sort_config"
+        const val KEY_BY = "sort_by"
+        const val KEY_ASC = "sort_asc"
+
+        @Volatile private var cachedBy: SortBy = SortBy.NAME
+        @Volatile private var cachedAsc: Boolean = true
+        private var appContext: Context? = null
+        private fun prefs(ctx: Context) =
+            ctx.applicationContext.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+
+        fun init(ctx: Context) {
+            val p = prefs(ctx)
+            appContext = ctx.applicationContext
+            cachedBy = try { SortBy.valueOf(p.getString(KEY_BY, SortBy.NAME.name)!!) } catch (_: Throwable) { SortBy.NAME }
+            cachedAsc = p.getBoolean(KEY_ASC, true)
+        }
+
+        fun currentBy(): SortBy = cachedBy
+        fun currentAsc(): Boolean = cachedAsc
+
+        fun set(by: SortBy, asc: Boolean) {
+            cachedBy = by
+            cachedAsc = asc
+            val ctx = appContext ?: return
+            prefs(ctx).edit()
+                .putString(KEY_BY, by.name)
+                .putBoolean(KEY_ASC, asc)
+                .apply()
+        }
+
+        /**
+         * 应用当前排序到 items。用于 WatchLaterPage 渲染和 PlayerActivity 续播取 next。
+         *
+         * - NAME：标题 Unicode codepoint 排序（同文字中文不会重排，保持稳定）；
+         * - STATUS：PLAYING → PENDING → FINISHED（正序），或反过来（倒序）；
+         * - 同组二级排序：addedAt 作为稳定 tiebreaker。
+         */
+        fun apply(items: List<QueueItem>): List<QueueItem> {
+            val by = cachedBy
+            val asc = cachedAsc
+            val statusRank: (Status) -> Int = when {
+                by == SortBy.STATUS && asc -> { s -> when (s) {
+                    Status.PLAYING -> 0
+                    Status.PENDING -> 1
+                    Status.FINISHED -> 2
+                } }
+                by == SortBy.STATUS -> { s -> when (s) {
+                    Status.FINISHED -> 0
+                    Status.PENDING -> 1
+                    Status.PLAYING -> 2
+                } }
+                else -> { _ -> 0 }
+            }
+            var cmp = compareBy<QueueItem>({ statusRank(it.status) })
+            cmp = when {
+                by == SortBy.NAME && asc -> cmp.thenBy { it.title.lowercase() }
+                by == SortBy.NAME -> cmp.thenByDescending { it.title.lowercase() }
+                else -> cmp
+            }
+            cmp = if (asc) cmp.thenBy { it.addedAt } else cmp.thenByDescending { it.addedAt }
+            return items.sortedWith(cmp)
+        }
+    }
+
     // -------- 持久化 --------
     private fun persistAndNotify() {
         // 写盘异步化：内存态（items）已在调用前更新，监听器可立即基于内存刷新 UI，
@@ -323,6 +399,7 @@ class PlayQueueStore(context: Context) {
                 if (current != null) current else {
                     val created = PlayQueueStore(context.applicationContext)
                     instance = created
+                    SortConfig.init(context.applicationContext)
                     created
                 }
             }

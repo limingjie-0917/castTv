@@ -16,8 +16,8 @@ android {
         applicationId = "com.bd.casttv"
         minSdk = 21          // Android 5.0 — covers virtually all Android TV boxes
         targetSdk = 34
-        versionCode = 401
-        versionName = "1.2.126"
+        versionCode = 424
+        versionName = "1.2.149"
     }
 
     signingConfigs {

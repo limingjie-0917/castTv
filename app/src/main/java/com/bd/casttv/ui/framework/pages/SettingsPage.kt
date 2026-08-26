@@ -171,7 +171,18 @@ class SettingsPage(context: Context) : BasePage(context) {
         }
     }
 
-    private fun group(title: String) { list.addView(TextView(context).apply { text = title; textSize = 20f; setTextColor(WARM); setPadding(0, dp(18), 0, dp(8)) }) }
+    // 分组标题：小号字 + 半透明暖黄 + 大上间距，现代简约风格不抢视觉焦点
+    private fun group(title: String) {
+        list.addView(TextView(context).apply {
+            text = title
+            textSize = 14f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.argb(180, 245, 196, 81))
+            setPadding(dp(4), dp(24), 0, dp(6))
+            includeFontPadding = false
+            letterSpacing = 0.08f
+        })
+    }
     private fun row(title: String, summary: String = "", click: () -> Unit) {
         val v = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -180,19 +191,21 @@ class SettingsPage(context: Context) : BasePage(context) {
             clipChildren = false
             clipToPadding = false
             background = card(false)
-            setPadding(dp(18), 0, dp(18), 0)
+            // 水平内边距微增到 20dp，给标题和摘要更多呼吸空间
+            setPadding(dp(20), 0, dp(20), 0)
             setOnClickListener {
                 pendingFocusIndex = focusables.indexOf(this)
                 click()
             }
             setOnFocusChangeListener { view, has ->
                 view.background = card(has)
-                FocusFxHelper.applyFocusFxState(view, has, cornerRadiusDp = 14)
+                FocusFxHelper.applyFocusFxState(view, has, cornerRadiusDp = 16)
             }
         }
         v.addView(settingTitle(title))
         if (summary.isNotBlank()) v.addView(settingSummary(summary), LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply { topMargin = dp(3) })
-        list.addView(v, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(64)).apply { bottomMargin = dp(8) })
+        // 行高 68dp + 间距 10dp，更舒展的呼吸感
+        list.addView(v, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(68)).apply { bottomMargin = dp(10) })
         focusables.add(v)
     }
     private fun switchRow(title: String, checked: Boolean, summary: String = "", on: (Boolean) -> Unit) {
@@ -205,10 +218,10 @@ class SettingsPage(context: Context) : BasePage(context) {
             clipChildren = false
             clipToPadding = false
             background = card(focused = false, selected = checked)
-            setPadding(dp(18), 0, dp(18), 0)
+            setPadding(dp(20), 0, dp(20), 0)
             setOnFocusChangeListener { view, has ->
                 view.background = card(focused = has, selected = isSelected)
-                FocusFxHelper.applyFocusFxState(view, has, cornerRadiusDp = 14)
+                FocusFxHelper.applyFocusFxState(view, has, cornerRadiusDp = 16)
             }
         }
         val text = LinearLayout(context).apply {
@@ -243,26 +256,31 @@ class SettingsPage(context: Context) : BasePage(context) {
         row.addView(text, LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
         // SwitchCompat(iOS 风格 thumb/track) 实际绘制宽度可能超过 51dp，固定宽度会导致左侧被截断
         row.addView(switch, LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, dp(31)))
-        list.addView(row, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(64)).apply { bottomMargin = dp(8) })
+        // 行高 68dp + 间距 10dp，与 row() 保持一致
+        list.addView(row, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(68)).apply { bottomMargin = dp(10) })
         focusables.add(row)
     }
     private fun choiceRow(title: String, current: String, choices: List<Pair<String,String>>, on: (String)->Unit) { row(title, choices.firstOrNull{it.first==current}?.second ?: current) { dialog().setTitle(title).setItems(choices.map{it.second}.toTypedArray()) { d, which -> on(choices[which].first); d.dismiss(); refresh() }.show() } }
     private fun seekRow(title: String, value: Int, min: Int, max: Int, step: Int, on: (Int)->Unit) { row(title, if (title.contains("缩放")) "${value/10f}x" else "$value") { val bar=SeekBar(context).apply{ this.max=(max-min)/step; progress=(value-min)/step }; dialog().setTitle(title).setView(bar).setPositiveButton("确定"){_,_-> on(min+bar.progress*step); refresh() }.show() } }
+    // 标题：字号略降至 17f，粗体保留层级；色彩改用略带暖色的米白，与暖黄主题呼应且更柔和
     private fun settingTitle(title: String) = TextView(context).apply {
         text = title
-        textSize = 18f
+        textSize = 17f
         typeface = Typeface.DEFAULT_BOLD
-        setTextColor(Color.WHITE)
+        setTextColor(Color.argb(238, 250, 248, 244))
         gravity = Gravity.CENTER_VERTICAL
         includeFontPadding = false
+        letterSpacing = 0.02f
     }
+    // 摘要：小一号 13f，冷调灰白降低至 150 不透明度，作为辅助信息不抢视觉焦点，与标题形成层次
     private fun settingSummary(summary: String) = TextView(context).apply {
         text = summary
-        textSize = 13.5f
+        textSize = 13f
         typeface = Typeface.DEFAULT
-        setTextColor(Color.argb(170, 255, 255, 255))
+        setTextColor(Color.argb(150, 218, 220, 226))
         gravity = Gravity.CENTER_VERTICAL
         includeFontPadding = false
+        letterSpacing = 0.01f
     }
     private fun refresh() {
         val idx = pendingFocusIndex
@@ -1911,19 +1929,21 @@ class SettingsPage(context: Context) : BasePage(context) {
     }
 
     private fun bindBoundary() { val l = View.OnKeyListener { v, code, e -> if(e.action==KeyEvent.ACTION_DOWN && ((code==KeyEvent.KEYCODE_DPAD_UP && v===focusables.firstOrNull()) || (code==KeyEvent.KEYCODE_DPAD_DOWN && v===focusables.lastOrNull()))) { v.animate().translationY(if(code==KeyEvent.KEYCODE_DPAD_UP) -dp(8).toFloat() else dp(8).toFloat()).setDuration(60).withEndAction{v.animate().translationY(0f).setDuration(90).start()}.start(); true } else false }; focusables.forEach{it.setOnKeyListener(l)} }
+    // 卡片背景：低不透明度 + 16dp 圆角 + 轻描边，现代简约不过度装饰
     private fun card(focused:Boolean, selected:Boolean = false)=GradientDrawable().apply{
-        cornerRadius=dp(14).toFloat()
+        cornerRadius=dp(16).toFloat()
         setColor(when {
-            focused && selected -> Color.argb(175, 44, 42, 30)
-            selected -> Color.argb(150, 32, 31, 26)
-            else -> Color.argb(135,20,24,32)
+            focused && selected -> Color.argb(140, 44, 42, 30)
+            selected -> Color.argb(100, 32, 31, 26)
+            focused -> Color.argb(90, 28, 30, 38)
+            else -> Color.argb(70, 18, 20, 26)
         })
         setStroke(
-            dp(if(focused)2 else 1),
+            dp(if(focused) 2 else 1),
             when {
                 focused -> WARM
-                selected -> Color.argb(150,245,196,81)
-                else -> Color.argb(70,255,255,255)
+                selected -> Color.argb(120, 245, 196, 81)
+                else -> Color.argb(45, 255, 255, 255)
             }
         )
     }

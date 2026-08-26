@@ -97,8 +97,8 @@ class WallpaperSettingsDialog(
         val content = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(18), dp(20), dp(18))
-            clipChildren = false
-            clipToPadding = false
+            clipChildren = true
+            clipToPadding = true
         }
         panel.addView(content, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
@@ -505,9 +505,19 @@ class WallpaperSettingsDialog(
             lp.marginEnd = dp(8)
             layoutParams = lp
         }
+        // 壁纸图片：1dp 内边距 + 圆角裁剪，使聚焦时描边与图片之间有清晰间隙。
+        val pad = dp(1)
         val img = ImageView(context).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
             setImageResource(WallpaperManager.resolveDrawable(presetId))
+            setPadding(pad, pad, pad, pad)
+            clipToOutline = true
+            outlineProvider = object : android.view.ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: android.graphics.Outline) {
+                    val r = dp(8).toFloat()
+                    outline.setRoundRect(pad, pad, view.width - pad, view.height - pad, r)
+                }
+            }
             layoutParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         }
         val border = View(context).apply {

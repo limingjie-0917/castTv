@@ -14,6 +14,7 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -24,9 +25,11 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.bd.casttv.R
 import com.bd.casttv.dlna.DlnaRendererService
+import com.bd.casttv.dlna.LanDeviceScanner
 import com.bd.casttv.dlna.PlaybackController
 import com.bd.casttv.douyin.DouyinCastHistoryStore
 import com.bd.casttv.player.PlayerActivity
+import com.bd.casttv.settings.CustomDouyinDeviceGroupsStore
 import com.bd.casttv.settings.DouyinDeviceGroup
 import com.bd.casttv.settings.DouyinDeviceGroups
 import com.bd.casttv.settings.Settings
@@ -86,37 +89,51 @@ class DouyinCastPage(context: Context) : BasePage(context) {
     init {
         val outer = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(dpi(24), dpi(6), dpi(24), dpi(12))
+            setPadding(dpi(2), dpi(2), dpi(2), dpi(2))
             weightSum = 5f
         }
 
         // 左栏：设备组列表（1/5）
         val leftPanel = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dpi(10), dpi(10), dpi(10), dpi(10))
+            setPadding(dpi(8), dpi(8), dpi(8), dpi(8))
             background = GradientDrawable().apply {
                 cornerRadius = dpi(16).toFloat()
                 setColor(Color.parseColor("#331A1A1E"))
                 setStroke(dpi(1), Color.parseColor("#33FFFFFF"))
             }
         }
-        leftPanel.addView(TextView(context).apply {
+        // 左栏标题区：第一行（主标题 + 添加按钮）+ 第二行（副标题 整行）
+        val titleHeader = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        val leftTitleRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        leftTitleRow.addView(TextView(context).apply {
             text = "设备名称组"; textSize = 16f; setTextColor(Color.WHITE)
-        })
-        leftPanel.addView(TextView(context).apply {
+            typeface = Typeface.DEFAULT_BOLD
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        val addBtn = buildAddDeviceGroupButton()
+        leftTitleRow.addView(addBtn, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dpi(28)).apply { leftMargin = dpi(8) })
+        titleHeader.addView(leftTitleRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        titleHeader.addView(TextView(context).apply {
             text = "切换后请到手机抖音选择新名称"; textSize = 12f
             setTextColor(Color.parseColor("#A0A4AE"))
+            maxLines = 1
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dpi(4) })
+        leftPanel.addView(titleHeader, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         val leftScroll = ScrollView(context).apply { isFillViewport = true; overScrollMode = View.OVER_SCROLL_NEVER }
         leftScroll.addView(groupsListContainer, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         leftPanel.addView(leftScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply { topMargin = dpi(10) })
 
-        outer.addView(leftPanel, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+        outer.addView(leftPanel, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.4f))
 
         // 右栏：时间线（4/5）
         val rightPanel = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dpi(12), dpi(10), dpi(12), dpi(10))
+            setPadding(dpi(10), dpi(8), dpi(10), dpi(8))
             background = GradientDrawable().apply {
                 cornerRadius = dpi(16).toFloat()
                 setColor(Color.parseColor("#331A1A1E"))
@@ -145,7 +162,7 @@ class DouyinCastPage(context: Context) : BasePage(context) {
         rightScroll.addView(emptyTimeline, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dpi(80); gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL })
         rightPanel.addView(rightScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply { topMargin = dpi(10) })
 
-        outer.addView(rightPanel, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 4f).apply { leftMargin = dpi(8) })
+        outer.addView(rightPanel, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 3.6f).apply { leftMargin = dpi(4) })
 
         contentContainer.addView(outer, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
     }
@@ -247,17 +264,20 @@ class DouyinCastPage(context: Context) : BasePage(context) {
     private fun renderGroups() {
         groupsListContainer.removeAllViews()
         val currentId = settingsStore.douyinDeviceGroupId
-        val sorted = DouyinDeviceGroups.ALL.sortedWith(compareByDescending { it.id == currentId })
+        val allGroups = DouyinDeviceGroups.allIncludingCustom(context)
+        // 当前使用组置顶，其他按原顺序
+        val sorted = allGroups.sortedWith(compareByDescending { it.id == currentId })
         sorted.forEachIndexed { idx, group ->
             val selected = group.id == currentId
-            val row = buildGroupRow(group, selected)
+            val isCustom = DouyinDeviceGroups.isCustomGroupId(context, group.id)
+            val row = buildGroupRow(group, selected, isCustom)
             groupsListContainer.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 topMargin = dpi(if (idx == 0) 0 else 8)
             })
         }
     }
 
-    private fun buildGroupRow(group: DouyinDeviceGroup, selected: Boolean): View {
+    private fun buildGroupRow(group: DouyinDeviceGroup, selected: Boolean, isCustom: Boolean): View {
         lateinit var row: LinearLayout
         lateinit var nameView: TextView
         fun refreshRow(focused: Boolean) {
@@ -293,8 +313,14 @@ class DouyinCastPage(context: Context) : BasePage(context) {
                 }
             }
         }
+        // 顶部角标行：使用中 + 克隆 + 删除按钮
+        val topBar = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            visibility = if (selected || isCustom) View.VISIBLE else View.GONE
+        }
         if (selected) {
-            row.addView(TextView(context).apply {
+            topBar.addView(TextView(context).apply {
                 text = "使用中"; textSize = 11f
                 setTextColor(Color.parseColor("#1A1A1E"))
                 setPadding(dpi(6), dpi(2), dpi(6), dpi(2))
@@ -302,7 +328,57 @@ class DouyinCastPage(context: Context) : BasePage(context) {
                     cornerRadius = dpi(8).toFloat()
                     setColor(Color.parseColor("#FFD07A"))
                 }
-            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dpi(5) })
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = dpi(6) })
+        }
+        if (isCustom) {
+            topBar.addView(TextView(context).apply {
+                text = "克隆"; textSize = 11f
+                setTextColor(Color.parseColor("#FFD07A"))
+                setPadding(dpi(6), dpi(2), dpi(6), dpi(2))
+                background = GradientDrawable().apply {
+                    cornerRadius = dpi(8).toFloat()
+                    setColor(Color.parseColor("#22FFD07A"))
+                    setStroke(dpi(1), Color.parseColor("#66FFD07A"))
+                }
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = dpi(6) })
+        }
+        // 删除按钮（仅克隆组）—— 占据右侧空间
+        if (isCustom) {
+            val spacer = View(context)
+            topBar.addView(spacer, LinearLayout.LayoutParams(0, 1, 1f))
+            val delBtn = TextView(context).apply {
+                text = "删除"; textSize = 11f
+                setTextColor(Color.parseColor("#FF8B8B"))
+                setPadding(dpi(8), dpi(2), dpi(8), dpi(2))
+                isFocusable = true; isFocusableInTouchMode = true; isClickable = true
+                background = GradientDrawable().apply {
+                    cornerRadius = dpi(8).toFloat()
+                    setColor(Color.parseColor("#22FF8B8B"))
+                    setStroke(dpi(1), Color.parseColor("#66FF8B8B"))
+                }
+                fun refresh(focused: Boolean) {
+                    background = GradientDrawable().apply {
+                        cornerRadius = dpi(8).toFloat()
+                        setColor(Color.parseColor("#33FF8B8B"))
+                        setStroke(dpi(if (focused) 2 else 1), Color.parseColor("#FF8B8B"))
+                    }
+                }
+                refresh(false)
+                setOnFocusChangeListener { _, hasFocus -> refresh(hasFocus) }
+                setOnKeyListener { _, keyCode, event ->
+                    if (event.action == KeyEvent.ACTION_DOWN &&
+                        (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)) {
+                        confirmDeleteCustomGroup(group)
+                        true
+                    } else false
+                }
+            }
+            topBar.addView(delBtn, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        if (topBar.childCount > 0) {
+            row.addView(topBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = dpi(5)
+            })
         }
         nameView = TextView(context).apply {
             text = group.label; textSize = 15f
@@ -329,6 +405,549 @@ class DouyinCastPage(context: Context) : BasePage(context) {
             post { focusDeviceGroupById(group.id) }
         }
         return row
+    }
+
+    private fun confirmDeleteCustomGroup(group: DouyinDeviceGroup) {
+        val warm = Color.rgb(245, 196, 81)
+        val lightText = 0xFFEEE8DA.toInt()
+        val panel = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dpi(24), dpi(20), dpi(24), dpi(18))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                ThemeManager.currentPalette(context).dialogTitleGradient
+            ).apply {
+                cornerRadius = dpi(18).toFloat()
+                setStroke(dpi(2), warm)
+            }
+        }
+        panel.addView(TextView(context).apply {
+            text = "删除克隆组"; textSize = 20f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dpi(12) })
+        panel.addView(TextView(context).apply {
+            text = "确定要删除克隆组「${group.label}」吗？\n\n删除后该身份不再可用。"
+            textSize = 14f
+            setTextColor(lightText)
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dpi(18) })
+
+        val dialog = AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog).setView(panel).create()
+        val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.RIGHT }
+        val cancelBtn = dialogActionButton("取消")
+        val confirmBtn = dialogActionButton("删除")
+        cancelBtn.setOnClickListener { dialog.dismiss() }
+        confirmBtn.setOnClickListener {
+            try { CustomDouyinDeviceGroupsStore.removeGroup(context, group.id) } catch (_: Throwable) {}
+            if (settingsStore.douyinDeviceGroupId == group.id) {
+                settingsStore.douyinDeviceGroupId = DouyinDeviceGroups.DEFAULT_GROUP_ID
+                settingsStore.douyinDeviceMemberIndex = 0
+                triggerDlnaIdentityRestart()
+            }
+            toastMsg("已删除克隆组「${group.label}」")
+            renderAll()
+            dialog.dismiss()
+        }
+        row.addView(cancelBtn, LinearLayout.LayoutParams(dpi(96), dpi(44)).apply { rightMargin = dpi(10) })
+        row.addView(confirmBtn, LinearLayout.LayoutParams(dpi(96), dpi(44)))
+        panel.addView(row)
+        dialog.setOnShowListener {
+            dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            confirmBtn.requestFocus()
+        }
+        try {
+            dialog.show()
+            dialog.window?.setLayout(dpi(420), ViewGroup.LayoutParams.WRAP_CONTENT)
+        } catch (_: Throwable) {}
+    }
+
+    // -------------------- 克隆真电视弹窗 --------------------
+
+    private val deviceScanner = LanDeviceScanner()
+    @Volatile private var cloneDialog: AlertDialog? = null
+
+    private fun buildAddDeviceGroupButton(): View {
+        val warm = Color.parseColor("#FFD07A")
+        fun TextView.refresh(focused: Boolean) {
+            background = GradientDrawable().apply {
+                cornerRadius = dpi(14).toFloat()
+                setColor(if (focused) Color.parseColor("#55FFD07A") else Color.parseColor("#33FFD07A"))
+                setStroke(dpi(if (focused) 2 else 1), warm)
+            }
+            setTextColor(if (focused) Color.WHITE else warm)
+        }
+        return TextView(context).apply {
+            text = "＋ 添加"
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setPadding(dpi(12), 0, dpi(12), 0)
+            isFocusable = true; isFocusableInTouchMode = true; isClickable = true
+            refresh(false)
+            setOnFocusChangeListener { v, hasFocus -> (v as TextView).refresh(hasFocus) }
+            setOnClickListener { showCloneDeviceDialog() }
+            setOnKeyListener { _, keyCode, event ->
+                if (event.action == KeyEvent.ACTION_DOWN &&
+                    (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)) {
+                    showCloneDeviceDialog()
+                    true
+                } else false
+            }
+        }
+    }
+
+    private fun showCloneDeviceDialog() {
+        if (cloneDialog?.isShowing == true) return
+        val warm = Color.parseColor("#FFD07A")
+        val lightText = 0xFFEEE8DA.toInt()
+
+        // 状态
+        val scanResults = mutableListOf<DouyinDeviceGroup>()
+        val visibleList = mutableListOf<DouyinDeviceGroup>()
+        // 选中状态：index of visibleList，-1 表示未选中
+        var selectedIndex = -1
+        // 添加类型：0 = 新组，1 = 加入现有组（选中项生效）
+        var selectedMode = 0
+        val builtinGroups = DouyinDeviceGroups.ALL
+        var selectedParentGroup = builtinGroups.first()
+
+        val panel = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dpi(24), dpi(20), dpi(24), dpi(18))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                ThemeManager.currentPalette(context).dialogTitleGradient
+            ).apply {
+                cornerRadius = dpi(18).toFloat()
+                setStroke(dpi(2), warm)
+            }
+        }
+        // 标题（带蜡笔小新圆形贴纸，去掉✕关闭按钮）
+        val header = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+        }
+        header.addView(ClippedImageView(context).apply {
+            setCircle(true)
+            setImageResource(R.drawable.sticker_shinchan)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            foreground = context.getDrawable(R.drawable.fg_sticker_circle_border)
+        }, LinearLayout.LayoutParams(dpi(44), dpi(44)).apply { rightMargin = dpi(12) })
+        header.addView(TextView(context).apply {
+            text = "添加设备组"; textSize = 20f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+        })
+        panel.addView(header, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dpi(12) })
+
+        // 副标题
+        panel.addView(TextView(context).apply {
+            text = "扫描局域网内的可接收投屏设备，把设备的身份字段克隆到本机。"
+            textSize = 11f
+            setTextColor(lightText)
+            maxLines = 2
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dpi(12) })
+
+        fun buildParentChips(row: LinearLayout, onSelect: () -> Unit) {
+            builtinGroups.forEach { g ->
+                val chip = TextView(context).apply {
+                    text = g.label
+                    textSize = 11f
+                    gravity = Gravity.CENTER
+                    setPadding(dpi(10), dpi(4), dpi(10), dpi(4))
+                    isFocusable = true; isFocusableInTouchMode = true; isClickable = true
+                    setOnClickListener {
+                        selectedParentGroup = g
+                        onSelect()
+                    }
+                    val isSel = (selectedParentGroup.id == g.id)
+                    background = GradientDrawable().apply {
+                        cornerRadius = dpi(8).toFloat()
+                        setColor(if (isSel) Color.parseColor("#55FFD07A") else Color.parseColor("#22FFFFFF"))
+                        setStroke(dpi(if (isSel) 2 else 1), Color.parseColor(if (isSel) "#FFD07A" else "#44FFFFFF"))
+                    }
+                    setTextColor(if (isSel) Color.WHITE else lightText)
+                    setOnFocusChangeListener { _, hasFocus ->
+                        val selected = (selectedParentGroup.id == g.id)
+                        background = GradientDrawable().apply {
+                            cornerRadius = dpi(8).toFloat()
+                            setColor(if (selected) Color.parseColor("#55FFD07A") else Color.parseColor("#22FFFFFF"))
+                            setStroke(dpi(if (hasFocus || selected) 2 else 1), Color.parseColor(if (selected) "#FFD07A" else "#44FFFFFF"))
+                        }
+                    }
+                }
+                row.addView(chip, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = dpi(6) })
+            }
+        }
+
+        // 扫描状态行
+        val statusRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        val statusText = TextView(context).apply {
+            text = "准备扫描…"; textSize = 11f
+            setTextColor(lightText); maxLines = 1
+        }
+        val rescanInlineBtn = TextView(context).apply {
+            text = "重新扫描"; textSize = 11f
+            setTextColor(warm)
+            setPadding(dpi(8), dpi(2), dpi(8), dpi(2))
+            isFocusable = true; isFocusableInTouchMode = true; isClickable = true
+            visibility = View.GONE
+            background = GradientDrawable().apply {
+                cornerRadius = dpi(8).toFloat()
+                setColor(Color.parseColor("#22FFD07A"))
+                setStroke(dpi(1), Color.parseColor("#66FFD07A"))
+            }
+        }
+        statusRow.addView(statusText, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        statusRow.addView(rescanInlineBtn, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        panel.addView(statusRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dpi(8) })
+
+        // 设备列表（ScrollView + LinearLayout，最多 280dp 高度）
+        val listScroll = ScrollView(context).apply { overScrollMode = View.OVER_SCROLL_NEVER }
+        val listContainer = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        listScroll.addView(listContainer, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        panel.addView(listScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpi(280)).apply { bottomMargin = dpi(10) })
+
+        // 底部按钮：取消 / 刷新 / 添加
+        val bottomRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.RIGHT }
+        val cancelBtn = dialogActionButton("取消")
+        val refreshBtn = dialogActionButton("刷新")
+        val addBtn = dialogActionButton("添加").apply {
+            // 主按钮样式：金色填充
+            val warmColor = Color.parseColor("#FFD07A")
+            background = GradientDrawable().apply {
+                cornerRadius = dpi(12).toFloat()
+                setColor(Color.parseColor("#66FFD07A"))
+                setStroke(dpi(2), warmColor)
+            }
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+            setOnFocusChangeListener { _, hasFocus ->
+                background = GradientDrawable().apply {
+                    cornerRadius = dpi(12).toFloat()
+                    setColor(if (hasFocus) Color.parseColor("#88FFD07A") else Color.parseColor("#66FFD07A"))
+                    setStroke(dpi(if (hasFocus) 3 else 2), warmColor)
+                }
+            }
+        }
+        bottomRow.addView(cancelBtn, LinearLayout.LayoutParams(dpi(120), dpi(44)).apply { rightMargin = dpi(10) })
+        bottomRow.addView(refreshBtn, LinearLayout.LayoutParams(dpi(120), dpi(44)).apply { rightMargin = dpi(10) })
+        bottomRow.addView(addBtn, LinearLayout.LayoutParams(dpi(120), dpi(44)))
+        panel.addView(bottomRow)
+
+        val dialog = AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog).setView(panel).create()
+        cloneDialog = dialog
+
+        val listItemViews = mutableListOf<LinearLayout>()
+
+        fun refreshList() {
+            listContainer.removeAllViews()
+            listItemViews.clear()
+            visibleList.clear()
+            val knownIds = try { CustomDouyinDeviceGroupsStore.list(context).map { it.id }.toSet() } catch (_: Throwable) { emptySet() }
+            scanResults.forEach { g -> if (g.id !in knownIds) visibleList.add(g) }
+
+            if (visibleList.isEmpty()) {
+                listContainer.addView(TextView(context).apply {
+                    text = if (scanResults.isEmpty()) "未发现可用设备" else "已扫描设备都已添加过"
+                    textSize = 12f; gravity = Gravity.CENTER
+                    setTextColor(lightText)
+                    setPadding(0, dpi(40), 0, 0)
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+                return
+            }
+            // 如果之前选中的索引已越界（比如刷新后列表变小），重置
+            if (selectedIndex !in 0 until visibleList.size) {
+                selectedIndex = -1
+                selectedMode = 0
+            }
+            visibleList.forEachIndexed { idx, g ->
+                val member = g.memberAt(0)
+                fun View.refreshRow(focused: Boolean, isSelected: Boolean) {
+                    background = GradientDrawable().apply {
+                        cornerRadius = dpi(10).toFloat()
+                        setColor(
+                            when {
+                                isSelected -> Color.parseColor("#66FFD07A")
+                                focused -> Color.parseColor("#55FFD07A")
+                                else -> Color.parseColor("#22FFFFFF")
+                            }
+                        )
+                        setStroke(
+                            dpi(if (focused || isSelected) 2 else 1),
+                            if (focused || isSelected) warm else Color.parseColor("#33FFFFFF")
+                        )
+                    }
+                }
+
+                // 行主体（左侧信息 + 右侧单选区域占位）
+                val row = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dpi(10), dpi(10), dpi(10), dpi(10))
+                    isFocusable = true; isFocusableInTouchMode = true; isClickable = true
+                    tag = idx
+                }
+                listItemViews.add(row)
+
+                // 左侧图标 + 信息
+                row.addView(TextView(context).apply {
+                    text = "📺"; textSize = 18f
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = dpi(8) })
+                val infoBlock = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+                infoBlock.addView(TextView(context).apply {
+                    text = member.friendlyName; textSize = 14f; maxLines = 1
+                    setTextColor(Color.WHITE)
+                })
+                infoBlock.addView(TextView(context).apply {
+                    text = "${member.manufacturer} · ${member.modelName}"
+                    textSize = 10f; maxLines = 1
+                    setTextColor(lightText)
+                })
+                row.addView(infoBlock, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+
+                // 右侧：仅选中时显示的两个单选框
+                val radioBar = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    visibility = if (idx == selectedIndex) View.VISIBLE else View.GONE
+                }
+                // 单选：新组
+                val radioNew = TextView(context).apply {
+                    text = "新组"; textSize = 11f
+                    setPadding(dpi(10), dpi(4), dpi(10), dpi(4))
+                    isFocusable = true; isFocusableInTouchMode = true; isClickable = true
+                    val selected = (idx == selectedIndex && selectedMode == 0)
+                    background = GradientDrawable().apply {
+                        cornerRadius = dpi(8).toFloat()
+                        setColor(if (selected) Color.parseColor("#66FFD07A") else Color.parseColor("#1AFFFFFF"))
+                        setStroke(dpi(if (selected) 2 else 1), Color.parseColor(if (selected) "#FFD07A" else "#55FFFFFF"))
+                    }
+                    setTextColor(if (selected) Color.WHITE else lightText)
+                    setOnClickListener {
+                        if (idx != selectedIndex) return@setOnClickListener
+                        selectedMode = 0
+                        refreshList()
+                    }
+                    setOnKeyListener { _, keyCode, event ->
+                        if (event.action == KeyEvent.ACTION_DOWN &&
+                            (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)) {
+                            if (idx == selectedIndex) {
+                                selectedMode = 0
+                                refreshList()
+                            }
+                            true
+                        } else false
+                    }
+                }
+                // 单选：加入现有组
+                val radioJoin = TextView(context).apply {
+                    text = "加入现有组"; textSize = 11f
+                    setPadding(dpi(10), dpi(4), dpi(10), dpi(4))
+                    isFocusable = true; isFocusableInTouchMode = true; isClickable = true
+                    val selected = (idx == selectedIndex && selectedMode == 1)
+                    background = GradientDrawable().apply {
+                        cornerRadius = dpi(8).toFloat()
+                        setColor(if (selected) Color.parseColor("#66FFD07A") else Color.parseColor("#1AFFFFFF"))
+                        setStroke(dpi(if (selected) 2 else 1), Color.parseColor(if (selected) "#FFD07A" else "#55FFFFFF"))
+                    }
+                    setTextColor(if (selected) Color.WHITE else lightText)
+                    setOnClickListener {
+                        if (idx != selectedIndex) return@setOnClickListener
+                        selectedMode = 1
+                        refreshList()
+                    }
+                    setOnKeyListener { _, keyCode, event ->
+                        if (event.action == KeyEvent.ACTION_DOWN &&
+                            (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)) {
+                            if (idx == selectedIndex) {
+                                selectedMode = 1
+                                refreshList()
+                            }
+                            true
+                        } else false
+                    }
+                }
+                radioBar.addView(radioNew, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = dpi(6) })
+                radioBar.addView(radioJoin, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                row.addView(radioBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+
+                // 行刷新 + 选中
+                val isSel = idx == selectedIndex
+                row.refreshRow(focused = false, isSelected = isSel)
+                row.setOnClickListener {
+                    if (idx == selectedIndex) {
+                        // 重复点击 → 保持
+                    } else {
+                        selectedIndex = idx
+                        selectedMode = 0
+                        refreshList()
+                        // 把焦点移到新的 radio 上，方便 DPAD 继续走
+                        row.findFocus() ?: run {
+                            handler.post { (radioBar.getChildAt(0) as? View)?.requestFocus() }
+                        }
+                    }
+                }
+                row.setOnKeyListener { _, keyCode, event ->
+                    if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+                    when (keyCode) {
+                        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                            selectedIndex = idx
+                            selectedMode = 0
+                            refreshList()
+                            true
+                        }
+                        KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                            if (idx == selectedIndex && radioBar.visibility == View.VISIBLE) {
+                                radioNew.requestFocus()
+                                true
+                            } else {
+                                BoundaryFocusHandler.shake(row)
+                                true
+                            }
+                        }
+                        KeyEvent.KEYCODE_DPAD_DOWN -> {
+                            // 如果当前是"加入现有组"，把焦点交给下方父组选择器的首个 chip（如果存在）
+                            if (idx == selectedIndex && selectedMode == 1) {
+                                val next = listContainer.getChildAt(listContainer.indexOfChild(row) + 1)
+                                if (next is LinearLayout) {
+                                    for (i in 0 until next.childCount) {
+                                        val c = next.getChildAt(i)
+                                        if (c is View && c.isFocusable && c.visibility == View.VISIBLE) {
+                                            c.requestFocus()
+                                            return@setOnKeyListener true
+                                        }
+                                    }
+                                }
+                            }
+                            false
+                        }
+                        else -> false
+                    }
+                }
+                listContainer.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                    topMargin = if (idx == 0) 0 else dpi(6)
+                })
+
+                // 当该项被选中 且 选择了"加入现有组"，在该行下方再插入一行：现有设备组名称（横滑chip，单选）
+                if (idx == selectedIndex && selectedMode == 1) {
+                    val parentBlock = LinearLayout(context).apply {
+                        orientation = LinearLayout.VERTICAL
+                        setPadding(dpi(38), dpi(8), dpi(10), dpi(8))
+                        background = GradientDrawable().apply {
+                            cornerRadius = dpi(10).toFloat()
+                            setColor(Color.parseColor("#11FFD07A"))
+                            setStroke(dpi(1), Color.parseColor("#33FFD07A"))
+                        }
+                    }
+                    parentBlock.addView(TextView(context).apply {
+                        text = "加入现有组 → 请选择目标父组："
+                        textSize = 11f; setTextColor(lightText)
+                        setPadding(0, 0, 0, dpi(4))
+                    }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                    val hsv = HorizontalScrollView(context).apply {
+                        isFillViewport = true
+                        overScrollMode = View.OVER_SCROLL_NEVER
+                    }
+                    val chipRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+                    buildParentChips(chipRow) { refreshList() }
+                    hsv.addView(chipRow, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                    parentBlock.addView(hsv, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+                    listContainer.addView(parentBlock, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                        topMargin = dpi(4)
+                        marginStart = dpi(12)
+                        marginEnd = dpi(12)
+                    })
+                }
+            }
+        }
+
+        fun doScan() {
+            statusText.text = "正在扫描局域网…"
+            rescanInlineBtn.visibility = View.GONE
+            scanResults.clear()
+            selectedIndex = -1
+            selectedMode = 0
+            refreshList()
+            val excludeIds = try { CustomDouyinDeviceGroupsStore.list(context).map { it.id }.toSet() } catch (_: Throwable) { emptySet() }
+            val mainExecutor = java.util.concurrent.Executor { cmd -> handler.post(cmd) }
+            deviceScanner.startScan(context, excludeIds, object : LanDeviceScanner.Callback {
+                override fun onProgress(foundCount: Int) {
+                    handler.post { statusText.text = "正在扫描局域网…（已发现 $foundCount 台）" }
+                }
+                override fun onComplete(groups: List<DouyinDeviceGroup>, aborted: Boolean) {
+                    handler.post {
+                        scanResults.addAll(groups)
+                        when {
+                            aborted -> statusText.text = "扫描被中断，请重试"
+                            scanResults.isEmpty() -> statusText.text = "未发现 DLNA 设备，请确认电视与盒子在同一 Wi-Fi"
+                            else -> statusText.text = "扫描完成，共发现 ${scanResults.size} 台 DLNA 设备"
+                        }
+                        rescanInlineBtn.visibility = if (scanResults.isNotEmpty() || aborted) View.VISIBLE else View.GONE
+                        refreshList()
+                    }
+                }
+            }, mainExecutor)
+        }
+
+        // 按钮绑定
+        rescanInlineBtn.setOnClickListener { doScan() }
+        refreshBtn.setOnClickListener { doScan() }
+        cancelBtn.setOnClickListener { dialog.dismiss() }
+        addBtn.setOnClickListener {
+            if (selectedIndex !in 0 until visibleList.size) {
+                toastMsg("请先选择要克隆的设备")
+                return@setOnClickListener
+            }
+            val g = visibleList[selectedIndex]
+            val member = g.memberAt(0)
+            cloneDeviceGroup(g, selectedMode, selectedParentGroup.id, member)
+            dialog.dismiss()
+        }
+
+        dialog.setOnShowListener {
+            dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+            dialog.window?.setLayout(dpi(560), ViewGroup.LayoutParams.WRAP_CONTENT)
+            // 初始焦点：取消按钮
+            cancelBtn.requestFocus()
+            doScan()
+        }
+        dialog.setOnDismissListener {
+            deviceScanner.abort()
+        }
+        try { dialog.show() } catch (_: Throwable) {}
+    }
+
+    /** 把扫描到的设备克隆到自定义组存储，并切换为当前使用组。 */
+    private fun cloneDeviceGroup(
+        group: DouyinDeviceGroup,
+        mode: Int,
+        parentGroupId: String,
+        member: com.bd.casttv.dlna.DeviceIdentity
+    ) {
+        try {
+            if (mode == 0) {
+                // 作为新组：直接保存 + 切换
+                CustomDouyinDeviceGroupsStore.addGroup(context, group)
+                settingsStore.douyinDeviceGroupId = group.id
+                settingsStore.douyinDeviceMemberIndex = 0
+                toastMsg("已添加克隆组「${group.label}」并切换为当前使用组")
+            } else {
+                // 加入现有组
+                val newIdx = CustomDouyinDeviceGroupsStore.addMemberToGroup(context, parentGroupId, member)
+                if (newIdx < 0) {
+                    toastMsg("该设备已存在于目标组，未重复添加")
+                    return
+                }
+                settingsStore.douyinDeviceGroupId = parentGroupId
+                settingsStore.douyinDeviceMemberIndex = newIdx
+                toastMsg("已作为成员添加到现有组并切换")
+            }
+            if (!settingsStore.douyinCastEnabled) settingsStore.douyinCastEnabled = true
+            triggerDlnaIdentityRestart()
+            renderAll()
+            post { focusDeviceGroupById(settingsStore.douyinDeviceGroupId) }
+        } catch (t: Throwable) {
+            toastMsg("添加失败：${t.message ?: "未知错误"}")
+        }
     }
 
     // -------------------- 右栏：时间线 --------------------

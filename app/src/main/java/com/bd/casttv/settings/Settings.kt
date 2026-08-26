@@ -8,7 +8,8 @@ import com.bd.casttv.dlna.DeviceIdentity
  */
 class Settings(context: Context) {
 
-    private val prefs = context.applicationContext
+    private val appContext = context.applicationContext
+    private val prefs = appContext
         .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     init {
@@ -48,7 +49,8 @@ class Settings(context: Context) {
     /** 完整 DLNA/UPnP 设备身份（friendlyName + manufacturer + model…），按开关状态动态计算。 */
     fun currentDlnaIdentity(): DeviceIdentity {
         return if (douyinCastEnabled) {
-            val group = DouyinDeviceGroups.findGroup(douyinDeviceGroupId)
+            // 优先从自定义组里查（含用户克隆/扩展的成员），再回退到内置组
+            val group = DouyinDeviceGroups.findGroupIncludingCustom(appContext, douyinDeviceGroupId)
             group.memberAt(douyinDeviceMemberIndex)
         } else {
             // 关闭抖音适配：friendlyName 跟随用户自定义 deviceName，其余字段用 Xiaomi 兜底
