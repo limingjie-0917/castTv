@@ -444,7 +444,8 @@ class NewMainActivity : AppCompatActivity(), SettingsChangeBus.Listener, PageCon
 
         val closeBtn = dialogButton("关闭") { queueStartupDialog?.dismiss() }
         val continueBtn = dialogButton("继续播放") {
-            val next = store.nextPending()
+            val sorted = PlayQueueStore.SortConfig.apply(store.all())
+            val next = sorted.firstOrNull { it.status != PlayQueueStore.Status.FINISHED }
             if (next == null) {
                 Toast.makeText(this, "队列为空", Toast.LENGTH_SHORT).show()
                 queueStartupDialog?.dismiss()
