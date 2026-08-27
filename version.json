@@ -1,7 +1,7 @@
 {
-  "versionCode":424,
-  "versionName":"1.2.149",
-  "releaseNote": "JSON适配器规则扩展nextPageSelector参数：AI生成规则支持下一页selector，适配加载更多",
-  "apkUrl":"casttv-v1.2.149.apk",
+  "versionCode":429,
+  "versionName":"1.2.154",
+  "releaseNote":"启动弹窗稍后播放列表排序与页面一致",
+  "apkUrl":"casttv-v1.2.154.apk",
   "forceUpdate": false
 }

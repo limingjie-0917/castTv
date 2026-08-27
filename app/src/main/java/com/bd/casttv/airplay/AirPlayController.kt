@@ -5,6 +5,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import com.bd.casttv.CastApp
+import com.bd.casttv.dlna.SsdpDiagnostics
 import com.bd.casttv.util.LocalCrashLog
 import java.util.ArrayDeque
 import java.util.concurrent.CopyOnWriteArrayList
@@ -91,6 +92,10 @@ object AirPlayController {
         logD("mirroring started")
         isMirroring = true
         lastFrameAt = SystemClock.elapsedRealtime()
+        SsdpDiagnostics.logCastEvent(
+            SsdpDiagnostics.CastEvent.Kind.AIRPLAY_SESSION_START,
+            "AirPlay 镜像会话开始（RTSP SETUP video）"
+        )
         main.post {
             listeners.forEach {
                 try {
@@ -141,6 +146,10 @@ object AirPlayController {
         if (!isMirroring) return
         logD("mirroring stopped")
         isMirroring = false
+        SsdpDiagnostics.logCastEvent(
+            SsdpDiagnostics.CastEvent.Kind.AIRPLAY_SESSION_STOP,
+            "AirPlay 镜像会话停止（TEARDOWN 或超时）"
+        )
         main.removeCallbacks(watchdog)
         main.post {
             listeners.forEach {

@@ -37,6 +37,7 @@ import com.bd.casttv.webparse.AdapterSelectResult
 import com.bd.casttv.webparse.AdapterSelector
 import com.bd.casttv.webparse.JsonAdapterEventBus
 import com.bd.casttv.webparse.ParsePageKind
+import com.bd.casttv.webparse.ResourceSniffDialog
 import com.bd.casttv.webparse.ParseStep
 import com.bd.casttv.webparse.ParsedListMovie
 import com.bd.casttv.webparse.ParsedMovie
@@ -90,6 +91,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
     private var listJsonRule: String? = null
     private var listGrid: LinearLayout? = null
     private var listFooter: LinearLayout? = null
+    private var sniffedApi: ResourceSniffDialog.SniffedApi? = null
     private var listBackUrl: String = ""
     private var listBackMovies: List<ParsedListMovie> = emptyList()
     private var detailFromList = false
@@ -434,6 +436,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         listJsonRule = null
         listGrid = null
         listFooter = null
+        sniffedApi = null
         selectedSourceIndex = 0
         selectedEpisodeIndex = 0
         parseJob?.cancel()
@@ -720,6 +723,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         listJsonRule = null
         listGrid = null
         listFooter = null
+        sniffedApi = null
         selectedSourceIndex = 0
         selectedEpisodeIndex = 0
         parseJob?.cancel()
@@ -926,13 +930,18 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         clipChildren = false
         clipToPadding = false
         val hasMore = listNextPageUrl != null
+        val canSniff = listNextPageUrl == null && sniffedApi == null
+        val hasSniffedApi = sniffedApi != null
         val msg = when {
             message != null -> message
             loading -> "正在加载更多…"
             hasError -> "加载失败，按确认重试"
             hasMore -> "上滑或按↓键加载更多"
+            hasSniffedApi -> "上滑或按↓键加载更多"
+            canSniff -> "上滑或按OK键进入资源嗅探"
             else -> "没有更多了"
         }
+        val canClick = (hasMore || hasSniffedApi || canSniff) && !loading
         addView(ProgressBar(context).apply {
             isIndeterminate = true
             visibility = if (loading) View.VISIBLE else View.GONE
@@ -941,11 +950,23 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
             text = msg
             textSize = 14f
             setTextColor(Color.argb(180, 255, 255, 255))
-            isFocusable = hasMore && !loading
-            isClickable = hasMore && !loading
-            setOnClickListener { if (hasMore && !loading) loadNextPage() }
+            isFocusable = canClick
+            isClickable = canClick
+            setOnClickListener {
+                if (!canClick) return@setOnClickListener
+                when {
+                    hasMore && !loading -> loadNextPage()
+                    hasSniffedApi && !loading -> loadNextPage()
+                    canSniff -> showResourceSniffDialog()
+                }
+            }
             setOnFocusChangeListener { _, hasFocus ->
-                if (hasFocus && hasMore && !loading) loadNextPage()
+                if (!hasFocus || !canClick) return@setOnFocusChangeListener
+                when {
+                    hasMore && !loading -> loadNextPage()
+                    hasSniffedApi && !loading -> loadNextPage()
+                    canSniff -> showResourceSniffDialog()
+                }
             }
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
@@ -961,21 +982,39 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
     }
 
     private fun loadNextPage() {
-        val url = listNextPageUrl ?: return
         if (listNextPageJob?.isActive == true) return
+        val url = listNextPageUrl
+        val api = sniffedApi
+        if (url == null && api == null) return
         updateListFooter(loading = true)
         listNextPageJob = scope.launch {
             try {
-                val result = if (listJsonRule != null) {
-                    val html = withContext(Dispatchers.IO) { WebParseExtractor.fetchText(url) }
-                    withContext(Dispatchers.Default) { listExtractor.parseWithJsonRule(html, listJsonRule!!, url) }
-                } else {
-                    listExtractor.extractList(url)
-                }
                 val existing = listMovies
-                // 按 detailUrl 去重，只追加新条目
-                val newMovies = result.movies.filter { newItem ->
-                    existing.none { it.detailUrl == newItem.detailUrl }
+                val newMovies: List<ParsedListMovie>
+                when {
+                    // 路径1：有 nextPageUrl，走 HTML 解析
+                    url != null && listJsonRule != null -> {
+                        val html = withContext(Dispatchers.IO) { WebParseExtractor.fetchText(url) }
+                        val result = withContext(Dispatchers.Default) { listExtractor.parseWithJsonRule(html, listJsonRule!!, url) }
+                        newMovies = result.movies.filter { newItem ->
+                            existing.none { it.detailUrl == newItem.detailUrl }
+                        }
+                        listNextPageUrl = result.nextPageUrl
+                    }
+                    url != null -> {
+                        val result = listExtractor.extractList(url)
+                        newMovies = result.movies.filter { newItem ->
+                            existing.none { it.detailUrl == newItem.detailUrl }
+                        }
+                        listNextPageUrl = result.nextPageUrl
+                    }
+                    // 路径2：用嗅探到的接口加载
+                    api != null -> {
+                        newMovies = loadFromSniffedApi(api, existing.size)
+                    }
+                    else -> {
+                        newMovies = emptyList()
+                    }
                 }
                 if (newMovies.isEmpty()) {
                     listNextPageUrl = null
@@ -984,7 +1023,6 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                 }
                 val merged = existing + newMovies
                 listMovies = merged
-                listNextPageUrl = result.nextPageUrl
                 // 重建 grid（保留滚动位置）
                 val scrollY = contentScroll.scrollY
                 val oldGrid = listGrid
@@ -993,13 +1031,11 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                 if (oldFooter != null) contentArea.removeView(oldFooter)
                 val newGrid = listMovieGrid(merged)
                 listGrid = newGrid
-                // 在 footer 之前插入 grid
                 val footerView = listFooterView()
                 listFooter = footerView
                 contentArea.addView(newGrid, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
                 contentArea.addView(footerView, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
                 contentScroll.scrollTo(0, scrollY)
-                // 焦点移到首个新条目
                 contentScroll.post { newGrid.findViewWithTag<View>("list_movie_${existing.size}")?.requestFocus() }
             } catch (t: Throwable) {
                 val msg = t.message ?: "网络异常"
@@ -1012,6 +1048,122 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                 }
             }
         }
+    }
+
+    // ---- 资源嗅探 ----
+
+    private fun showResourceSniffDialog() {
+        ResourceSniffDialog(
+            context = context,
+            listUrl = currentUrl,
+            onSniffed = { api ->
+                sniffedApi = api
+                updateListFooter()
+                Toast.makeText(context, "已获取到刷新接口，可上滑加载更多", Toast.LENGTH_SHORT).show()
+            },
+            onClosed = {}
+        ).show()
+    }
+
+    /**
+     * 用嗅探到的接口请求更多数据
+     * 自动识别 URL 中的分页参数（page/p/offset/skip/cursor），递增后请求下一页
+     */
+    private suspend fun loadFromSniffedApi(
+        api: ResourceSniffDialog.SniffedApi,
+        loadedCount: Int
+    ): List<ParsedListMovie> = withContext(Dispatchers.IO) {
+        // 推断下一页 URL：在原 URL 上递增分页参数
+        val nextUrl = incrementPageParam(api.url, loadedCount)
+        val conn = (URL(nextUrl).openConnection() as HttpURLConnection).apply {
+            requestMethod = api.method
+            connectTimeout = 15_000
+            readTimeout = 15_000
+            api.headers.forEach { (k, v) -> setRequestProperty(k, v) }
+            setRequestProperty("Accept", "application/json, text/plain, */*")
+            if (api.method == "POST" && api.body.isNotBlank()) {
+                doOutput = true
+                setRequestProperty("Content-Type", "application/json")
+            }
+        }
+        if (api.method == "POST" && api.body.isNotBlank()) {
+            conn.outputStream.use { it.write(api.body.toByteArray()) }
+        }
+        val code = conn.responseCode
+        if (code !in 200..299) {
+            error("接口请求失败 HTTP $code")
+        }
+        val text = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+        parseMoviesFromJson(text, api)
+    }
+
+    /** 递增 URL 中的分页参数 */
+    private fun incrementPageParam(url: String, loadedCount: Int): String {
+        // 常见分页参数：page, p, offset, skip, cursor, pageNo, pageIndex, pageNum
+        val pageParams = listOf("page", "p", "pageNo", "pageIndex", "pageNum")
+        val offsetParams = listOf("offset", "skip", "start")
+        // 尝试递增 page 类参数（从1开始）
+        for (param in pageParams) {
+            val regex = Regex("([?&]$param=)(\\d+)", RegexOption.IGNORE_CASE)
+            val match = regex.find(url)
+            if (match != null) {
+                val currentVal = match.groupValues[2].toInt()
+                // 假设每页20条，推断当前页码
+                val perPage = 20
+                val nextPage = (loadedCount / perPage) + 1
+                return url.replaceRange(match.range, "${match.groupValues[1]}$nextPage")
+            }
+        }
+        // 尝试递增 offset 类参数
+        for (param in offsetParams) {
+            val regex = Regex("([?&]$param=)(\\d+)", RegexOption.IGNORE_CASE)
+            val match = regex.find(url)
+            if (match != null) {
+                val perPage = 20
+                return url.replaceRange(match.range, "${match.groupValues[1]}$loadedCount")
+            }
+        }
+        // URL 中没有分页参数，追加 page 参数
+        val separator = if (url.contains("?")) "&" else "?"
+        return "$url${separator}page=${loadedCount / 20 + 1}"
+    }
+
+    /** 从 JSON 响应中解析影片列表 */
+    private fun parseMoviesFromJson(
+        text: String,
+        api: ResourceSniffDialog.SniffedApi
+    ): List<ParsedListMovie> {
+        val trimmed = text.trim()
+        if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return emptyList()
+        val root = if (trimmed.startsWith("[")) {
+            JSONObject().put("__root__", org.json.JSONArray(trimmed)).let { JSONObject(it.toString()) }
+        } else {
+            JSONObject(trimmed)
+        }
+        // 按 dataPath 定位数组
+        val array = if (api.dataPath.isBlank()) {
+            root.opt("__root__") as? org.json.JSONArray
+                ?: root.keys().asSequence().mapNotNull { root.opt(it) as? org.json.JSONArray }.firstOrNull()
+        } else {
+            var node: Any = root
+            for (seg in api.dataPath.split(".")) {
+                node = (node as? JSONObject)?.opt(seg) ?: return emptyList()
+            }
+            node as? org.json.JSONArray
+        } ?: return emptyList()
+
+        val baseUrl = api.url.substringBefore("://") + "://" + URL(api.url).host
+        return (0 until array.length()).mapNotNull { i ->
+            val obj = array.optJSONObject(i) ?: return@mapNotNull null
+            val title = obj.optString(api.titleField).ifBlank { return@mapNotNull null }
+            var detailUrl = obj.optString(api.urlField).ifBlank { return@mapNotNull null }
+            // 补全相对 URL
+            if (!detailUrl.startsWith("http")) {
+                detailUrl = if (detailUrl.startsWith("/")) "$baseUrl$detailUrl" else "$baseUrl/$detailUrl"
+            }
+            val cover = if (api.coverField.isNotBlank()) obj.optString(api.coverField) else ""
+            ParsedListMovie(title = title, coverUrl = cover, detailUrl = detailUrl)
+        }.distinctBy { it.detailUrl }
     }
 
     private fun listMovieGrid(items: List<ParsedListMovie>): LinearLayout = LinearLayout(context).apply {

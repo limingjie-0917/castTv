@@ -23,7 +23,11 @@ data class DouyinDeviceGroup(
     val id: String,
     val label: String,
     val members: List<DeviceIdentity>,
-    val defaultIndex: Int = 0
+    val defaultIndex: Int = 0,
+    /** UI-only 标识：true=扫描发现的就是本机 DLNA 设备（不可克隆）。不参与持久化。 */
+    val isLocalDevice: Boolean = false,
+    /** UI-only 标识：true=该克隆组已在用户自定义组里（重复克隆会被过滤成这个标记，并仍展示提示用户）。不参与持久化。 */
+    val isAlreadyAdded: Boolean = false
 ) {
     fun memberAt(index: Int): DeviceIdentity =
         members[index.coerceIn(0, members.size - 1)]

@@ -25,6 +25,11 @@ public class AirPlayServer {
         controlServer = new ControlServer(airPlayPort, airTunesPort, airplayDataConsumer);
     }
 
+    /** Set Bonjour listener to receive mDNS registration events. */
+    public void setBonjourListener(com.github.serezhka.jap2lib.AirPlayBonjour.BonjourListener listener) {
+        airPlayBonjour.setListener(listener);
+    }
+
     public void start() throws Exception {
         airPlayBonjour.start(airPlayPort, airTunesPort);
         Thread thread = new Thread(controlServer, "AirPlayControlServer");

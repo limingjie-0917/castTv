@@ -87,7 +87,7 @@ class LanDeviceScanner {
     /** 启动一次扫描。重复调用会拒绝（返回 false）。 */
     fun startScan(
         context: Context,
-        excludeUdns: Set<String>,
+        excludeGroupIds: Set<String>,
         callback: Callback,
         callbackExecutor: java.util.concurrent.Executor
     ): Boolean {
@@ -98,7 +98,7 @@ class LanDeviceScanner {
         running = true
         executor.execute {
             try {
-                doScan(context, excludeUdns, callback, callbackExecutor)
+                doScan(context, excludeGroupIds, callback, callbackExecutor)
             } catch (t: Throwable) {
                 Log.e(TAG, "scan failed", t)
                 callbackExecutor.execute { callback.onComplete(emptyList(), aborted = true) }
@@ -114,11 +114,12 @@ class LanDeviceScanner {
 
     private fun doScan(
         context: Context,
-        excludeUdns: Set<String>,
+        excludeGroupIds: Set<String>,
         callback: Callback,
         callbackExecutor: java.util.concurrent.Executor
     ) {
         val selfUdn = try { NetworkUtils.getDeviceUdn(context) } catch (_: Throwable) { null }
+        val selfIps = try { NetworkUtils.getLanInterfaces().map { it.ip }.toSet() } catch (_: Throwable) { emptySet() }
         val interfaces = try { NetworkUtils.getLanInterfaces() } catch (_: Throwable) { emptyList() }
         if (interfaces.isEmpty()) {
             callbackExecutor.execute { callback.onComplete(emptyList(), aborted = false) }
@@ -227,16 +228,19 @@ class LanDeviceScanner {
                     null
                 }
                 parsed?.let { (identity, udn) ->
-                    // 过滤：本机自身、已克隆、非 MediaRenderer
+                    // 仍需 UDN 有效性校验
                     if (udn.isBlank()) return@let
-                    if (udn == selfUdn) return@let
-                    if (udn in excludeUdns) return@let
-                    val group = wrapAsGroup(identity, udn)
-                    if (group != null) {
-                        synchronized(lock) { groups.add(group) }
-                        val n = synchronized(lock) { groups.size }
-                        callbackExecutor.execute { callback.onProgress(n) }
-                    }
+                    // 本机识别：UDN 精确匹配 或 LOCATION 的 host 命中本机任一 LAN IP（代理/广播端口转发可能绕过 UDN）
+                    val host = try { URL(dev.location).host?.trim() } catch (_: Throwable) { null }.orEmpty()
+                    val isSelf =
+                        (selfUdn != null && udn.equals(selfUdn, ignoreCase = true)) ||
+                            (selfIps.isNotEmpty() && host in selfIps)
+                    val group = wrapAsGroup(identity, udn, isLocal = isSelf) ?: return@let
+                    // 已克隆过 -> 不丢弃，打 isAlreadyAdded=true 仍展示（UI会禁用"添加"）
+                    val marked = if (group.id in excludeGroupIds) group.copy(isAlreadyAdded = true) else group
+                    synchronized(lock) { groups.add(marked) }
+                    val n = synchronized(lock) { groups.size }
+                    callbackExecutor.execute { callback.onProgress(n) }
                 }
             }
         }
@@ -353,7 +357,7 @@ class LanDeviceScanner {
     }
 
     /** 包装为 DouyinDeviceGroup（单 member，id = custom_<udn 短哈希>）。 */
-    private fun wrapAsGroup(identity: DeviceIdentity, udn: String): DouyinDeviceGroup? {
+    private fun wrapAsGroup(identity: DeviceIdentity, udn: String, isLocal: Boolean = false): DouyinDeviceGroup? {
         if (udn.isBlank()) return null
         val hash = udn.removePrefix("uuid:").hashCode().toLong() and 0xFFFFFFFFL
         val id = "custom_" + hash.toString(16).padStart(8, '0').lowercase()
@@ -362,7 +366,9 @@ class LanDeviceScanner {
             id = id,
             label = label,
             members = listOf(identity),
-            defaultIndex = 0
+            defaultIndex = 0,
+            isLocalDevice = isLocal,
+            isAlreadyAdded = false
         )
     }
 

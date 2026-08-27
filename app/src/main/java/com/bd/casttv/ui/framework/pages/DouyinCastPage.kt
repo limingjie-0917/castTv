@@ -1,11 +1,14 @@
 package com.bd.casttv.ui.framework.pages
 
+import android.animation.ObjectAnimator
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.os.Handler
 import android.os.Looper
 import android.text.TextUtils
@@ -13,10 +16,12 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -128,7 +133,7 @@ class DouyinCastPage(context: Context) : BasePage(context) {
         leftScroll.addView(groupsListContainer, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         leftPanel.addView(leftScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply { topMargin = dpi(10) })
 
-        outer.addView(leftPanel, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.4f))
+        outer.addView(leftPanel, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1.3f))
 
         // 右栏：时间线（4/5）
         val rightPanel = LinearLayout(context).apply {
@@ -162,7 +167,7 @@ class DouyinCastPage(context: Context) : BasePage(context) {
         rightScroll.addView(emptyTimeline, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dpi(80); gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL })
         rightPanel.addView(rightScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply { topMargin = dpi(10) })
 
-        outer.addView(rightPanel, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 3.6f).apply { leftMargin = dpi(4) })
+        outer.addView(rightPanel, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 3.7f).apply { leftMargin = dpi(4) })
 
         contentContainer.addView(outer, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
     }
@@ -578,33 +583,38 @@ class DouyinCastPage(context: Context) : BasePage(context) {
             }
         }
 
-        // 扫描状态行
-        val statusRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        val statusText = TextView(context).apply {
-            text = "准备扫描…"; textSize = 11f
-            setTextColor(lightText); maxLines = 1
-        }
-        val rescanInlineBtn = TextView(context).apply {
-            text = "重新扫描"; textSize = 11f
-            setTextColor(warm)
-            setPadding(dpi(8), dpi(2), dpi(8), dpi(2))
-            isFocusable = true; isFocusableInTouchMode = true; isClickable = true
-            visibility = View.GONE
-            background = GradientDrawable().apply {
-                cornerRadius = dpi(8).toFloat()
-                setColor(Color.parseColor("#22FFD07A"))
-                setStroke(dpi(1), Color.parseColor("#66FFD07A"))
-            }
-        }
-        statusRow.addView(statusText, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        statusRow.addView(rescanInlineBtn, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        panel.addView(statusRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dpi(8) })
-
+        // 原「左上角扫描状态行」—— 已移除（见居中 Loading 遮罩）
+        // 替代：在弹窗中部覆盖 loading 遮罩（动画 + 文案），扫描结束后隐藏
+        // 设备列表外裹一层 FrameLayout 方便叠放 loading 遮罩
+        val listWrap = FrameLayout(context)
         // 设备列表（ScrollView + LinearLayout，最多 280dp 高度）
         val listScroll = ScrollView(context).apply { overScrollMode = View.OVER_SCROLL_NEVER }
         val listContainer = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         listScroll.addView(listContainer, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        panel.addView(listScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpi(280)).apply { bottomMargin = dpi(10) })
+        listWrap.addView(listScroll, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpi(280)))
+        panel.addView(listWrap, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dpi(280)).apply { bottomMargin = dpi(10) })
+
+        // 居中 Loading 遮罩（扫描时显示在 listWrap 正中）
+        val loadingMask = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            visibility = View.GONE
+        }
+        val warmColor = Color.parseColor("#FFD07A")
+        val spinner = ProgressBar(context, null, android.R.attr.progressBarStyle).apply {
+            isIndeterminate = true
+            indeterminateTintList = ColorStateList.valueOf(warmColor)
+        }
+        loadingMask.addView(spinner, LinearLayout.LayoutParams(dpi(48), dpi(48)))
+        val loadingText = TextView(context).apply {
+            text = "正在扫描局域网设备（已发现0台）"
+            textSize = 12f
+            setTextColor(lightText)
+            gravity = Gravity.CENTER
+            maxLines = 1
+        }
+        loadingMask.addView(loadingText, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dpi(10) })
+        listWrap.addView(loadingMask, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER))
 
         // 底部按钮：取消 / 刷新 / 添加
         val bottomRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.RIGHT }
@@ -642,12 +652,13 @@ class DouyinCastPage(context: Context) : BasePage(context) {
             listContainer.removeAllViews()
             listItemViews.clear()
             visibleList.clear()
-            val knownIds = try { CustomDouyinDeviceGroupsStore.list(context).map { it.id }.toSet() } catch (_: Throwable) { emptySet() }
-            scanResults.forEach { g -> if (g.id !in knownIds) visibleList.add(g) }
+            // ⚠ 不再在 UI 层用 knownIds 过滤（LanDeviceScanner 已经为"已添加过"的设备打了 isAlreadyAdded 标记，
+            // 仍显示在列表里告诉用户"已添加"。若有漏打标记，这里也不会让用户看不到扫描结果 —— 直接按全量展示。
+            visibleList.addAll(scanResults)
 
             if (visibleList.isEmpty()) {
                 listContainer.addView(TextView(context).apply {
-                    text = if (scanResults.isEmpty()) "未发现可用设备" else "已扫描设备都已添加过"
+                    text = "未发现可用设备"
                     textSize = 12f; gravity = Gravity.CENTER
                     setTextColor(lightText)
                     setPadding(0, dpi(40), 0, 0)
@@ -688,15 +699,72 @@ class DouyinCastPage(context: Context) : BasePage(context) {
                 }
                 listItemViews.add(row)
 
-                // 左侧图标 + 信息
-                row.addView(TextView(context).apply {
-                    text = "📺"; textSize = 18f
-                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { rightMargin = dpi(8) })
+                // 左侧图标：简约液晶电视（白色加粗线条 — 长方形屏幕框 + 圆角长方形线条底座）
+                val tvIcon = View(context).apply {
+                    // 屏幕外描边（只描边不填充）
+                    val screenStroke = GradientDrawable().apply {
+                        shape = GradientDrawable.RECTANGLE
+                        cornerRadius = dpi(2).toFloat()
+                        setColor(Color.TRANSPARENT)
+                        setStroke(dpi(2), Color.WHITE, 0f, 0f)
+                    }
+                    // 底座（圆角线条方框）
+                    val standStroke = GradientDrawable().apply {
+                        shape = GradientDrawable.RECTANGLE
+                        cornerRadius = dpi(2).toFloat()
+                        setColor(Color.TRANSPARENT)
+                        setStroke(dpi(2), Color.WHITE, 0f, 0f)
+                    }
+                    // LayerDrawable 3 层：index0=底座, index1=屏幕描边
+                    // 用 setLayerInset 做整体偏移，不裁剪描边宽度
+                    val layers = arrayOf<android.graphics.drawable.Drawable>(
+                        standStroke,
+                        screenStroke
+                    )
+                    background = LayerDrawable(layers).apply {
+                        // 屏幕层：顶 2dp / 左右 0dp / 底 8dp — 保证下方 2dp 的描边正好在底线上不被裁
+                        setLayerInset(1, dpi(0), dpi(2), dpi(0), dpi(8))
+                        // 底座层：左右各 6dp（居中 16dp），顶 22dp，底 2dp
+                        setLayerInset(0, dpi(6), dpi(22), dpi(6), dpi(2))
+                    }
+                }
+                row.addView(tvIcon, LinearLayout.LayoutParams(dpi(28), dpi(28)).apply { rightMargin = dpi(10) })
                 val infoBlock = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-                infoBlock.addView(TextView(context).apply {
+                // 标题行：设备名 + 本机/已添加标签
+                val titleLine = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                }
+                titleLine.addView(TextView(context).apply {
                     text = member.friendlyName; textSize = 14f; maxLines = 1
                     setTextColor(Color.WHITE)
-                })
+                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                if (g.isLocalDevice) {
+                    val tag = TextView(context).apply {
+                        text = "本机"; textSize = 10f
+                        setTextColor(Color.WHITE); gravity = Gravity.CENTER
+                        setPadding(dpi(6), dpi(1), dpi(6), dpi(1))
+                        background = GradientDrawable().apply {
+                            cornerRadius = dpi(6).toFloat()
+                            setColor(Color.parseColor("#4400C853"))
+                            setStroke(dpi(1), Color.parseColor("#6600C853"))
+                        }
+                    }
+                    titleLine.addView(tag, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dpi(6) })
+                }
+                if (g.isAlreadyAdded) {
+                    val tag = TextView(context).apply {
+                        text = "已添加"; textSize = 10f
+                        setTextColor(Color.parseColor("#FFD07A")); gravity = Gravity.CENTER
+                        setPadding(dpi(6), dpi(1), dpi(6), dpi(1))
+                        background = GradientDrawable().apply {
+                            cornerRadius = dpi(6).toFloat()
+                            setColor(Color.parseColor("#22FFD07A"))
+                            setStroke(dpi(1), Color.parseColor("#66FFD07A"))
+                        }
+                    }
+                    titleLine.addView(tag, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = dpi(6) })
+                }
+                infoBlock.addView(titleLine, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
                 infoBlock.addView(TextView(context).apply {
                     text = "${member.manufacturer} · ${member.modelName}"
                     textSize = 10f; maxLines = 1
@@ -704,7 +772,8 @@ class DouyinCastPage(context: Context) : BasePage(context) {
                 })
                 row.addView(infoBlock, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
-                // 右侧：仅选中时显示的两个单选框
+                // 右侧：仅选中时显示的两个单选框（本机/已添加禁用）
+                val radioDisabled = g.isLocalDevice
                 val radioBar = LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
@@ -714,15 +783,28 @@ class DouyinCastPage(context: Context) : BasePage(context) {
                 val radioNew = TextView(context).apply {
                     text = "新组"; textSize = 11f
                     setPadding(dpi(10), dpi(4), dpi(10), dpi(4))
-                    isFocusable = true; isFocusableInTouchMode = true; isClickable = true
-                    val selected = (idx == selectedIndex && selectedMode == 0)
+                    isFocusable = !radioDisabled; isFocusableInTouchMode = !radioDisabled; isClickable = !radioDisabled
+                    val selected = !radioDisabled && (idx == selectedIndex && selectedMode == 0)
                     background = GradientDrawable().apply {
                         cornerRadius = dpi(8).toFloat()
-                        setColor(if (selected) Color.parseColor("#66FFD07A") else Color.parseColor("#1AFFFFFF"))
-                        setStroke(dpi(if (selected) 2 else 1), Color.parseColor(if (selected) "#FFD07A" else "#55FFFFFF"))
+                        if (radioDisabled) {
+                            setColor(Color.parseColor("#11FFFFFF"))
+                            setStroke(dpi(1), Color.parseColor("#22FFFFFF"))
+                        } else {
+                            setColor(if (selected) Color.parseColor("#66FFD07A") else Color.parseColor("#1AFFFFFF"))
+                            setStroke(dpi(if (selected) 2 else 1), Color.parseColor(if (selected) "#FFD07A" else "#55FFFFFF"))
+                        }
                     }
-                    setTextColor(if (selected) Color.WHITE else lightText)
+                    setTextColor(when {
+                        radioDisabled -> Color.parseColor("#66EEE8DA")
+                        selected -> Color.WHITE
+                        else -> lightText
+                    })
+                    if (radioDisabled) {
+                        text = "本机不可克隆"
+                    }
                     setOnClickListener {
+                        if (radioDisabled) { toastMsg("本机设备不可克隆"); return@setOnClickListener }
                         if (idx != selectedIndex) return@setOnClickListener
                         selectedMode = 0
                         refreshList()
@@ -730,6 +812,7 @@ class DouyinCastPage(context: Context) : BasePage(context) {
                     setOnKeyListener { _, keyCode, event ->
                         if (event.action == KeyEvent.ACTION_DOWN &&
                             (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)) {
+                            if (radioDisabled) { toastMsg("本机设备不可克隆"); return@setOnKeyListener true }
                             if (idx == selectedIndex) {
                                 selectedMode = 0
                                 refreshList()
@@ -742,15 +825,28 @@ class DouyinCastPage(context: Context) : BasePage(context) {
                 val radioJoin = TextView(context).apply {
                     text = "加入现有组"; textSize = 11f
                     setPadding(dpi(10), dpi(4), dpi(10), dpi(4))
-                    isFocusable = true; isFocusableInTouchMode = true; isClickable = true
-                    val selected = (idx == selectedIndex && selectedMode == 1)
+                    isFocusable = !radioDisabled; isFocusableInTouchMode = !radioDisabled; isClickable = !radioDisabled
+                    val selected = !radioDisabled && (idx == selectedIndex && selectedMode == 1)
                     background = GradientDrawable().apply {
                         cornerRadius = dpi(8).toFloat()
-                        setColor(if (selected) Color.parseColor("#66FFD07A") else Color.parseColor("#1AFFFFFF"))
-                        setStroke(dpi(if (selected) 2 else 1), Color.parseColor(if (selected) "#FFD07A" else "#55FFFFFF"))
+                        if (radioDisabled) {
+                            setColor(Color.parseColor("#11FFFFFF"))
+                            setStroke(dpi(1), Color.parseColor("#22FFFFFF"))
+                        } else {
+                            setColor(if (selected) Color.parseColor("#66FFD07A") else Color.parseColor("#1AFFFFFF"))
+                            setStroke(dpi(if (selected) 2 else 1), Color.parseColor(if (selected) "#FFD07A" else "#55FFFFFF"))
+                        }
                     }
-                    setTextColor(if (selected) Color.WHITE else lightText)
+                    setTextColor(when {
+                        radioDisabled -> Color.parseColor("#33EEE8DA")
+                        selected -> Color.WHITE
+                        else -> lightText
+                    })
+                    if (radioDisabled) {
+                        visibility = View.GONE
+                    }
                     setOnClickListener {
+                        if (radioDisabled) { toastMsg("本机设备不可克隆"); return@setOnClickListener }
                         if (idx != selectedIndex) return@setOnClickListener
                         selectedMode = 1
                         refreshList()
@@ -758,6 +854,7 @@ class DouyinCastPage(context: Context) : BasePage(context) {
                     setOnKeyListener { _, keyCode, event ->
                         if (event.action == KeyEvent.ACTION_DOWN &&
                             (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER || keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER)) {
+                            if (radioDisabled) { toastMsg("本机设备不可克隆"); return@setOnKeyListener true }
                             if (idx == selectedIndex) {
                                 selectedMode = 1
                                 refreshList()
@@ -861,8 +958,10 @@ class DouyinCastPage(context: Context) : BasePage(context) {
         }
 
         fun doScan() {
-            statusText.text = "正在扫描局域网…"
-            rescanInlineBtn.visibility = View.GONE
+            // 显示居中 Loading
+            loadingMask.visibility = View.VISIBLE
+            loadingText.text = "正在扫描局域网设备（已发现0台）"
+            listScroll.visibility = View.INVISIBLE
             scanResults.clear()
             selectedIndex = -1
             selectedMode = 0
@@ -871,17 +970,13 @@ class DouyinCastPage(context: Context) : BasePage(context) {
             val mainExecutor = java.util.concurrent.Executor { cmd -> handler.post(cmd) }
             deviceScanner.startScan(context, excludeIds, object : LanDeviceScanner.Callback {
                 override fun onProgress(foundCount: Int) {
-                    handler.post { statusText.text = "正在扫描局域网…（已发现 $foundCount 台）" }
+                    handler.post { loadingText.text = "正在扫描局域网设备（已发现 $foundCount 台）" }
                 }
                 override fun onComplete(groups: List<DouyinDeviceGroup>, aborted: Boolean) {
                     handler.post {
                         scanResults.addAll(groups)
-                        when {
-                            aborted -> statusText.text = "扫描被中断，请重试"
-                            scanResults.isEmpty() -> statusText.text = "未发现 DLNA 设备，请确认电视与盒子在同一 Wi-Fi"
-                            else -> statusText.text = "扫描完成，共发现 ${scanResults.size} 台 DLNA 设备"
-                        }
-                        rescanInlineBtn.visibility = if (scanResults.isNotEmpty() || aborted) View.VISIBLE else View.GONE
+                        loadingMask.visibility = View.GONE
+                        listScroll.visibility = View.VISIBLE
                         refreshList()
                     }
                 }
@@ -889,7 +984,6 @@ class DouyinCastPage(context: Context) : BasePage(context) {
         }
 
         // 按钮绑定
-        rescanInlineBtn.setOnClickListener { doScan() }
         refreshBtn.setOnClickListener { doScan() }
         cancelBtn.setOnClickListener { dialog.dismiss() }
         addBtn.setOnClickListener {
@@ -898,6 +992,16 @@ class DouyinCastPage(context: Context) : BasePage(context) {
                 return@setOnClickListener
             }
             val g = visibleList[selectedIndex]
+            when {
+                g.isLocalDevice -> {
+                    toastMsg("本机设备不可克隆")
+                    return@setOnClickListener
+                }
+                g.isAlreadyAdded -> {
+                    toastMsg("该设备已添加过，无需重复添加")
+                    return@setOnClickListener
+                }
+            }
             val member = g.memberAt(0)
             cloneDeviceGroup(g, selectedMode, selectedParentGroup.id, member)
             dialog.dismiss()

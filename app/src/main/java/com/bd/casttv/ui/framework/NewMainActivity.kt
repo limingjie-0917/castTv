@@ -381,7 +381,7 @@ class NewMainActivity : AppCompatActivity(), SettingsChangeBus.Listener, PageCon
         if (queueStartupDialog?.isShowing == true) return
 
         val store = PlayQueueStore.get(this)
-        val items = store.all().take(50)
+        val items = PlayQueueStore.SortConfig.apply(store.all()).take(50)
         if (items.none { it.status != PlayQueueStore.Status.FINISHED }) return
 
         val panel = LinearLayout(this).apply {
@@ -469,7 +469,7 @@ class NewMainActivity : AppCompatActivity(), SettingsChangeBus.Listener, PageCon
         val listener = {
             runOnUiThread {
                 if (!isFinishing && !isDestroyed && queueStartupDialog?.isShowing == true) {
-                    adapter.submit(store.all().take(50))
+                    adapter.submit(PlayQueueStore.SortConfig.apply(store.all()).take(50))
                 }
             }
         }

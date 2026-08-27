@@ -56,7 +56,12 @@ object SsdpDiagnostics {
             CONNECT_SUCCESS("连接成功"),         // 保留兼容：连接成功类事件
             CONNECT_FAILED("连接失败"),          // SOAP 出错或播放启动失败
             INTERRUPTED("连接中断"),             // 播放中断 / 手机主动 Stop
-            EXCEPTION("异常")                    // 其它异常
+            EXCEPTION("异常"),                  // 其它异常
+            // ---- AirPlay 相关 ----
+            AIRPLAY_MDNS_REGISTER("AirPlay mDNS 注册"),  // _airplay._tcp / _raop._tcp 注册成功
+            AIRPLAY_MDNS_FAILED("AirPlay mDNS 注册失败"), // mDNS 注册失败（苹果设备搜索不到的根因）
+            AIRPLAY_SESSION_START("AirPlay 镜像开始"),   // RTSP SETUP 视频流建立
+            AIRPLAY_SESSION_STOP("AirPlay 镜像停止")    // TEARDOWN 或超时
         }
     }
 

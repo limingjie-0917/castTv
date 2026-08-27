@@ -231,6 +231,24 @@ class AirPlayService : LifecycleService(), AirPlayController.Listener {
                 }
                 airPlayServer = server
                 try {
+                    // 设置 mDNS 注册回调，写入诊断日志（方便定位苹果设备搜索不到的问题）
+                    server.setBonjourListener(object : com.github.serezhka.jap2lib.AirPlayBonjour.BonjourListener {
+                        override fun onRegistered(serverName: String?, airPlayPort: Int, airTunesPort: Int, networkInfo: String?) {
+                            val name = serverName ?: "(unknown)"
+                            val net = networkInfo ?: "(unknown)"
+                            SsdpDiagnostics.logCastEvent(
+                                SsdpDiagnostics.CastEvent.Kind.AIRPLAY_MDNS_REGISTER,
+                                "mDNS 注册成功：$name，_airplay._tcp=$airPlayPort，_raop._tcp=$airTunesPort，网络接口=$net"
+                            )
+                        }
+                        override fun onRegisterFailed(reason: String?, error: Throwable?) {
+                            val msg = reason ?: "unknown"
+                            SsdpDiagnostics.logCastEvent(
+                                SsdpDiagnostics.CastEvent.Kind.AIRPLAY_MDNS_FAILED,
+                                "mDNS 注册失败：$msg（苹果设备将搜索不到本机）"
+                            )
+                        }
+                    })
                     server.start()
                     startFailureCount = 0
                     temporarilyDisabled = false
@@ -379,17 +397,37 @@ class AirPlayService : LifecycleService(), AirPlayController.Listener {
 
     private fun acquireLocks() {
         try {
-            val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return
+            val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+            if (wifi == null) {
+                SsdpDiagnostics.logServiceHealth("AirPlay", SsdpDiagnostics.ServiceHealthEvent.Level.ERROR, "acquireLocks_failed", "WifiManager unavailable")
+                return
+            }
             multicastLock = wifi.createMulticastLock("casttv-airplay-mcast").apply {
                 setReferenceCounted(false)
                 acquire()
             }
+            val mcastHeld = multicastLock?.isHeld ?: false
+            SsdpDiagnostics.logServiceHealth("AirPlay", SsdpDiagnostics.ServiceHealthEvent.Level.INFO, "multicast_lock", "held=$mcastHeld")
+
             wifiLock = wifi.createWifiLock(WifiManager.WIFI_MODE_FULL_HIGH_PERF, "casttv-airplay-wifi").apply {
                 setReferenceCounted(false)
                 acquire()
             }
+            val wifiHeld = wifiLock?.isHeld ?: false
+            SsdpDiagnostics.logServiceHealth("AirPlay", SsdpDiagnostics.ServiceHealthEvent.Level.INFO, "wifi_lock", "held=$wifiHeld")
+
+            if (!mcastHeld) {
+                SsdpDiagnostics.logCastEvent(
+                    SsdpDiagnostics.CastEvent.Kind.AIRPLAY_MDNS_FAILED,
+                    "multicast lock 未获取成功，mDNS 广播包可能无法收发（苹果设备搜索不到）"
+                )
+            }
         } catch (e: Exception) {
             Log.w(TAG, "failed to acquire wifi/multicast locks", e)
+            SsdpDiagnostics.logCastEvent(
+                SsdpDiagnostics.CastEvent.Kind.AIRPLAY_MDNS_FAILED,
+                "acquireLocks 异常：${e.message}（苹果设备将搜索不到本机）"
+            )
         }
     }
 
