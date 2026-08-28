@@ -124,12 +124,21 @@ class WebParseShareDialog(
         val deselectButton = dialogButton("取消勾选") {
             toggleAll(histories, false)
         }
+        val countTip = TextView(context).apply {
+            text = ""
+            textSize = 13f
+            setTextColor(warm)
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), 0, 0, 0)
+        }
+        uploadCountTip = countTip
         val bottomBar = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.END
+            gravity = Gravity.CENTER_VERTICAL
             clipChildren = false
             clipToPadding = false
         }
+        bottomBar.addView(countTip, LinearLayout.LayoutParams(0, dp(40), 1f))
         bottomBar.addView(selectAllButton, LinearLayout.LayoutParams(dp(100), dp(40)).apply { marginEnd = dp(8) })
         bottomBar.addView(deselectButton, LinearLayout.LayoutParams(dp(110), dp(40)).apply { marginEnd = dp(8) })
         bottomBar.addView(uploadButton, LinearLayout.LayoutParams(dp(100), dp(40)).apply { marginEnd = dp(8) })
@@ -332,6 +341,8 @@ class WebParseShareDialog(
         marker.setTextColor(warm)
     }
 
+    private var uploadCountTip: TextView? = null
+
     private fun updateUploadButton(button: View, histories: List<WebParseStore.ParseHistory>) {
         val customCount = selected.count { index ->
             val h = histories.getOrNull(index) ?: return@count false
@@ -339,9 +350,7 @@ class WebParseShareDialog(
         }
         button.isEnabled = selected.isNotEmpty()
         button.alpha = if (selected.isEmpty()) 0.4f else 1f
-        if (button is TextView) {
-            button.text = if (selected.isEmpty()) "上传" else "上传(${selected.size}条,${customCount}适配器)"
-        }
+        uploadCountTip?.text = if (selected.isEmpty()) "" else "已选 ${selected.size} 条 · ${customCount} 个自定义适配器"
     }
 
     private fun toggleAll(histories: List<WebParseStore.ParseHistory>, select: Boolean) {

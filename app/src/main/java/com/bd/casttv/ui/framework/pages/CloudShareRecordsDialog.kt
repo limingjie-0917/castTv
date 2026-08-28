@@ -123,12 +123,21 @@ class CloudShareRecordsDialog(
         }
         val selectAllButton = dialogButton("全选") { toggleAll(true) }
         val deselectButton = dialogButton("取消勾选") { toggleAll(false) }
+        val countTip = TextView(context).apply {
+            text = ""
+            textSize = 13f
+            setTextColor(warm)
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), 0, 0, 0)
+        }
+        downloadCountTip = countTip
         val bottomBar = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.END
+            gravity = Gravity.CENTER_VERTICAL
             clipChildren = false
             clipToPadding = false
         }
+        bottomBar.addView(countTip, LinearLayout.LayoutParams(0, dp(40), 1f))
         bottomBar.addView(selectAllButton, LinearLayout.LayoutParams(dp(100), dp(40)).apply { marginEnd = dp(8) })
         bottomBar.addView(deselectButton, LinearLayout.LayoutParams(dp(110), dp(40)).apply { marginEnd = dp(8) })
         bottomBar.addView(downloadButton, LinearLayout.LayoutParams(dp(100), dp(40)).apply { marginEnd = dp(8) })
@@ -381,12 +390,12 @@ class CloudShareRecordsDialog(
         // 简单重绘：暂时不做精确分组计数，保持原计数
     }
 
+    private var downloadCountTip: TextView? = null
+
     private fun updateDownloadButton(button: View) {
         button.isEnabled = selected.isNotEmpty()
         button.alpha = if (selected.isEmpty()) 0.4f else 1f
-        if (button is TextView) {
-            button.text = if (selected.isEmpty()) "下载" else "下载(${selected.size}条)"
-        }
+        downloadCountTip?.text = if (selected.isEmpty()) "" else "已选 ${selected.size} 条"
     }
 
     private fun toggleAll(select: Boolean) {
