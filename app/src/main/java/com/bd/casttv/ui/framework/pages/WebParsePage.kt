@@ -884,7 +884,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
 
         val header = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(14), dp(16), dp(14))
+            setPadding(dp(16), dp(8), dp(16), dp(8))
             background = panelBg(false)
             clipChildren = false
             clipToPadding = false
@@ -895,20 +895,20 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                 clipToPadding = false
                 addView(TextView(context).apply {
                     text = "已解析到 ${items.size} 个影片条目"
-                    textSize = 22f
+                    textSize = 18f
                     typeface = Typeface.DEFAULT_BOLD
                     setTextColor(warm)
                     maxLines = 1
                     ellipsize = TextUtils.TruncateAt.END
                 }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                 detachFromParent(listJsonButton)
-                addView(listJsonButton, LinearLayout.LayoutParams(dp(118), dp(42)).apply { marginStart = dp(12) })
+                addView(listJsonButton, LinearLayout.LayoutParams(dp(118), dp(36)).apply { marginStart = dp(12) })
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             addView(TextView(context).apply {
                 text = "请选择要播放的影片，确认后会进入详情页解析流程"
-                textSize = 14f
-                setTextColor(Color.argb(210, 255, 255, 255))
-                setPadding(0, dp(8), 0, 0)
+                textSize = 13f
+                setTextColor(Color.argb(180, 255, 255, 255))
+                setPadding(0, dp(4), 0, 0)
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
         contentArea.addView(header, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))

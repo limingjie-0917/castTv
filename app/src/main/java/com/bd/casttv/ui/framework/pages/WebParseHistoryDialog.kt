@@ -56,7 +56,9 @@ class WebParseHistoryDialog(
         }
         val focusRows = mutableListOf<View>()
         val clearButton = dialogButton("清空记录", warning = true) { showClearConfirm() }
-        content.addView(titleView(clearButton), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        val shareButton = dialogButton("上传共享", warning = false) { showShareDialog() }
+        val fetchButton = dialogButton("云端获取", warning = false) { showCloudFetchDialog() }
+        content.addView(titleView(clearButton, shareButton, fetchButton), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         val list = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             clipChildren = false
@@ -93,6 +95,8 @@ class WebParseHistoryDialog(
         }
         content.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(360)))
         focusRows.add(clearButton)
+        focusRows.add(shareButton)
+        focusRows.add(fetchButton)
         contentInset.addView(content, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         panel.addView(contentInset, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
@@ -186,7 +190,7 @@ class WebParseHistoryDialog(
         }.getOrDefault("")
     }
 
-    private fun titleView(clearButton: View): View = LinearLayout(context).apply {
+    private fun titleView(clearButton: View, shareButton: View, fetchButton: View): View = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         clipChildren = false
@@ -205,7 +209,25 @@ class WebParseHistoryDialog(
             gravity = Gravity.CENTER_VERTICAL
             setShadowLayer(2f, 0f, 1f, Color.argb(130, 0, 0, 0))
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        // 顺序（左→右）：云端获取 | 上传共享 | 清空记录
+        addView(fetchButton, LinearLayout.LayoutParams(dp(110), dp(40)).apply { marginEnd = dp(8) })
+        addView(shareButton, LinearLayout.LayoutParams(dp(110), dp(40)).apply { marginEnd = dp(8) })
         addView(clearButton, LinearLayout.LayoutParams(dp(110), dp(40)))
+    }
+
+    private fun showShareDialog() {
+        dialog?.dismiss()
+        WebParseShareDialog(context) {
+            show()
+        }.show()
+    }
+
+    private fun showCloudFetchDialog() {
+        dialog?.dismiss()
+        CloudShareRecordsDialog(context) {
+            // 下载成功后局部刷新解析记录弹窗
+            show()
+        }.show()
     }
 
     private fun showClearConfirm() {
