@@ -92,6 +92,8 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
     private var listGrid: LinearLayout? = null
     private var listFooter: LinearLayout? = null
     private var sniffedApi: ResourceSniffDialog.SniffedApi? = null
+    private var sniffNextPageValue: Int = 0
+    private var sniffExhausted: Boolean = false
     private var listBackUrl: String = ""
     private var listBackMovies: List<ParsedListMovie> = emptyList()
     private var detailFromList = false
@@ -437,6 +439,8 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         listGrid = null
         listFooter = null
         sniffedApi = null
+        sniffNextPageValue = 0
+        sniffExhausted = false
         selectedSourceIndex = 0
         selectedEpisodeIndex = 0
         parseJob?.cancel()
@@ -724,6 +728,8 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         listGrid = null
         listFooter = null
         sniffedApi = null
+        sniffNextPageValue = 0
+        sniffExhausted = false
         selectedSourceIndex = 0
         selectedEpisodeIndex = 0
         parseJob?.cancel()
@@ -930,8 +936,8 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         clipChildren = false
         clipToPadding = false
         val hasMore = listNextPageUrl != null
-        val canSniff = listNextPageUrl == null && sniffedApi == null
-        val hasSniffedApi = sniffedApi != null
+        val canSniff = listNextPageUrl == null && sniffedApi == null && !sniffExhausted
+        val hasSniffedApi = sniffedApi != null && !sniffExhausted
         val msg = when {
             message != null -> message
             loading -> "正在加载更多…"
@@ -990,7 +996,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         listNextPageJob = scope.launch {
             try {
                 val existing = listMovies
-                val newMovies: List<ParsedListMovie>
+                var newMovies: List<ParsedListMovie>
                 when {
                     // 路径1：有 nextPageUrl，走 HTML 解析
                     url != null && listJsonRule != null -> {
@@ -1010,7 +1016,15 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                     }
                     // 路径2：用嗅探到的接口加载
                     api != null -> {
-                        newMovies = loadFromSniffedApi(api, existing.size)
+                        val (raw, nextVal) = loadFromSniffedApi(api, existing.size)
+                        newMovies = raw.filter { newItem ->
+                            existing.none { it.detailUrl == newItem.detailUrl }
+                        }
+                        if (newMovies.isNotEmpty()) {
+                            sniffNextPageValue = nextVal
+                        } else {
+                            sniffExhausted = true
+                        }
                     }
                     else -> {
                         newMovies = emptyList()
@@ -1058,6 +1072,8 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
             listUrl = currentUrl,
             onSniffed = { api ->
                 sniffedApi = api
+                sniffNextPageValue = api.paging?.startValue ?: 0
+                sniffExhausted = false
                 updateListFooter()
                 Toast.makeText(context, "已获取到刷新接口，可上滑加载更多", Toast.LENGTH_SHORT).show()
             },
@@ -1067,20 +1083,31 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
 
     /**
      * 用嗅探到的接口请求更多数据
-     * 自动识别 URL 中的分页参数（page/p/offset/skip/cursor），递增后请求下一页
+     * 优先用 diff 确认的翻页模板；未确认时退回启发式 incrementPageParam
+     * 回放 cookie 与捕获的请求头，适配需会话的接口
+     * @return (本页影片, 下一个页码值)
      */
     private suspend fun loadFromSniffedApi(
         api: ResourceSniffDialog.SniffedApi,
         loadedCount: Int
-    ): List<ParsedListMovie> = withContext(Dispatchers.IO) {
-        // 推断下一页 URL：在原 URL 上递增分页参数
-        val nextUrl = incrementPageParam(api.url, loadedCount)
+    ): Pair<List<ParsedListMovie>, Int> = withContext(Dispatchers.IO) {
+        val currentPage = sniffNextPageValue
+        val nextUrl = nextSniffUrl(api, currentPage, loadedCount)
         val conn = (URL(nextUrl).openConnection() as HttpURLConnection).apply {
             requestMethod = api.method
             connectTimeout = 15_000
             readTimeout = 15_000
-            api.headers.forEach { (k, v) -> setRequestProperty(k, v) }
+            // 回放捕获的请求头（排除由连接自管理的头，避免冲突）
+            api.headers.forEach { (k, v) ->
+                val lk = k.lowercase()
+                if (lk != "user-agent" && lk != "accept" && lk != "content-type" &&
+                    lk != "cookie" && lk != "host" && lk != "content-length" && lk != "connection") {
+                    setRequestProperty(k, v)
+                }
+            }
+            setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
             setRequestProperty("Accept", "application/json, text/plain, */*")
+            if (api.cookie.isNotBlank()) setRequestProperty("Cookie", api.cookie)
             if (api.method == "POST" && api.body.isNotBlank()) {
                 doOutput = true
                 setRequestProperty("Content-Type", "application/json")
@@ -1094,38 +1121,47 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
             error("接口请求失败 HTTP $code")
         }
         val text = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-        parseMoviesFromJson(text, api)
+        parseMoviesFromJson(text, api) to (currentPage + (api.paging?.step ?: 0))
     }
 
-    /** 递增 URL 中的分页参数 */
-    private fun incrementPageParam(url: String, loadedCount: Int): String {
-        // 常见分页参数：page, p, offset, skip, cursor, pageNo, pageIndex, pageNum
+    /** 根据翻页信息生成下一页 URL；paging 为空时退回启发式 */
+    private fun nextSniffUrl(
+        api: ResourceSniffDialog.SniffedApi,
+        currentPage: Int,
+        loadedCount: Int
+    ): String {
+        val paging = api.paging
+        if (paging != null) {
+            return paging.template.replace("{{PAGE}}", currentPage.toString())
+        }
+        return incrementPageParam(api.url, loadedCount, api.perPage)
+    }
+
+    /** 递增 URL 中的分页参数（启发式回退路径，用真实 perPage 替代硬编码 20） */
+    private fun incrementPageParam(url: String, loadedCount: Int, perPage: Int): String {
+        val pp = if (perPage > 0) perPage else 20
         val pageParams = listOf("page", "p", "pageNo", "pageIndex", "pageNum")
         val offsetParams = listOf("offset", "skip", "start")
-        // 尝试递增 page 类参数（从1开始）
+        // page 类
         for (param in pageParams) {
             val regex = Regex("([?&]$param=)(\\d+)", RegexOption.IGNORE_CASE)
             val match = regex.find(url)
             if (match != null) {
-                val currentVal = match.groupValues[2].toInt()
-                // 假设每页20条，推断当前页码
-                val perPage = 20
-                val nextPage = (loadedCount / perPage) + 1
+                val nextPage = (loadedCount / pp) + 1
                 return url.replaceRange(match.range, "${match.groupValues[1]}$nextPage")
             }
         }
-        // 尝试递增 offset 类参数
+        // offset 类
         for (param in offsetParams) {
             val regex = Regex("([?&]$param=)(\\d+)", RegexOption.IGNORE_CASE)
             val match = regex.find(url)
             if (match != null) {
-                val perPage = 20
                 return url.replaceRange(match.range, "${match.groupValues[1]}$loadedCount")
             }
         }
-        // URL 中没有分页参数，追加 page 参数
+        // 无分页参数，追加 page
         val separator = if (url.contains("?")) "&" else "?"
-        return "$url${separator}page=${loadedCount / 20 + 1}"
+        return "$url${separator}page=${loadedCount / pp + 1}"
     }
 
     /** 从 JSON 响应中解析影片列表 */
@@ -1257,7 +1293,19 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                 return true
             }
             if (event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN && index >= lastRowStart && !hasFocusableInDirection(v, View.FOCUS_DOWN)) {
-                BoundaryFocusHandler.shake(v)
+                // 最后一行按【下】：优先加载更多（HTML 翻页 / 嗅探接口），其次进入资源嗅探，
+                // 均不可行（无更多内容）时触发边界抖动拦截
+                val loading = listNextPageJob?.isActive == true
+                val hasMore = listNextPageUrl != null
+                val hasSniffedApi = sniffedApi != null && !sniffExhausted
+                val canSniff = listNextPageUrl == null && sniffedApi == null && !sniffExhausted
+                when {
+                    loading -> { /* 加载中，忽略重复触发 */ }
+                    hasMore -> loadNextPage()
+                    hasSniffedApi -> loadNextPage()
+                    canSniff -> showResourceSniffDialog()
+                    else -> BoundaryFocusHandler.shake(v)
+                }
                 return true
             }
         }

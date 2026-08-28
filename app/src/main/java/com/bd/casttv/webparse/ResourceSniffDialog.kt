@@ -5,13 +5,14 @@ import android.app.Dialog
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
-import android.view.WindowManager
+import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -25,19 +26,19 @@ import android.widget.TextView
 import android.widget.Toast
 import com.bd.casttv.R
 import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
+import kotlin.math.abs
 
 /**
  * 资源嗅探弹窗：当列表页无法提取 nextPageUrl 时，通过 WebView 加载页面，
- * 注入 JS 拦截 XHR/fetch 请求，识别影片列表数据接口。
+ * 注入 JS 拦截 XHR/fetch 请求（含请求头与 cookie），识别影片列表数据接口。
  *
  * 交互流程：
  * 1. 用户在 WebView 中上滑触发页面 JS 加载更多
- * 2. App 拦截所有 XHR/fetch 请求及响应
+ * 2. App 拦截所有 XHR/fetch 请求及响应（含请求头）
  * 3. 分析响应是否为影片列表 JSON（含 title + url 字段数组）
- * 4. 每次上滑后给出结果提示（未识别到/已识别）
- * 5. 识别成功后 Toast 提示并关闭弹窗，回调返回接口信息
+ * 4. 持续累积捕获；同端点出现两次时，diff 定位真实翻页参数/步长/每页条数
+ * 5. 已确认则提示并等待用户按 Back 关闭；未确认可继续上滑，或按 Back 用启发式回退
+ * 6. 关闭时回调返回最优接口信息（含 cookie/请求头/翻页模板）
  */
 class ResourceSniffDialog(
     private val context: Context,
@@ -50,15 +51,34 @@ class ResourceSniffDialog(
         val url: String,
         val method: String,
         val headers: Map<String, String>,
+        val cookie: String,
         val body: String,
         /** 响应中影片数组所在的 JSON 路径，如 "data.list" / "results" / "list" */
         val dataPath: String,
-        /** 影片标题字段名 */
         val titleField: String,
-        /** 影片详情链接字段名 */
         val urlField: String,
         /** 影片封面字段名（可选） */
-        val coverField: String
+        val coverField: String,
+        /** 每页条数（取自响应数组长度） */
+        val perPage: Int,
+        /** 翻页信息；null 表示未能确认，调用方退回启发式 */
+        val paging: PagingInfo?
+    )
+
+    /** 翻页信息：把 template 中的 {{PAGE}} 替换为当前页值即可得到下一页 URL */
+    data class PagingInfo(
+        /** URL 模板，含 {{PAGE}} 占位符 */
+        val template: String,
+        /** query 模式下的参数名；path 模式为 null */
+        val paramName: String?,
+        /** "query" 或 "path" */
+        val location: String,
+        /** path 模式下页码所在的路径段索引（从根 0 起）；query 模式为 -1 */
+        val pathIndex: Int,
+        /** 步长（page 类=1，offset 类=每页条数） */
+        val step: Int,
+        /** 首次捕获到的页码值 */
+        val startValue: Int
     )
 
     private val handler = Handler(Looper.getMainLooper())
@@ -66,10 +86,23 @@ class ResourceSniffDialog(
     private var webView: WebView? = null
     private var statusText: TextView? = null
     private var progressBar: ProgressBar? = null
-    private var sniffedApi: SniffedApi? = null
+    private var winner: SniffedApi? = null
     private var scrollTriggerCount = 0
 
-    // JS 注入脚本：hook XMLHttpRequest 和 fetch
+    /** 已捕获的候选请求（按命中顺序） */
+    private val captures = mutableListOf<Capture>()
+
+    /** 单次捕获的原始信息 */
+    private data class Capture(
+        val url: String,
+        val method: String,
+        val body: String,
+        val headers: Map<String, String>,
+        val cookie: String,
+        val analysis: ListAnalysisResult
+    )
+
+    // JS 注入脚本：hook XMLHttpRequest 与 fetch（含请求头）
     private val injectScript = """
         (function() {
             if (window.__sniffInjected) return;
@@ -79,13 +112,44 @@ class ResourceSniffDialog(
                 try { fn(); } catch(e) {}
             }
 
+            function headersToText(hdrs) {
+                try {
+                    if (!hdrs) return '';
+                    var parts = [];
+                    if (typeof hdrs.forEach === 'function') {
+                        hdrs.forEach(function(v, k){ parts.push(k + ': ' + v); });
+                    } else if (Array.isArray(hdrs)) {
+                        for (var i = 0; i < hdrs.length; i++) {
+                            var h = hdrs[i];
+                            parts.push((h[0] || '') + ': ' + (h[1] || ''));
+                        }
+                    } else {
+                        for (var k in hdrs) {
+                            if (Object.prototype.hasOwnProperty.call(hdrs, k)) {
+                                parts.push(k + ': ' + hdrs[k]);
+                            }
+                        }
+                    }
+                    return parts.join('\n');
+                } catch(e) { return ''; }
+            }
+
             // 拦截 XMLHttpRequest
             var origOpen = XMLHttpRequest.prototype.open;
             var origSend = XMLHttpRequest.prototype.send;
+            var origSetReqHeader = XMLHttpRequest.prototype.setRequestHeader;
             XMLHttpRequest.prototype.open = function(method, url) {
                 this._sniffMethod = method || 'GET';
                 this._sniffUrl = url || '';
+                this._sniffHeaders = '';
                 return origOpen.apply(this, arguments);
+            };
+            XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
+                try {
+                    if (typeof this._sniffHeaders !== 'string') this._sniffHeaders = '';
+                    this._sniffHeaders += ((this._sniffHeaders ? '\n' : '') + name + ': ' + value);
+                } catch(e) {}
+                return origSetReqHeader.apply(this, arguments);
             };
             XMLHttpRequest.prototype.send = function(body) {
                 var self = this;
@@ -99,7 +163,7 @@ class ResourceSniffDialog(
                             }
                         } catch(e) {}
                         if (respText && respText.length > 0) {
-                            AndroidSniffer.onRequest(self._sniffMethod, self._sniffUrl, self._sniffBody, respText, self.status || 200);
+                            AndroidSniffer.onRequest(self._sniffMethod, self._sniffUrl, self._sniffBody, self._sniffHeaders || '', respText, self.status || 200);
                         }
                     });
                 });
@@ -113,22 +177,28 @@ class ResourceSniffDialog(
                     var url = '';
                     var method = 'GET';
                     var body = '';
+                    var headersText = '';
                     try {
                         if (typeof input === 'string') {
                             url = input;
                         } else if (input && input.url) {
                             url = input.url;
+                            if (input.method) method = input.method;
                         }
                         if (init) {
-                            method = init.method || 'GET';
-                            body = init.body || '';
+                            if (init.method) method = init.method;
+                            body = init.body || body;
+                            headersText = headersToText(init.headers);
+                        }
+                        if (!headersText && input && input.headers) {
+                            headersText = headersToText(input.headers);
                         }
                     } catch(e) {}
                     return origFetch.apply(this, arguments).then(function(response) {
                         safeCall(function() {
                             response.clone().text().then(function(text) {
                                 if (text && text.length > 0) {
-                                    AndroidSniffer.onRequest(method, url, body, text, response.status || 200);
+                                    AndroidSniffer.onRequest(method, url, body, headersText, text, response.status || 200);
                                 }
                             }).catch(function(){});
                         });
@@ -158,7 +228,7 @@ class ResourceSniffDialog(
                     dismissAndClose()
                     true
                 } else if (event.action == KeyEvent.ACTION_UP && keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
-                    // 模拟上滑：让 WebView 滚动
+                    // 模拟上滑：让 WebView 内容向下滚动，触发页面加载更多
                     webView?.scrollBy(0, 300)
                     onUserScroll()
                     true
@@ -178,7 +248,6 @@ class ResourceSniffDialog(
         }
         this.dialog = dialog
         dialog.show()
-        // 加载列表页 URL
         webView?.loadUrl(listUrl)
     }
 
@@ -222,7 +291,7 @@ class ResourceSniffDialog(
             text = "正在加载页面…"
             textSize = 13f
             setTextColor(Color.argb(200, 255, 255, 255))
-            maxLines = 1
+            maxLines = 2
         }
         header.addView(statusText, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
@@ -245,6 +314,9 @@ class ResourceSniffDialog(
                 userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
                 cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
             }
+            // 允许记录 cookie 以便回放
+            CookieManager.getInstance().setAcceptCookie(true)
+            CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
             // 注入 JS 拦截脚本
             addJavascriptInterface(SniffBridge(), "AndroidSniffer")
             webViewClient = object : WebViewClient() {
@@ -272,7 +344,7 @@ class ResourceSniffDialog(
 
         // 底部提示
         val footer = TextView(context).apply {
-            text = "按↓/OK键上滑触发加载 · 按 Back 键退出嗅探"
+            text = "按↓/OK键上滑触发加载更多 · 连续触发两次可确认翻页参数 · 按 Back 退出"
             textSize = 12f
             setTextColor(Color.argb(150, 255, 255, 255))
             gravity = Gravity.CENTER
@@ -294,17 +366,10 @@ class ResourceSniffDialog(
             progressBar?.visibility = View.VISIBLE
             updateStatus("正在检查请求…")
         }
-        // 延迟 1.5 秒后检查嗅探结果（等待 JS 加载请求完成）
+        // 延迟 1.5 秒后刷新状态（等待 JS 加载请求完成）
         handler.postDelayed({
             progressBar?.visibility = View.GONE
-            val api = sniffedApi
-            if (api != null) {
-                updateStatus("已识别到列表接口")
-                Toast.makeText(context, "已获取到刷新接口，关闭嗅探弹窗", Toast.LENGTH_SHORT).show()
-                handler.postDelayed({ dismissAndClose() }, 800)
-            } else {
-                updateStatus("未识别到列表接口，请继续上滑触发加载更多")
-            }
+            reevaluateWinner()
         }, 1500)
     }
 
@@ -321,7 +386,7 @@ class ResourceSniffDialog(
         webView = null
         dialog?.dismiss()
         dialog = null
-        sniffedApi?.let { onSniffed(it) }
+        winner?.let { onSniffed(it) }
         onClosed()
     }
 
@@ -347,8 +412,14 @@ class ResourceSniffDialog(
         }
 
         @JavascriptInterface
-        fun onRequest(method: String, url: String, body: String, responseText: String, status: Int) {
-            if (sniffedApi != null) return // 已识别，跳过
+        fun onRequest(
+            method: String,
+            url: String,
+            body: String,
+            headersText: String,
+            responseText: String,
+            status: Int
+        ) {
             if (status !in 200..299) return
             // 过滤静态资源（图片/CSS/JS）
             val lowerUrl = url.lowercase()
@@ -358,43 +429,212 @@ class ResourceSniffDialog(
             ) return
 
             // 分析响应是否为影片列表 JSON
-            val result = analyzeListResponse(responseText, url) ?: return
-            sniffedApi = SniffedApi(
-                url = url,
-                method = method.uppercase(),
-                headers = mapOf(
-                    "User-Agent" to "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-                ),
-                body = body,
-                dataPath = result.path,
-                titleField = result.titleField,
-                urlField = result.urlField,
-                coverField = result.coverField
-            )
-            handler.post {
-                progressBar?.visibility = View.GONE
-                updateStatus("已识别到列表接口：$url")
+            val result = analyzeListResponse(responseText) ?: return
+            val headers = parseHeaders(headersText)
+            val cookie = safeGetCookie(url)
+            val capture = Capture(url, method.uppercase(), body, headers, cookie, result)
+            handler.post { addCapture(capture) }
+        }
+    }
+
+    /** 新增一次捕获，重新评估最优候选 */
+    private fun addCapture(c: Capture) {
+        // 完全相同的 url+method 不重复加入
+        if (captures.any { it.url == c.url && it.method == c.method }) return
+        captures.add(c)
+        reevaluateWinner()
+    }
+
+    /** 重新评估最优接口：优先 diff 确认的，其次单捕获启发式 */
+    private fun reevaluateWinner() {
+        val byEndpoint = captures.groupBy { endpointSignature(it) }
+        // 1) 优先：同端点出现两次，diff 出翻页参数
+        val confirmed = byEndpoint.values
+            .filter { it.size >= 2 }
+            .mapNotNull { list ->
+                val a = list[list.size - 2]
+                val b = list[list.size - 1]
+                diffPaging(a, b)?.let { buildApi(a, it) }
             }
+            .maxByOrNull { it.perPage }
+        if (confirmed != null) {
+            winner = confirmed
+            val p = confirmed.paging ?: return
+            updateStatus(
+                "已确认接口：${shortUrl(confirmed.url)} | 翻页=${p.paramName ?: "path[${p.pathIndex}]"} " +
+                    "步长${p.step} 每页${confirmed.perPage}条，按 Back 使用"
+            )
+            return
+        }
+        // 2) 单捕获启发式
+        val single = captures.maxByOrNull { it.analysis.count }?.let { buildApi(it, heuristicPaging(it)) }
+        winner = single
+        val n = captures.size
+        updateStatus(
+            if (single == null) "未识别到列表接口，请继续上滑触发加载更多"
+            else "已识别 $n 个候选接口，请继续上滑触发第 ${n + 1} 次加载以确认翻页参数（或按 Back 直接使用）"
+        )
+    }
+
+    /** 端点签名：把 URL 中所有数字段替换为 #，使 page=2 与 page=3 归为同端点 */
+    private fun endpointSignature(c: Capture): String {
+        return c.method + " " + c.url.replace(Regex("\\d+"), "#")
+    }
+
+    /** 比较两次同端点请求，定位翻页参数 */
+    private fun diffPaging(a: Capture, b: Capture): PagingInfo? {
+        if (a.method != b.method) return null
+        val ua = Uri.parse(a.url)
+        val ub = Uri.parse(b.url)
+        if (ua.path != ub.path) return null
+
+        // query 参数对比：找数值不同者
+        val names = (ua.queryParameterNames ?: emptySet()).intersect(ub.queryParameterNames ?: emptySet())
+        for (name in names) {
+            val va = ua.getQueryParameter(name)?.toIntOrNull() ?: continue
+            val vb = ub.getQueryParameter(name)?.toIntOrNull() ?: continue
+            if (va == vb) continue
+            val step = abs(vb - va)
+            val start = minOf(va, vb)
+            return PagingInfo(
+                template = buildTemplateQuery(a.url, name),
+                paramName = name,
+                location = "query",
+                pathIndex = -1,
+                step = step,
+                startValue = start
+            )
+        }
+        // path 段对比：找数值不同者
+        val sa = ua.pathSegments
+        val sb = ub.pathSegments
+        if (sa.size == sb.size) {
+            for (i in sa.indices) {
+                val va = sa[i].toIntOrNull() ?: continue
+                val vb = sb[i].toIntOrNull() ?: continue
+                if (va == vb) continue
+                val step = abs(vb - va)
+                val start = minOf(va, vb)
+                return PagingInfo(
+                    template = buildTemplatePath(a.url, i),
+                    paramName = null,
+                    location = "path",
+                    pathIndex = i,
+                    step = step,
+                    startValue = start
+                )
+            }
+        }
+        return null
+    }
+
+    /** 单捕获启发式：按参数名猜测翻页字段 */
+    private fun heuristicPaging(c: Capture): PagingInfo? {
+        val u = Uri.parse(c.url)
+        // page 类：步长 1
+        val pageNames = listOf("page", "p", "pageNo", "pageIndex", "pageNum", "pn")
+        for (name in pageNames) {
+            val v = u.getQueryParameter(name)?.toIntOrNull() ?: continue
+            return PagingInfo(buildTemplateQuery(c.url, name), name, "query", -1, 1, v)
+        }
+        // offset 类：步长 = 每页条数
+        val offsetNames = listOf("offset", "skip", "start")
+        for (name in offsetNames) {
+            val v = u.getQueryParameter(name)?.toIntOrNull() ?: continue
+            val step = if (c.analysis.count > 0) c.analysis.count else 20
+            return PagingInfo(buildTemplateQuery(c.url, name), name, "query", -1, step, v)
+        }
+        // path 数字段：步长 1
+        val segs = u.pathSegments
+        for (i in segs.indices) {
+            val v = segs[i].toIntOrNull() ?: continue
+            return PagingInfo(buildTemplatePath(c.url, i), null, "path", i, 1, v)
+        }
+        return null
+    }
+
+    /** 把 query 中指定参数的值替换为 {{PAGE}} */
+    private fun buildTemplateQuery(url: String, name: String): String {
+        val regex = Regex("([?&]" + Regex.escape(name) + "=)(\\d+)", RegexOption.IGNORE_CASE)
+        return regex.replace(url) { "${it.groupValues[1]}{{PAGE}}" }
+    }
+
+    /** 把 path 中指定段的值替换为 {{PAGE}} */
+    private fun buildTemplatePath(url: String, index: Int): String {
+        val u = Uri.parse(url)
+        val segs = u.pathSegments
+        if (index !in segs.indices) return url
+        val newSegs = segs.toMutableList()
+        newSegs[index] = "{{PAGE}}"
+        val port = if (u.port != -1) ":" + u.port else ""
+        val query = if (u.encodedQuery != null) "?" + u.encodedQuery else ""
+        val frag = if (u.encodedFragment != null) "#" + u.encodedFragment else ""
+        return (u.scheme ?: "https") + "://" + (u.host ?: "") + port + "/" + newSegs.joinToString("/") + query + frag
+    }
+
+    private fun buildApi(c: Capture, paging: PagingInfo?): SniffedApi {
+        return SniffedApi(
+            url = c.url,
+            method = c.method,
+            headers = c.headers,
+            cookie = c.cookie,
+            body = c.body,
+            dataPath = c.analysis.path,
+            titleField = c.analysis.titleField,
+            urlField = c.analysis.urlField,
+            coverField = c.analysis.coverField,
+            perPage = c.analysis.count,
+            paging = paging
+        )
+    }
+
+    private fun parseHeaders(text: String): Map<String, String> {
+        if (text.isBlank()) return emptyMap()
+        val map = LinkedHashMap<String, String>()
+        text.split("\n").forEach { line ->
+            val idx = line.indexOf(':')
+            if (idx > 0) {
+                val k = line.substring(0, idx).trim()
+                val v = line.substring(idx + 1).trim()
+                if (k.isNotEmpty()) map[k] = v
+            }
+        }
+        return map
+    }
+
+    private fun safeGetCookie(url: String): String {
+        return try {
+            CookieManager.getInstance().getCookie(url) ?: ""
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+    private fun shortUrl(u: String): String {
+        return try {
+            val p = Uri.parse(u)
+            (p.host ?: "") + (p.path ?: "")
+        } catch (e: Exception) {
+            u
         }
     }
 
     /**
      * 分析响应文本是否为影片列表 JSON
-     * @return Triple(path, titleField, urlField, coverField) 或 null
      */
     private data class ListAnalysisResult(
         val path: String,
         val titleField: String,
         val urlField: String,
-        val coverField: String
+        val coverField: String,
+        val count: Int
     )
 
-    private fun analyzeListResponse(text: String, requestUrl: String): ListAnalysisResult? {
+    private fun analyzeListResponse(text: String): ListAnalysisResult? {
         val trimmed = text.trim()
         if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return null
         return try {
             val json = if (trimmed.startsWith("[")) {
-                // 直接是数组
                 JSONObject().put("__root__", org.json.JSONArray(trimmed))
             } else {
                 JSONObject(trimmed)
@@ -408,8 +648,9 @@ class ResourceSniffDialog(
     /** 递归查找 JSON 中的影片数组 */
     private fun findMovieArray(obj: JSONObject, currentPath: String, maxDepth: Int): ListAnalysisResult? {
         if (maxDepth <= 0) return null
+        // 详情链接字段优先 detail-ish，避免命中封面/播放直链
         val titleFields = listOf("title", "name", "vod_name", "movieName", "filmName")
-        val urlFields = listOf("url", "link", "detailUrl", "playUrl", "vod_url", "vod_play_url", "videoUrl", "cover", "pic")
+        val urlFields = listOf("detailUrl", "vod_url", "url", "link", "vod_play_url", "playUrl", "videoUrl")
         val coverFields = listOf("cover", "pic", "img", "image", "poster", "thumbnail", "vod_pic", "picUrl", "coverUrl")
 
         val keys = obj.keys()
@@ -429,7 +670,8 @@ class ResourceSniffDialog(
                         path = if (path == "__root__") "" else path,
                         titleField = titleField,
                         urlField = urlField,
-                        coverField = coverField
+                        coverField = coverField,
+                        count = value.length()
                     )
                 }
             } else if (value is JSONObject) {
