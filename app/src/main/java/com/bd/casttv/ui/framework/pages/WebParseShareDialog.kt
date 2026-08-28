@@ -21,6 +21,7 @@ import androidx.appcompat.app.AlertDialog
 import com.bd.casttv.R
 import com.bd.casttv.sync.GiteeApi
 import com.bd.casttv.sync.GiteeShareStore
+import com.bd.casttv.sync.GiteeShareStore.SharedRecord
 import com.bd.casttv.ui.ClippedImageView
 import com.bd.casttv.ui.framework.BoundaryFocusHandler
 import com.bd.casttv.ui.framework.FocusFxHelper
@@ -35,7 +36,7 @@ import kotlinx.coroutines.withContext
 import java.net.URI
 
 /**
- * 共享解析记录弹窗：
+ * 上传解析记录到云端弹窗：
  * - 打开后拉取云端索引，与本地记录做 diff，已上传的标记「已共享」
  * - 多选记录，底部按钮：全选、取消勾选、上传、取消
  */
@@ -53,6 +54,10 @@ class WebParseShareDialog(
     private val sharedInCloud = mutableSetOf<Int>()
     // 记录行视图
     private val rowViews = mutableListOf<View>()
+    // 云端全部记录（用于取消共享时重建索引和判断适配器引用）
+    private var allCloudRecords = emptyList<SharedRecord>()
+    // 本用户云端记录的 url -> SharedRecord 映射
+    private val cloudRecordMap = mutableMapOf<String, SharedRecord>()
 
     fun show() {
         val histories = store.getParseHistory()
@@ -183,14 +188,16 @@ class WebParseShareDialog(
 
             when (result) {
                 is GiteeApi.ApiResult.Success -> {
-                    val cloudRecords = result.value.records
+                    allCloudRecords = result.value.records
+                    cloudRecordMap.clear()
+                    result.value.records
                         .filter { it.creatorId == creatorId }
-                        .map { it.url }
-                        .toSet()
+                        .forEach { cloudRecordMap[it.url] = it }
+                    val cloudUrls = cloudRecordMap.keys
 
                     // 标记已共享的记录
                     histories.forEachIndexed { index, history ->
-                        if (cloudRecords.contains(history.url)) {
+                        if (cloudUrls.contains(history.url)) {
                             sharedInCloud.add(index)
                         }
                     }
@@ -212,7 +219,9 @@ class WebParseShareDialog(
                     histories.forEachIndexed { index, history ->
                         val isShared = sharedInCloud.contains(index)
                         val row = shareRow(history, index, isShared) {
-                            if (!isShared) {
+                            if (isShared) {
+                                showCancelShareConfirm(history)
+                            } else {
                                 if (selected.contains(index)) selected.remove(index) else selected.add(index)
                                 updateRowSelection(index)
                                 updateUploadButton(uploadButton, histories)
@@ -278,17 +287,17 @@ class WebParseShareDialog(
     ): LinearLayout = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER_VERTICAL
-        isFocusable = !isShared
-        isClickable = !isShared
+        isFocusable = true
+        isClickable = true
         setPadding(dp(14), dp(8), dp(14), dp(8))
         background = rowBg(false, isShared)
         setOnFocusChangeListener { v, has ->
             background = rowBg(has, isShared)
             FocusFxHelper.applyFocusFxState(v, has, cornerRadiusDp = 14)
         }
-        if (!isShared) setOnClickListener { click() }
+        setOnClickListener { click() }
 
-        // 顶部行：选中标记 + 标题 + 适配器类型
+        // 顶部行：选中标记 + 标题 + 取消共享按钮
         val topRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -312,6 +321,23 @@ class WebParseShareDialog(
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        // 已共享记录：右侧显示「取消共享」按钮
+        if (isShared) {
+            val cancelBtn = TextView(context).apply {
+                text = "取消共享"
+                textSize = 13f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(Color.argb(180, 255, 138, 128))
+                gravity = Gravity.CENTER
+                setPadding(dp(12), 0, dp(12), 0)
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(8).toFloat()
+                    setStroke(dp(1), Color.argb(160, 255, 138, 128))
+                    setColor(Color.argb(28, 255, 138, 128))
+                }
+            }
+            topRow.addView(cancelBtn, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(30)).apply { marginStart = dp(8) })
+        }
         addView(topRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         // 底部摘要行
@@ -429,6 +455,117 @@ class WebParseShareDialog(
         }
     }
 
+    private fun showCancelShareConfirm(history: WebParseStore.ParseHistory) {
+        val cloudRecord = cloudRecordMap[history.url] ?: return
+        val refCount = GiteeShareStore.countAdapterReferences(cloudRecord, allCloudRecords)
+        val hasAdapter = cloudRecord.globalAdapterId != null && cloudRecord.globalAdapterId.isNotBlank()
+
+        val msg = buildString {
+            append("确定取消共享「${displayTitle(history)}」吗？")
+            if (hasAdapter && refCount > 0) {
+                append("\n\n该记录关联的适配器（${cloudRecord.adapterName}）还有 $refCount 条其他记录在使用，取消后仅移除本记录，适配器保留。")
+            } else if (hasAdapter) {
+                append("\n\n关联适配器（${cloudRecord.adapterName}）未被其他记录引用，记录与适配器将一起删除。")
+            }
+        }
+
+        val confirmPanel = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            background = bottomSheetPanelBg()
+            setPadding(dp(24), dp(18), dp(24), dp(20))
+            clipChildren = false
+            clipToPadding = false
+        }
+        confirmPanel.addView(TextView(context).apply {
+            text = "取消共享"
+            textSize = 18f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(warm)
+            setPadding(0, 0, 0, dp(12))
+        })
+        confirmPanel.addView(TextView(context).apply {
+            text = msg
+            textSize = 14f
+            setTextColor(Color.argb(220, 255, 255, 255))
+            setLineSpacing(dp(2).toFloat(), 1f)
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
+
+        val confirmDialog = arrayOf<AlertDialog?>(null)
+        val confirmBtn = dialogButton("确认", warning = true) {
+            confirmDialog[0]?.dismiss()
+            performCancelShare(cloudRecord)
+        }
+        val cancelBtn = dialogButton("取消") {
+            confirmDialog[0]?.dismiss()
+        }
+        val btnBar = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+        }
+        btnBar.addView(cancelBtn, LinearLayout.LayoutParams(dp(100), dp(40)).apply { marginEnd = dp(8) })
+        btnBar.addView(confirmBtn, LinearLayout.LayoutParams(dp(100), dp(40)))
+        confirmPanel.addView(btnBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(16) })
+
+        AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog).setView(confirmPanel).create().also { d ->
+            confirmDialog[0] = d
+            d.setOnShowListener { confirmBtn.requestFocus() }
+            d.show()
+            d.window?.apply {
+                setGravity(Gravity.CENTER)
+                setBackgroundDrawableResource(android.R.color.transparent)
+                setLayout(dp(500), WindowManager.LayoutParams.WRAP_CONTENT)
+            }
+        }
+    }
+
+    private fun performCancelShare(cloudRecord: SharedRecord) {
+        val progressPanel = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            background = bottomSheetPanelBg()
+            setPadding(dp(40), dp(30), dp(40), dp(30))
+        }
+        val progressText = TextView(context).apply {
+            text = "正在取消共享..."
+            textSize = 15f
+            setTextColor(warm)
+            gravity = Gravity.CENTER
+        }
+        val progressBar = ProgressBar(context).apply { isIndeterminate = true }
+        progressPanel.addView(progressText, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(16) })
+        progressPanel.addView(progressBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        val progressDialog = AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog).setView(progressPanel).create().also { d ->
+            d.setCancelable(false)
+            d.show()
+            d.window?.apply {
+                setGravity(Gravity.CENTER)
+                setBackgroundDrawableResource(android.R.color.transparent)
+                setLayout(dp(360), WindowManager.LayoutParams.WRAP_CONTENT)
+            }
+        }
+
+        CoroutineScope(Dispatchers.Main).launch {
+            val result = withContext(Dispatchers.IO) {
+                GiteeShareStore.deleteSharedRecord(cloudRecord.globalRecordId, allCloudRecords)
+            }
+            progressDialog.dismiss()
+
+            when (result) {
+                is GiteeApi.ApiResult.Success -> {
+                    Toast.makeText(context, "已取消共享", Toast.LENGTH_SHORT).show()
+                    dialog?.dismiss()
+                    show()
+                }
+                is GiteeApi.ApiResult.Error -> {
+                    Toast.makeText(context, "取消共享失败：${result.message}", Toast.LENGTH_LONG).show()
+                }
+                is GiteeApi.ApiResult.NotFound -> {
+                    Toast.makeText(context, "记录不存在", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
     private fun displayTitle(history: WebParseStore.ParseHistory): String {
         val title = history.title.trim()
         if (history.pageType.trim().lowercase() != "list") return title
@@ -467,7 +604,7 @@ class WebParseShareDialog(
             foreground = context.getDrawable(R.drawable.fg_sticker_circle_border)
         }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(12) })
         addView(TextView(context).apply {
-            text = "共享解析记录"
+            text = "上传解析记录到云端"
             textSize = 20f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(warm)

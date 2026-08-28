@@ -33,7 +33,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 云端共享记录弹窗：
+ * 从云端解析记录下载弹窗：
  * - 从云端拉取记录数据，按创建者（creatorId + deviceName）分组展示
  * - 「我的共享」分组排在首位
  * - 勾选记录可下载，增量保存到本地
@@ -277,7 +277,7 @@ class CloudShareRecordsDialog(
 
             // 记录行
             group.records.forEach { record ->
-                val row = recordRow(record, isMine) {
+                val row = recordRow(record) {
                     if (selected.contains(record.globalRecordId)) {
                         selected.remove(record.globalRecordId)
                     } else {
@@ -297,7 +297,7 @@ class CloudShareRecordsDialog(
         }
     }
 
-    private fun recordRow(record: SharedRecord, isMine: Boolean, click: () -> Unit): LinearLayout = LinearLayout(context).apply {
+    private fun recordRow(record: SharedRecord, click: () -> Unit): LinearLayout = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         gravity = Gravity.CENTER_VERTICAL
         isFocusable = true
@@ -330,22 +330,6 @@ class CloudShareRecordsDialog(
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        // 我的共享记录增加删除图标
-        if (isMine) {
-            val deleteIcon = TextView(context).apply {
-                text = "✕"
-                textSize = 16f
-                setTextColor(Color.argb(160, 255, 138, 128))
-                isFocusable = true
-                isClickable = true
-                setOnFocusChangeListener { v, has ->
-                    setTextColor(if (has) Color.rgb(255, 138, 128) else Color.argb(160, 255, 138, 128))
-                    FocusFxHelper.applyFocusFxState(v, has, cornerRadiusDp = 8)
-                }
-                setOnClickListener { showDeleteConfirm(record) }
-            }
-            topRow.addView(deleteIcon, LinearLayout.LayoutParams(dp(32), dp(32)).apply { marginStart = dp(8) })
-        }
         addView(topRow)
 
         val summary = buildList {
@@ -402,117 +386,6 @@ class CloudShareRecordsDialog(
         selected.clear()
         if (select) allRecords.forEach { selected.add(it.globalRecordId) }
         allRecords.forEach { updateRowSelection(it.globalRecordId) }
-    }
-
-    private fun showDeleteConfirm(record: SharedRecord) {
-        val refCount = GiteeShareStore.countAdapterReferences(record, allRecords)
-        val hasAdapter = record.globalAdapterId != null && record.globalAdapterId.isNotBlank()
-
-        val msg = buildString {
-            append("确定删除「${record.title.ifBlank { "无标题" }}」吗？")
-            if (hasAdapter && refCount > 0) {
-                append("\n\n该记录关联的适配器（${record.adapterName}）还有 $refCount 条其他记录在使用，删除后仅移除本记录，适配器保留。")
-            } else if (hasAdapter) {
-                append("\n\n关联适配器（${record.adapterName}）未被其他记录引用，记录与适配器将一起删除。")
-            }
-        }
-
-        val confirmPanel = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            background = bottomSheetPanelBg()
-            setPadding(dp(24), dp(18), dp(24), dp(20))
-            clipChildren = false
-            clipToPadding = false
-        }
-        confirmPanel.addView(TextView(context).apply {
-            text = "删除共享记录"
-            textSize = 18f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(warm)
-            setPadding(0, 0, 0, dp(12))
-        })
-        confirmPanel.addView(TextView(context).apply {
-            text = msg
-            textSize = 14f
-            setTextColor(Color.argb(220, 255, 255, 255))
-            setLineSpacing(dp(2).toFloat(), 1f)
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
-
-        val confirmDialog = arrayOf<AlertDialog?>(null)
-        val deleteBtn = dialogButton("删除", warning = true) {
-            confirmDialog[0]?.dismiss()
-            performDelete(record)
-        }
-        val cancelBtn = dialogButton("取消") {
-            confirmDialog[0]?.dismiss()
-        }
-        val btnBar = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.END
-        }
-        btnBar.addView(cancelBtn, LinearLayout.LayoutParams(dp(100), dp(40)).apply { marginEnd = dp(8) })
-        btnBar.addView(deleteBtn, LinearLayout.LayoutParams(dp(100), dp(40)))
-        confirmPanel.addView(btnBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(16) })
-
-        AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog).setView(confirmPanel).create().also { d ->
-            confirmDialog[0] = d
-            d.setOnShowListener { deleteBtn.requestFocus() }
-            d.show()
-            d.window?.apply {
-                setGravity(Gravity.CENTER)
-                setBackgroundDrawableResource(android.R.color.transparent)
-                setLayout(dp(500), WindowManager.LayoutParams.WRAP_CONTENT)
-            }
-        }
-    }
-
-    private fun performDelete(record: SharedRecord) {
-        val progressPanel = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            background = bottomSheetPanelBg()
-            setPadding(dp(40), dp(30), dp(40), dp(30))
-        }
-        val progressText = TextView(context).apply {
-            text = "正在删除云端记录..."
-            textSize = 15f
-            setTextColor(warm)
-            gravity = Gravity.CENTER
-        }
-        val progressBar = ProgressBar(context).apply { isIndeterminate = true }
-        progressPanel.addView(progressText, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(16) })
-        progressPanel.addView(progressBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        val progressDialog = AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog).setView(progressPanel).create().also { d ->
-            d.setCancelable(false)
-            d.show()
-            d.window?.apply {
-                setGravity(Gravity.CENTER)
-                setBackgroundDrawableResource(android.R.color.transparent)
-                setLayout(dp(360), WindowManager.LayoutParams.WRAP_CONTENT)
-            }
-        }
-
-        CoroutineScope(Dispatchers.Main).launch {
-            val result = withContext(Dispatchers.IO) {
-                GiteeShareStore.deleteSharedRecord(record.globalRecordId, allRecords)
-            }
-            progressDialog.dismiss()
-
-            when (result) {
-                is GiteeApi.ApiResult.Success -> {
-                    Toast.makeText(context, "删除成功", Toast.LENGTH_SHORT).show()
-                    // 刷新云端列表
-                    dialog?.dismiss()
-                    show()
-                }
-                is GiteeApi.ApiResult.Error -> {
-                    Toast.makeText(context, "删除失败：${result.message}", Toast.LENGTH_LONG).show()
-                }
-                is GiteeApi.ApiResult.NotFound -> {
-                    Toast.makeText(context, "记录不存在", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
     }
 
     private fun performDownload() {
@@ -599,7 +472,7 @@ class CloudShareRecordsDialog(
             foreground = context.getDrawable(R.drawable.fg_sticker_circle_border)
         }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(12) })
         addView(TextView(context).apply {
-            text = "云端共享记录"
+            text = "从云端解析记录下载"
             textSize = 20f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(warm)
