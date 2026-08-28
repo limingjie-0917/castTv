@@ -1,7 +1,7 @@
 {
-  "versionCode":430,
-  "versionName":"1.2.155",
-  "releaseNote":"启动弹窗继续播放按排序后列表顺序播放",
-  "apkUrl":"casttv-v1.2.155.apk",
+  "versionCode":431,
+  "versionName":"1.2.156",
+  "releaseNote":"项目内统一签名，不同设备构建的APK签名一致，可直接覆盖安装",
+  "apkUrl":"casttv-v1.2.156.apk",
   "forceUpdate": false
 }

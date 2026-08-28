@@ -13,6 +13,8 @@ local.properties
 *.dex
 *.keystore
 *.jks
+# 项目专用签名文件，需要随仓库同步到所有构建设备
+!app/casttv.keystore
 
 # IntelliJ / Android Studio
 .idea/

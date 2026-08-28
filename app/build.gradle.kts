@@ -16,21 +16,25 @@ android {
         applicationId = "com.bd.casttv"
         minSdk = 21          // Android 5.0 — covers virtually all Android TV boxes
         targetSdk = 34
-        versionCode = 430
-        versionName = "1.2.155"
+        versionCode = 431
+        versionName = "1.2.156"
     }
 
     signingConfigs {
-        // 正式包（assembleRelease）使用 Android 调试签名，保证产物可直接安装到电视端。
+        // 项目内统一签名：debug + release 共用，确保不同设备构建的 APK 签名一致，可直接覆盖安装。
+        // keystore 文件随 git 同步，所有构建环境共享同一签名。
         create("release") {
-            storeFile = file(System.getProperty("user.home") + "/.android/debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
+            storeFile = file("casttv.keystore")
+            storePassword = "casttv123"
+            keyAlias = "casttv"
+            keyPassword = "casttv123"
         }
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("release")
+        }
         release {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("release")
@@ -410,6 +414,10 @@ dependencies {
     // Lightweight embedded HTTP server used to host the UPnP/DLNA device &
     // service descriptions plus the SOAP control endpoints.
     implementation("org.nanohttpd:nanohttpd:2.3.1")
+
+    // Jsoup — 标准 CSS Selector 引擎，用于 webparse 模块的 HTML 解析与元素选择，
+    // 取代自研的轻量选择器 selectSimple()，支持后代/子/伪类/属性前缀等全部标准语法。
+    implementation("org.jsoup:jsoup:1.18.1")
 
     // ZXing core — 生成收藏「导入/导出」二维码（局域网 HTTP 传输入口）
     implementation("com.google.zxing:core:3.5.2")

@@ -249,58 +249,58 @@ AI 生成 JSON 时只能依赖当前已实现字段。未实现字段可以被 J
 }
 ```
 
-## 5. css_selector 能力与限制（重点章节）
+## 5. css_selector 能力说明（标准 CSS Selector）
 
-当前 `css_selector` 是项目自写的轻量选择器，不是标准 CSS Selector。AI 只能使用当前实现支持的简单写法。
+当前 `css_selector` 使用 [Jsoup](https://jsoup.org) 的标准 CSS Selector 引擎实现，支持完整标准 CSS Selector 语法。AI 可以放心使用浏览器中常见的 CSS 选择器写法，包括后代、子代、伪类、属性前缀/后缀/包含等。
 
-实际支持写法如下。
+实际支持写法如下（节选常用，非完整清单）。
 
 | 写法 | 示例 | 说明 |
 | --- | --- | --- |
 | 标签名 | `a`、`div`、`ul` | 匹配指定标签 |
-| 单个 class | `ul.playlist` | 只读取第一个 `.class` |
+| class | `ul.playlist`、`a.title` | 支持 class 选择 |
+| ID | `#playlist1` | 支持 ID 简写 |
+| 后代选择器 | `div.playlist a[href]` | 任意层级后代 |
+| 子选择器 | `li.next > a` | 仅直接子级 |
+| 相邻/通用兄弟 | `h2 + ul`、`h2 ~ ul` | `+` 紧邻兄弟、`~` 后续兄弟 |
 | 属性存在 | `a[href]` | 要求属性存在 |
-| 属性等于 | `div[id='playlist1']` | 要求属性值完全相等 |
-| 属性前缀 | `div[id^='playlist']` | 要求属性值以指定内容开头 |
-| 逗号分隔 | `ul.playlist,div.playlist` | 拆成多个简单选择器执行 |
-| `:scope` | `:scope` | 只在当前元素上下文中表示当前元素 |
+| 属性等于 | `div[id='playlist1']` | 属性值完全相等 |
+| 属性前缀 | `a[href^='/detail/']` | 属性值以指定内容开头 |
+| 属性后缀 | `img[src$='.jpg']` | 属性值以指定内容结尾 |
+| 属性包含 | `a[href*='play']` | 属性值包含指定内容 |
+| 逗号多选 | `ul.playlist,div.playlist` | 命中任一即保留 |
+| 伪类 | `li:last-child`、`li:nth-child(1)`、`a:not(.disabled)` | 标准伪类 |
+| 文本包含 | `a:contains('下一页')` | 按文本内容筛选 |
+| `:scope` | `:scope` | 当前元素上下文中表示当前元素本身 |
 
-禁止写法如下。
-
-| 禁止写法 | 原因 | 替代写法 |
-| --- | --- | --- |
-| `div.playlist a[href]` | 不支持后代选择器 | 先用 `sourceBlocks.selectors` 选 `div.playlist`，再用 `itemSelector: "a[href]"` |
-| `.playlist .item` | 不支持后代选择器 | 分阶段缩小范围 |
-| `div > a` | 不支持子选择器 | 使用 block + itemSelector |
-| `#playlist1` | 不支持 ID 简写 | `div[id='playlist1']` |
-| `a[href*='play']` | 不支持 `*=` | 用 `a[href]` 加 `filters.urlContainsAny` |
-| `a[href$='.html']` | 不支持 `$=` | 用 `a[href]` 加 `filters.urlRegexAny` |
-| `li:nth-child(1)` | 不支持伪类 | 用 `index` 取第几个匹配元素 |
-| `a:not(.disabled)` | 不支持 `:not()` | 用 filters 或更精准 block 控制 |
+> 说明：`:scope` 作为单独的 selector 时，表示「当前元素自身」（在 `episodes`/`sourceName` 等元素上下文中直接取 text/href），由解析器特殊处理，不交给 Jsoup 重新查找；其他标准选择器全部由 Jsoup 执行。
 
 普通 `css_selector` 的 `attr="text"` 返回清洗后的文本，其他 attr 读取同名属性。只有在 `:scope` 的元素上下文里，额外支持 `attr="html"` 返回 inner HTML、`attr="outerHtml"` 返回 outer HTML。
 
-正确示例：使用简单选择器和 index。
-
-```json
-{
-  "type": "css_selector",
-  "selector": "img[data-src]",
-  "attr": "data-src",
-  "index": 0,
-  "postprocess": ["trim", "decode_html_entities", "absolute_url"]
-}
-```
-
-错误示例：把当前选择器当浏览器 CSS Selector 使用。
+正确示例：用后代选择器 + 属性后缀精准定位封面图。
 
 ```json
 {
   "type": "css_selector",
   "selector": "div.detail .poster img[src$='.jpg']",
-  "attr": "src"
+  "attr": "src",
+  "index": 0,
+  "postprocess": ["trim", "decode_html_entities", "absolute_url"]
 }
 ```
+
+正确示例：用伪类 + 属性前缀组合定位最后一集链接。
+
+```json
+{
+  "type": "css_selector",
+  "selector": "ul.playlist li:last-child a[href^='/play/']",
+  "attr": "href",
+  "postprocess": ["trim", "decode_html_entities", "absolute_url"]
+}
+```
+
+> 历史限制已解除：此前的「不支持后代选择器/子选择器/伪类/属性包含 `*=`/属性后缀 `$=`/ID 简写」等限制在引入 Jsoup 后全部取消，存量适配器无需改动即可继续工作。
 
 ## 6. `:scope` 专章
 
@@ -914,7 +914,7 @@ Base64 模板如下。
 }
 ```
 
-错误示例：同类站点不应依赖 `tabMappings` 和复杂 selector。
+错误示例：同类站点不应依赖未实现的 `tabMappings`；且 `sourceBlocks.selectors` 应选到「剧集列表容器」（如 `div.play-panel ul.playlist`），而不是直接选到叶子 `<a>`，否则 `itemSelector` 没有可用的下级范围。
 
 ```json
 {
@@ -1035,7 +1035,7 @@ AI 输出最终 JSON 前必须逐项自查。
 | 顶层字段 | 必须包含 `match`、`sources`、`playResolve`，建议包含 `schemaVersion`、`meta`、`detail` |
 | match | 不能过宽，优先使用域名条件 + HTML 特征条件 |
 | 域名纯字符串 | ⚠️ 高频失败原因：`meta.domains` 数组和 `match.conditions` 中的域名值必须是纯字符串，严禁写成 Markdown 链接格式；App 做字符串 contains 比对，Markdown 格式永远不会匹配真实 host。AI 输出 JSON 前必须自查：❌ `"value": "[cctv.com](cctv.com)"`；✅ `"value": "cctv.com"` |
-| css_selector | 只能使用当前支持的简单选择器，禁止复杂 CSS Selector |
+| css_selector | 使用标准 CSS Selector（Jsoup），支持后代/子/伪类/属性前缀后缀/逗号等完整语法；`:scope` 表示当前元素自身 |
 | :scope | `episodes.name` 用 `:scope + text`，`episodes.url` 用 `:scope + href` |
 | URL 字段 | 必须显式配置 `absolute_url`，必要时加 `url_decode`、`base64_decode` |
 | 正则转义 | JSON 字符串中反斜杠必须双写，如 `\\d`、`\\s`、`\\.` |

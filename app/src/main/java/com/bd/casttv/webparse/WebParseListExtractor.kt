@@ -4,6 +4,7 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import org.jsoup.Jsoup
 
 /** Parsed movie item from a web list page. */
 data class ParsedListMovie(
@@ -152,51 +153,33 @@ class WebParseListExtractor {
 
     private fun selectSimple(html: String, selector: String): List<Element> {
         if (selector.isBlank()) return emptyList()
+        // :scope 表示「当前元素自身」，返回整个输入 HTML 作为单一元素，供上层在
+        // 元素上下文中直接取 text/href/html/outerHtml，不交给 Jsoup 重新解析。
         if (selector == ":scope") return listOf(Element(html, html, emptyMap()))
-        val tag = Regex("^[a-zA-Z][a-zA-Z0-9_-]*").find(selector)?.value ?: "[a-zA-Z][a-zA-Z0-9_-]*"
-        val cls = Regex("\\.([a-zA-Z0-9_-]+)").find(selector)?.groupValues?.getOrNull(1)
-        val attrMatch = Regex("\\[([a-zA-Z_:][-a-zA-Z0-9_:.]*)(\\^?=)?['\"]?([^'\"]*)?['\"]?]").find(selector)
-        val attrName = attrMatch?.groupValues?.getOrNull(1).orEmpty()
-        val attrOp = attrMatch?.groupValues?.getOrNull(2).orEmpty()
-        val attrValue = attrMatch?.groupValues?.getOrNull(3).orEmpty()
-        val paired = Regex("<($tag)\\b([^>]*)>([\\s\\S]*?)</\\1>", setOf(RegexOption.IGNORE_CASE))
-            .findAll(html).map { Element(it.value, it.groupValues[3], parseAttrs(it.groupValues[2])) }
-        val single = Regex("<($tag)\\b([^>]*)/?>", setOf(RegexOption.IGNORE_CASE))
-            .findAll(html).map { Element(it.value, "", parseAttrs(it.groupValues[2])) }
-        return (paired + single).filter { e ->
-            val classOk = cls.isNullOrBlank() || e.attrs["class"].orEmpty().split(Regex("\\s+")).any { it.equals(cls, true) }
-            val attrOk = attrName.isBlank() || when (attrOp) {
-                "=" -> e.attrs[attrName].orEmpty() == attrValue
-                "^=" -> e.attrs[attrName].orEmpty().startsWith(attrValue)
-                else -> e.attrs.containsKey(attrName)
-            }
-            classOk && attrOk
-        }.toList()
-    }
-
-    private fun parseAttrs(raw: String): Map<String, String> {
-        val map = mutableMapOf<String, String>()
-        Regex("([a-zA-Z_:][-a-zA-Z0-9_:.]*)\\s*=\\s*(['\"])(.*?)\\2", RegexOption.DOT_MATCHES_ALL)
-            .findAll(raw).forEach { map[it.groupValues[1]] = WebParseHtml.decodeEntities(it.groupValues[3]) }
-        return map
+        // Jsoup 的 select() 支持完整标准 CSS Selector 语法：后代/子/伪类/属性前缀等。
+        return Jsoup.parse(html).select(selector).map { el ->
+            Element(
+                outer = el.outerHtml(),
+                inner = el.html(),
+                attrs = el.attributes().asList().associate { it.key to it.value }
+            )
+        }
     }
 
     // ---- 下一页地址提取 ----
 
     /** 从列表页 HTML 中提取下一页地址：优先 class 匹配，其次文字匹配。 */
     private fun extractNextPageUrl(baseUrl: String, html: String): String? {
-        val anchors = Regex("<a\\b([^>]*)>([\\s\\S]*?)</a>", RegexOption.IGNORE_CASE).findAll(html)
+        // 兜底逻辑保留：优先 class 含 next 关键词，其次文字含"下一页"等。
+        // HTML 解析改用 Jsoup，替代原先基于 Regex 的 <a> 标签扫描，更稳健。
         val nextClassKeywords = listOf("next", "page-next", "nextpage", "pagenext", "next-page")
         val nextTextKeywords = listOf("下一页", "下页", "next", "›", "»", "→")
         var textFallback: String? = null
-        for (match in anchors) {
-            val attrs = match.groupValues[1]
-            val innerHtml = match.groupValues[2]
-            val href = Regex("href=[\"']([^\"']+)[\"']", RegexOption.IGNORE_CASE)
-                .find(attrs)?.groupValues?.getOrNull(1)?.trim() ?: continue
-            val classVal = Regex("class=[\"']([^\"']+)[\"']", RegexOption.IGNORE_CASE)
-                .find(attrs)?.groupValues?.getOrNull(1)?.orEmpty()?.lowercase() ?: ""
-            val text = WebParseHtml.clean(innerHtml).trim()
+        for (a in Jsoup.parse(html).select("a[href]")) {
+            val href = a.attr("href").trim()
+            if (href.isBlank()) continue
+            val classVal = a.attr("class").lowercase()
+            val text = a.text().trim()
             // 优先：class 含 next 关键词
             if (nextClassKeywords.any { classVal.contains(it) }) {
                 val abs = WebParseHtml.absolute(baseUrl, href)
