@@ -40,6 +40,7 @@ import com.bd.casttv.ui.framework.BoundaryFocusHandler
 import com.bd.casttv.ui.framework.FocusFxHelper
 import com.bd.casttv.ui.framework.NewMainActivity
 import com.bd.casttv.ui.theme.CartoonDesign
+import com.bd.casttv.util.ThemeManager
 import com.bd.casttv.webparse.AdapterKind
 import com.bd.casttv.webparse.AdapterSelectResult
 import com.bd.casttv.webparse.AdapterSelector
@@ -874,16 +875,20 @@ class CartoonDetailPage(
             val cellW = ((parent.width - rvPadH - totalGap).toFloat() / spanCount).toInt()
                 .coerceAtLeast(CartoonDesign.dp(parent.context, 64))
             val cellH = CartoonDesign.dp(parent.context, 44)
-            val outer = FrameLayout(parent.context).apply {
+            val ctx = parent.context
+            val (defaultStrokePx, defaultStrokeColor) = ThemeManager.strokeFor(ctx, false)
+            val outer = FrameLayout(ctx).apply {
                 isFocusable = true; isClickable = true
                 clipChildren = false; clipToPadding = false
                 layoutParams = RecyclerView.LayoutParams(cellW, cellH)
                 background = CartoonDesign.liquidGlassDrawable(
-                    parent.context, CartoonDesign.Radius.SM, CartoonDesign.TintMode.BASE,
-                    CartoonDesign.Palette.STROKE_SOFT
+                    ctx, CartoonDesign.Radius.SM, CartoonDesign.TintMode.BASE,
+                    defaultStrokeColor, Math.max(1, CartoonDesign.dp(ctx, defaultStrokePx))
                 )
+                // RecyclerView 内的全局焦点态：关闭向上最多 3 层父容器 clip，保证 scale / translationZ 发光不被裁切。
+                FocusFxHelper.disableClippingUp(this, maxDepth = 3)
             }
-            val txt = TextView(parent.context).apply {
+            val txt = TextView(ctx).apply {
                 textSize = CartoonDesign.Type.TITLE_SM
                 typeface = Typeface.DEFAULT_BOLD
                 setTextColor(CartoonDesign.Palette.TEXT_SECONDARY)
@@ -905,30 +910,56 @@ class CartoonDetailPage(
     private inner class EpVH(private val outer: FrameLayout, private val label: TextView) :
         RecyclerView.ViewHolder(outer) {
         private var cur: EpisodeItem? = null
+
+        /** 根据状态重绘剧集卡片背景：聚焦态用 ThemeManager 全局 accent + 粗描边；失焦态区分"当前/上次播放"与普通态。 */
+        private fun applyBg(ctx: Context, focused: Boolean) {
+            val (strokePxDp, strokeColor) = ThemeManager.strokeFor(ctx, focused)
+            val baseStrokePx = Math.max(if (focused) CartoonDesign.dp(ctx, strokePxDp) else CartoonDesign.dp(ctx, strokePxDp), 1)
+            // 聚焦态：液体玻璃抬升一层（ELEVATED）+ 全局主题描边色 + 高光加亮
+            val tintMode = when {
+                focused -> CartoonDesign.TintMode.ELEVATED
+                isCurrentOrLastPlayed(cur) -> CartoonDesign.TintMode.ELEVATED
+                else -> CartoonDesign.TintMode.BASE
+            }
+            val bgStroke = when {
+                focused -> strokeColor
+                isCurrentOrLastPlayed(cur) -> {
+                    // 非焦点 + 当前播放：沿用主题 accent（更柔和，透明度 75%）保持可见性
+                    val accent = ThemeManager.accentColor(ctx)
+                    Color.argb(192, Color.red(accent), Color.green(accent), Color.blue(accent))
+                }
+                else -> strokeColor
+            }
+            outer.background = CartoonDesign.liquidGlassDrawable(
+                ctx, CartoonDesign.Radius.SM, tintMode, bgStroke, baseStrokePx
+            )
+            // 聚焦态额外加亮 topGlow，对齐 CartoonDesign.liquidGlassToFocused 的语义但不硬编码琥珀色
+            if (focused) {
+                val layers = outer.background as? android.graphics.drawable.LayerDrawable
+                val glow = layers?.getDrawable(1) as? GradientDrawable
+                glow?.alpha = 110
+            }
+        }
+
         init {
             outer.setOnFocusChangeListener { _, has ->
-                CartoonDesign.liquidGlassToFocused(itemView.context, outer, has)
+                val ctx = outer.context
+                applyBg(ctx, has)
+                // 全局焦点 fx：两种状态都同步，保证 scale / translationZ 完整回退（避免失焦后仍抬升/放大）
+                FocusFxHelper.applyFocusFxState(
+                    outer, has,
+                    scale = FocusFxHelper.DEFAULT_SCALE,
+                    cornerRadiusDp = CartoonDesign.Radius.SM.dp,
+                    elevationDp = FocusFxHelper.DEFAULT_ELEVATION_DP,
+                )
                 if (has) {
                     label.setTextColor(CartoonDesign.Palette.TEXT_PRIMARY)
-                    FocusFxHelper.applyFocusFxState(outer, true, cornerRadiusDp = CartoonDesign.Radius.SM.dp)
                 } else {
                     BoundaryFocusHandler.cancelShake(outer)
                     label.setTextColor(
                         if (isCurrentOrLastPlayed(cur)) CartoonDesign.Palette.TEXT_PRIMARY
                         else CartoonDesign.Palette.TEXT_SECONDARY
                     )
-                    if (isCurrentOrLastPlayed(cur)) {
-                        outer.background = CartoonDesign.liquidGlassDrawable(
-                            itemView.context, CartoonDesign.Radius.SM,
-                            CartoonDesign.TintMode.ELEVATED, CartoonDesign.Palette.ACCENT
-                        )
-                    } else {
-                        outer.background = CartoonDesign.liquidGlassDrawable(
-                            itemView.context, CartoonDesign.Radius.SM,
-                            CartoonDesign.TintMode.BASE, CartoonDesign.Palette.STROKE_SOFT
-                        )
-                    }
-                    outer.foreground = null
                 }
             }
             outer.setOnClickListener { cur?.let { onEpisodeSelected(it); playEpisode(it) } }
@@ -942,23 +973,21 @@ class CartoonDetailPage(
         fun bind(item: EpisodeItem) {
             cur = item
             label.text = item.name
+            val ctx = itemView.context
             if (!outer.hasFocus()) {
+                applyBg(ctx, false)
                 label.setTextColor(
                     if (isCurrentOrLastPlayed(item)) CartoonDesign.Palette.TEXT_PRIMARY
                     else CartoonDesign.Palette.TEXT_SECONDARY
                 )
-                outer.background = if (isCurrentOrLastPlayed(item)) {
-                    CartoonDesign.liquidGlassDrawable(
-                        itemView.context, CartoonDesign.Radius.SM,
-                        CartoonDesign.TintMode.ELEVATED, CartoonDesign.Palette.ACCENT
-                    )
-                } else {
-                    CartoonDesign.liquidGlassDrawable(
-                        itemView.context, CartoonDesign.Radius.SM,
-                        CartoonDesign.TintMode.BASE, CartoonDesign.Palette.STROKE_SOFT
-                    )
-                }
             }
+            // 绑定同步一次焦点 fx 状态，避免 VH 复用时残留放大 / 抬升
+            FocusFxHelper.applyFocusFxState(
+                outer, outer.hasFocus(),
+                scale = FocusFxHelper.DEFAULT_SCALE,
+                cornerRadiusDp = CartoonDesign.Radius.SM.dp,
+                elevationDp = FocusFxHelper.DEFAULT_ELEVATION_DP,
+            )
         }
     }
 
