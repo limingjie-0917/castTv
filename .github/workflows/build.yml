@@ -1,0 +1,223 @@
+name: Build CastTV Receiver
+
+on:
+  # —— 推送触发（主线 / 动画城/Taste 子分支）—— 只要 push 到这些分支就自动构建
+  push:
+    branches: [ main, develop, feature/*, ui/* ]
+    tags:
+      - 'v*'
+    # 只在这些路径改动时真正跑（README/文档/MD 改动跳过构建，节省时长）
+    paths-ignore:
+      - '**/*.md'
+      - 'design/**'
+      - 'LICENSE'
+      - '.gitignore'
+
+  # —— 手动触发：仓库 Actions 页面可以点 "Run workflow" 选分支构建（push 失败时手动重试）
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: 'Build variant (debug/release/both)'
+        required: false
+        default: 'both'
+        type: choice
+        options: [ debug, release, both ]
+
+  # —— 其他触发方式（以后可按需开启）：
+  # pull_request:  branches: [main]    # 有人发 PR 时先跑一遍 assembleDebug 守门
+  # schedule:      - cron: '0 2 * * *' # 每天凌晨 2:00 UTC 跑一次 Release build 做健康检查
+
+env:
+  GRADLE_WRAPPER_VALIDATE: true
+  JAVA_VERSION: 17
+  JAVA_DISTRO: 'temurin'
+
+# ——— 权限控制：读源码 + 写 artifacts + 写 Release（tag 发布）———
+permissions:
+  contents: write          # tag 发布时写 Release
+  actions: read
+  packages: write
+
+jobs:
+  # ===========================================================
+  # JOB 1 / 2 · assembleDebug：所有分支都跑，保证改完即编
+  # ===========================================================
+  assemble-debug:
+    name: Build Debug APK
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name == 'workflow_dispatch' && github.event.inputs.variant != 'release') || (github.event_name != 'workflow_dispatch') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0           # bumpVersion 读 git log 需要历史
+          submodules: recursive
+
+      - name: Setup JDK 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DISTRO }}
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: 'gradle'           # 自动缓存 ~/.gradle/caches, wrapper
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Gradle assembleDebug
+        run: ./gradlew assembleDebug -x lint --no-daemon --stacktrace
+        env:
+          JAVA_TOOL_OPTIONS: '-Xmx4096m -Dfile.encoding=UTF-8'
+          GRADLE_OPTS: '-Dorg.gradle.jvmargs="-Xmx4096m -XX:+HeapDumpOnOutOfMemoryError"'
+
+      - name: Read APK path & version
+        id: apk
+        shell: bash
+        run: |
+          set -e
+          APK=$(ls app/build/outputs/apk/debug/*.apk | head -1)
+          [ -z "$APK" ] && { echo "APK not found"; exit 1; }
+          NAME=$(basename "$APK")
+          SIZE=$(du -h "$APK" | cut -f1)
+          VERSION=$(grep -oE 'versionName\s*=\s*"[^"]+"' app/build.gradle.kts | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          SHA=$(git rev-parse --short HEAD)
+          echo "apk=$APK" >> $GITHUB_OUTPUT
+          echo "name=$NAME" >> $GITHUB_OUTPUT
+          echo "size=$SIZE" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "sha=$SHA"  >> $GITHUB_OUTPUT
+          echo "VERSION: $VERSION  SHA: $SHA  FILE: $NAME($SIZE)"
+
+      - name: Upload Debug APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-apk-v${{ steps.apk.outputs.version }}-${{ steps.apk.outputs.sha }}
+          path: ${{ steps.apk.outputs.apk }}
+          retention-days: 30          # 调试包保留 30 天
+          compression-level: 6
+
+      - name: Job summary
+        shell: bash
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY <<-EOF
+          ## 构建成功 · Debug APK
+          | 项 | 值 |
+          |---|---|
+          | 版本 | ${{ steps.apk.outputs.version }} |
+          | 提交 | \`${{ steps.apk.outputs.sha }}\` |
+          | APK 名 | ${{ steps.apk.outputs.name }} |
+          | 体积 | ${{ steps.apk.outputs.size }} |
+          | 触发 | ${{ github.event_name }}  · ${{ github.event.head_commit.message }} |
+
+          👉 在 Actions 页顶部 Artifacts 卡片下载安装（同签名，可直接覆盖安装）。
+          EOF
+
+  # ===========================================================
+  # JOB 2 / 2 · assembleRelease + GitHub Release：tag 推送时跑
+  # ===========================================================
+  release-apk:
+    name: Build Release APK & Draft GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.variant != 'debug')
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: ${{ env.JAVA_DISTRO }}
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: 'gradle'
+
+      - name: Validate Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: chmod +x gradlew
+        run: chmod +x gradlew
+
+      - name: Gradle assembleRelease
+        run: ./gradlew assembleRelease -x lint --no-daemon --stacktrace
+        env:
+          JAVA_TOOL_OPTIONS: '-Xmx4096m -Dfile.encoding=UTF-8'
+          GRADLE_OPTS: '-Dorg.gradle.jvmargs="-Xmx4096m -XX:+HeapDumpOnOutOfMemoryError"'
+
+      - name: Read release APK & version
+        id: apk
+        shell: bash
+        run: |
+          set -e
+          APK=$(ls app/build/outputs/apk/release/*.apk 2>/dev/null || ls builds/*/casttv-receiver-*-release.apk 2>/dev/null | head -1)
+          [ -z "$APK" ] && { echo "No release APK found"; exit 1; }
+          NAME=$(basename "$APK")
+          SIZE=$(du -h "$APK" | cut -f1)
+          VERSION=$(grep -oE 'versionName\s*=\s*"[^"]+"' app/build.gradle.kts | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          SHA=$(git rev-parse --short HEAD)
+          echo "apk=$APK" >> $GITHUB_OUTPUT
+          echo "name=$NAME" >> $GITHUB_OUTPUT
+          echo "size=$SIZE" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "sha=$SHA"  >> $GITHUB_OUTPUT
+
+      - name: Upload Release APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-apk-v${{ steps.apk.outputs.version }}
+          path: ${{ steps.apk.outputs.apk }}
+          retention-days: 90
+
+      - name: Publish GitHub Release (仅 tag 推送时)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release v${{ steps.apk.outputs.version }}
+          tag_name: ${{ github.ref_name }}
+          draft: true                      # 先设成草稿，你到 Release 页改文案再发布
+          prerelease: false
+          fail_on_unmatched_files: true
+          files: ${{ steps.apk.outputs.apk }}
+          body: |
+            ## CastTV Receiver v${{ steps.apk.outputs.version }}
+
+            | 项 | 值 |
+            |---|---|
+            | 版本 | ${{ steps.apk.outputs.version }} |
+            | 提交 | \`${{ steps.apk.outputs.sha }}\` |
+            | APK | ${{ steps.apk.outputs.name }} |
+            | 体积 | ${{ steps.apk.outputs.size }} |
+            | 签名 | casttv.keystore (debug/release 共用，直接覆盖安装) |
+
+            ### 主要更新（自动生成）
+            - 请进入 Release 编辑页填入本次发布说明。
+
+            ### 安装
+            1. 下载下方附件 APK
+            2. 通过 `adb install -r <apk>` 或盒子文件管理器直接安装（同签名覆盖安装）
+
+            🤖 自动由 GitHub Actions 构建 · 来源 ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release job summary
+        shell: bash
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY <<-EOF
+          ## Release 构建完成
+          | 项 | 值 |
+          |---|---|
+          | 版本 | ${{ steps.apk.outputs.version }} |
+          | 提交 | \`${{ steps.apk.outputs.sha }}\` |
+          | APK | ${{ steps.apk.outputs.name }}（${{ steps.apk.outputs.size }}）|
+
+          - 若本次由 tag 触发：Release 草稿已创建，请到 [Releases 页面](/${{ github.repository }}/releases) 编辑后点击 Publish。
+          - 若由 workflow_dispatch 触发：产物只在 Actions Artifacts。
+          EOF
