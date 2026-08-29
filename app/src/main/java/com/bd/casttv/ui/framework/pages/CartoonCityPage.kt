@@ -3,7 +3,10 @@ package com.bd.casttv.ui.framework.pages
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Path
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.text.TextUtils
@@ -696,8 +699,30 @@ class CartoonCityPage(context: Context) : BasePage(context) {
                 clipToPadding = false
                 layoutParams = RecyclerView.LayoutParams(cellW, totalH)
             }
-            // 液态玻璃卡片层：宽度 cardW 居中，圆角 SM=12（较小角度 + 底部完整露圆）
-            val card = FrameLayout(parent.context).apply {
+            val rPx = CartoonDesign.dp(parent.context, CARD_R.dp).toFloat()
+            // 液态玻璃卡片层：宽度 cardW 居中，圆角 SM=12
+            // 额外 dispatchDraw clipPath 兜底：无论子 View 是否自己裁圆角（包括 ClippedImageView
+            // 本身圆角 OK，但 bottomShade 直盖底角 / 标题栏 TextView 延伸到边缘），全局都被卡在 12dp 圆角内，
+            // 从根本解决"底二角被遮罩或子 View 吃掉"的问题。
+            val card = object : FrameLayout(parent.context) {
+                private val clipPath = Path()
+                private val clipRect = RectF()
+                override fun dispatchDraw(canvas: Canvas) {
+                    val w = width.toFloat(); val h = height.toFloat()
+                    if (w > 0f && h > 0f && (clipRect.width() != w || clipRect.height() != h)) {
+                        clipRect.set(0f, 0f, w, h)
+                        clipPath.reset()
+                        clipPath.addRoundRect(clipRect, rPx, rPx, Path.Direction.CW)
+                    }
+                    val saveCount = if (clipPath.isEmpty) 0 else canvas.save()
+                    if (saveCount != 0) canvas.clipPath(clipPath)
+                    try {
+                        super.dispatchDraw(canvas)
+                    } finally {
+                        if (saveCount != 0) canvas.restoreToCount(saveCount)
+                    }
+                }
+            }.apply {
                 clipChildren = false
                 clipToPadding = true
                 outlineProvider = ViewOutlineProvider.BACKGROUND
@@ -732,7 +757,10 @@ class CartoonCityPage(context: Context) : BasePage(context) {
                 setCornerRadius(CartoonDesign.dp(ctx, cardR.dp).toFloat())
                 setImageResource(R.drawable.ic_thumb_default)
             }
-            // 海报式底部渐变遮罩：让标题条直接叠在封面下方
+            // 海报式底部渐变遮罩：让标题条直接叠在封面下方。
+            // 关键：radii 数组 8 元素按 (左上,右上,右下,左下) 的 (x,y) 顺序，仅底部两角 = SM 12dp。
+            // 顶部两角 = 0：渐变上沿贴进卡片中部，不能露出"两个小圆弧凹口"。
+            val shadeR = CartoonDesign.dp(ctx, cardR.dp).toFloat()
             val bottomShade = View(ctx).apply {
                 background = GradientDrawable(
                     GradientDrawable.Orientation.BOTTOM_TOP,
@@ -741,7 +769,15 @@ class CartoonCityPage(context: Context) : BasePage(context) {
                         Color.argb(170, 8, 10, 18),
                         Color.argb(0, 8, 10, 18)
                     )
-                )
+                ).apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadii = floatArrayOf(
+                        0f, 0f,           // 左上
+                        0f, 0f,           // 右上
+                        shadeR, shadeR,   // 右下
+                        shadeR, shadeR    // 左下
+                    )
+                }
             }
             // 语义徽章：右上角集数徽（胶囊 badge + 更新/完结/解析中 三态）
             val badge = TextView(ctx).apply {

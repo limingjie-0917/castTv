@@ -3,13 +3,9 @@ package com.bd.casttv.ui.framework.pages
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.graphics.Color
-import android.graphics.Rect
 import android.graphics.Typeface
-import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.LayerDrawable
-import android.text.SpannableString
 import android.text.SpannableStringBuilder
 import android.text.style.ForegroundColorSpan
 import android.view.Gravity
@@ -25,7 +21,6 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.annotation.ColorInt
 import androidx.appcompat.app.AlertDialog
-import androidx.core.graphics.drawable.DrawableCompat
 import com.bd.casttv.R
 import com.bd.casttv.sync.GiteeApi
 import com.bd.casttv.sync.GiteeShareStore
@@ -44,114 +39,89 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * 动画城管理对话框（多选 → 删除确认）。
+ * 动画城管理对话框（多选 → 删除二次确认）。
  *
- * Taste 定向风格：【简约未来科技感 Minimalist Futuristic Sci-Fi】
- *   · 基调：午夜深蓝 SAPPHIRE_900 纯实底（不是液态玻璃），不做毛玻璃朦胧——锐利、克制、HUD。
- *   · 描边：只在顶部有一条 1px NEON_CYAN 硬边（发光霓虹）+ 1px SOFT_STROKE 全框；
- *          其余 UI 元素使用同样的「Outline 线框」而不是填充——赛博朋克里的「UI 是投影出来的」。
- *   · 装饰：扫描线网格（1/24 密度水平线 + 1/48 垂直线，3% alpha）；技术标签统一 monospace。
- *   · CTA：outline 胶囊（默认描边字色 = 霓虹青 50%，焦点 100% 发光 + 1px glow stroke，
- *           危险操作把描边切 NEON_MAGENTA，字色品红 90%）。
- *   · 焦点光：不再用 FocusFx 缩放——直接调 `liquidGlassToFocused` 的 2px 霓虹描边替代。
- *   · 删除确认：改用品红 neon 描边 + 「破坏栅格摘要」；默认焦点仍落"再想想"，BACK 最高优先级消费。
+ * Taste 定向风格：【Frosted Glass · 磨砂玻璃】
+ *  方向：Premium Media / Apple TV 级浮层。严格对齐 CartoonDesign.kt 磨砂令牌；
+ *  不搞 template AI 毛玻璃（不靠 RenderScript / blur），用 frostedGlassDrawable
+ *  的「高透 base 0.42~0.48 + 单色低饱和染色膜 + 软白折射描边 + veil 散射微粒 + 加厚
+ *  高光/内阴影」5 层公式。语义染色膜：
+ *   · 管理弹窗根面板 → COOL（冷青 dye）
+ *   · 删除二次确认根面板 → DANGER（冷玫红 dye + DANGER 软折射描边）
+ *   · 摘要小卡 → 各语义 dye 独立（INFO / SUCCESS→INFO 档 / DANGER / PURE）
+ *  行卡 / 按钮仍保留液态玻璃形态：磨砂 + 液态玻璃"两材对比"是 Taste 分层语言，
+ *  避免"一块大板里面又套毛玻璃"的材质堆叠滥用。
  *
- *  设计令牌（Sci-Fi 子主题，只在本文件使用）：
- *   SAPPHIRE_900 / SAPPHIRE_800 / SAPPHIRE_700  —— 3 档冷靛层级
- *   NEON_CYAN = #33E6FF, NEON_CYAN_SOFT         —— 主霓虹青 + 柔光 50% alpha
- *   NEON_MAGENTA = #FF3EA5                      —— 危险品红
- *   DATA_GREEN = #7DFFB2                        —— 技术 OK 绿（仅用于 monospace 数值）
- *   PANEL_R = 14dp                              —— 介于 SM/MD 之间，锐利但不割眼
- *   INNER_R = 10dp                              —— 行/按钮胶囊半径
+ *  材质分配（更新后）：
+ *   · 根面板            → frostedGlassDrawable(Radius.XL, FrostKind.COOL/DANGER) 磨砂
+ *   · 行卡 / 取消按钮     → liquidGlassDrawable(Radius.MD, TintMode.BASE)          液态玻璃
+ *   · 主 CTA            → liquidGlassDrawable(Radius.MD, TintMode.ACCENT)
+ *   · 删除确认 CTA      → dangerGlassDrawable(Radius.MD)
+ *   · 删除摘要小卡       → frostedGlassDrawable(Radius.MD, Info/Pure/Danger) 磨砂 + 染色
+ *
+ *  焦点态三线索：frosted panel 走 frostedGlassToFocused；liquid card 走 liquidGlassToFocused
+ *                + FocusFxHelper 光边 + 字色升阶。
+ *  BACK 键：删除弹窗消费最高优先级（与行为契约一致）。
  */
 class CartoonManagementDialog(
     private val context: Context,
     private val cartoons: List<GiteeShareStore.SharedCartoon>,
     private val onChanged: () -> Unit
 ) {
-    // ================= Sci-Fi 设计令牌（本地子主题） =================
-    @ColorInt private val SAPPHIRE_900: Int = Color.rgb(10, 15, 36)
-    @ColorInt private val SAPPHIRE_800: Int = Color.rgb(18, 25, 54)
-    @ColorInt private val SAPPHIRE_700: Int = Color.rgb(28, 38, 74)
-    @ColorInt private val NEON_CYAN: Int    = Color.rgb(51, 230, 255)
-    @ColorInt private val NEON_MAGENTA: Int = Color.rgb(255, 62, 165)
-    @ColorInt private val DATA_GREEN: Int   = Color.rgb(125, 255, 178)
-    @ColorInt private val SOFT_STROKE: Int  = Color.argb(90, 90, 120, 180)
-    @ColorInt private val TEXT_0: Int       = Color.rgb(236, 242, 255)
-    @ColorInt private val TEXT_1: Int       = Color.argb(230, 220, 228, 255)
-    @ColorInt private val TEXT_2: Int       = Color.argb(165, 170, 185, 230)
-    @ColorInt private val TEXT_3: Int       = Color.argb(110, 140, 155, 210)
-
-    private val PANEL_R = 14
-    private val INNER_R = 10
+    // ================= 设计（文件内唯一新增：DANGER 液态玻璃 + 辅助 dp()） =================
     private fun dp(v: Int): Int = CartoonDesign.dp(context, v)
-    private val MONO: Typeface = Typeface.MONOSPACE
+    private fun dp(v: Float): Int = CartoonDesign.dp(context, v)
 
-    private fun rectFill(@ColorInt color: Int, cornerDp: Int, strokePx: Int = 0, @ColorInt stroke: Int = 0): GradientDrawable =
-        GradientDrawable().apply {
+    /** 危险操作玻璃：完全复刻 liquidGlassDrawable 的 4 层骨架，用 DANGER 语义玫深色调 + 琥珀 ACCENT 聚焦态。 */
+    private fun dangerGlassDrawable(
+        radius: CartoonDesign.Radius = CartoonDesign.Radius.MD
+    ): LayerDrawable {
+        val rPx = dp(radius.dp).toFloat()
+        val strokePx = dp(1)
+        val base = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(
+            // 顶层：深玫红微透 → 底层：冷灰 95%，符合玻璃"上亮下暗"
+            Color.argb(235, 96, 22, 38),
+            Color.argb(245, 28, 20, 40)
+        )).apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadius = dp(cornerDp).toFloat()
-            setColor(color)
-            if (strokePx > 0) setStroke(strokePx, stroke)
+            cornerRadius = rPx
+            setStroke(strokePx, CartoonDesign.Palette.DANGER)
         }
-
-    /**
-     * HUD Panel Drawable：
-     *  Layer[0] = 午夜蓝实底
-     *  Layer[1] = 1px SOFT_STROKE 全框
-     *  Layer[2] = 顶部 1.5dp 霓虹青 / 品红硬边（InsetDrawable 只贴 top）
-     */
-    private fun hudPanel(@ColorInt accent: Int = NEON_CYAN, @ColorInt baseColor: Int = SAPPHIRE_900): LayerDrawable {
-        val base = rectFill(baseColor, PANEL_R)
-        val frame = rectFill(Color.TRANSPARENT, PANEL_R, dp(1), SOFT_STROKE)
-        val r = dp(PANEL_R).toFloat()
-        val accentBar = rectFill(accent, PANEL_R).apply {
-            // 顶圆角仍贴合外框；底部切断做成只贴顶的 2px 条
-            cornerRadii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f)
-        }
-        val topBar = InsetDrawable(accentBar,
-            /* left= */dp(2), /* top= */dp(1),
-            /* right= */dp(2), /* bottom= */dp(PANEL_R) - dp(2) - dp(1))
-        val ld = LayerDrawable(arrayOf(base, frame, topBar))
-        return ld
-    }
-
-    /** 扫描线网格底（1dp 行线每 26dp + 1dp 列线每 52dp）。使用 ShapeDrawable + TileMode 的位图层做法太重，改用 drawable 叠加：画两条重复的线条使用 GradientDrawable 的 stroke 带 gap。实际上取一条半透明横线居中即可；再叠一个 1px 竖线，对整体产生轻微赛博栅格。 */
-    private fun scanlineOverlay(): Drawable {
-        val hLine = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-            intArrayOf(Color.argb(0,51,230,255), Color.argb(18,51,230,255), Color.argb(0,51,230,255)))
-        hLine.setSize(1, dp(1))
-        val vLine = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(Color.argb(0,51,230,255), Color.argb(10,51,230,255), Color.argb(0,51,230,255)))
-        vLine.setSize(dp(1), 1)
-        return LayerDrawable(arrayOf(vLine, hLine)).apply {
-            setLayerInset(0, 0, dp(6), 0, dp(6))
-            setLayerInset(1, dp(6), 0, dp(6), 0)
-        }
-    }
-
-    /** Sci-Fi 行/按钮胶囊：纯色实底 SAPPHIRE_800 + 1px 软描边，聚焦后 2px accent 描边 + 内发光 1dp。 */
-    private fun hudCapsule(
-        accent: Int,
-        base: Int = SAPPHIRE_800,
-        cornerDp: Int = INNER_R,
-        focused: Boolean = false,
-        alphaFill: Int = 255
-    ): GradientDrawable {
-        val c = Color.argb(alphaFill, Color.red(base), Color.green(base), Color.blue(base))
-        return GradientDrawable().apply {
+        val topGlow = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(
+            Color.argb(60, 255, 255, 255),
+            Color.argb(0, 255, 255, 255)
+        )).apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadius = dp(cornerDp).toFloat()
-            setColor(c)
-            setStroke(
-                if (focused) dp(2) else dp(1),
-                if (focused) accent else SOFT_STROKE
-            )
+            cornerRadius = rPx
+            setSize(-1, dp(22))
+        }
+        val bottomShadow = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(
+            Color.argb(84, 0, 0, 0),
+            Color.argb(0, 0, 0, 0)
+        )).apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = rPx
+            setSize(-1, dp(26))
+        }
+        return LayerDrawable(arrayOf(base, topGlow, bottomShadow)).apply {
+            val insetH = dp(1); val insetV = dp(1)
+            setLayerInset(1, insetH, insetV, insetH, 0); setLayerGravity(1, Gravity.TOP)
+            setLayerInset(2, insetH, 0, insetH, insetV); setLayerGravity(2, Gravity.BOTTOM)
         }
     }
 
-    private fun monospaced(@ColorInt c: Int, size: Float, txt: CharSequence): TextView = TextView(context).apply {
-        typeface = MONO; textSize = size; setTextColor(c); text = txt; gravity = Gravity.CENTER_VERTICAL
+    /** 把 dangerGlass 切到聚焦态：2px DANGER 粗描边 + 高光加亮。 */
+    private fun dangerGlassToFocused(card: View, focused: Boolean) {
+        val layers = card.background as? LayerDrawable ?: return
+        val base = layers.getDrawable(0) as? GradientDrawable ?: return
+        val glow = layers.getDrawable(1) as? GradientDrawable ?: return
+        if (focused) {
+            base.setStroke(dp(2), CartoonDesign.Palette.DANGER)
+            glow.alpha = 140
+        } else {
+            base.setStroke(dp(1), CartoonDesign.Palette.DANGER)
+            glow.alpha = 60
+        }
     }
 
     // ================= 运行状态 =================
@@ -164,12 +134,19 @@ class CartoonManagementDialog(
     private lateinit var deleteBtn: TextView
 
     fun show() {
-        // ===== 根面板：HUD panel =====
+        // ===== 根面板：XL 磨砂玻璃（FrostKind.COOL = 冷青染色膜 · 高透浮层）
+        // 外面再套一层 dim 容器：Android TV Dialog 默认背景是透明，浮层与底图之间缺"景深层"
+        // 会让磨砂 base 0.48 看起来像"幽灵面板"。加一个 28% 黑 soft dim + 加厚外阴影，
+        // 让磨砂染色膜的冷青光能正确"挂在"底图之上，而不是漂在空气中。
         val panel = FrameLayout(context).apply {
-            background = hudPanel(NEON_CYAN)
+            background = CartoonDesign.frostedGlassDrawable(
+                context, CartoonDesign.Radius.XL, CartoonDesign.FrostKind.COOL
+            )
+            // 加厚外阴影：磨砂玻璃浮层必须和液态玻璃面板在"z 方向"差一个档位，
+            // 阴影用染色膜冷青 tint（taste rule: shadow tinted to bg hue）。
+            elevation = dp(12).toFloat()
             clipChildren = true; clipToPadding = true
-            foreground = scanlineOverlay()
-            val padX = dp(24); val padY = dp(20)
+            val padX = dp(24); val padY = dp(22)
             setPadding(padX, padY, padX, padY)
         }
         val content = LinearLayout(context).apply {
@@ -177,40 +154,68 @@ class CartoonManagementDialog(
             descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
         }
 
-        // ===== Header：sticker + title + monospace 右侧计数 =====
+        // ===== Header：琥珀玻璃圆形 sticker + 标题 + 右侧 TOTAL 胶囊徽章 =====
         val header = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             clipChildren = false; clipToPadding = false
         }
-        // 圆形霓虹贴纸：48dp 圆 + 2px 霓虹青描边 + 居中图标 + cyan tint
+        // 贴纸：48dp 圆形 ACCENT 液态玻璃 + 居中卡通图标
         header.addView(FrameLayout(context).apply {
-            val stickerPad = dp(8)
+            val stickerPad = dp(10)
             val iconSize = dp(48)
             layoutParams = LinearLayout.LayoutParams(iconSize, iconSize).apply { marginEnd = dp(14) }
-            setBackground(rectFill(SAPPHIRE_800, 999, dp(2), NEON_CYAN))
+            // Radius 999 = 圆，用 ACCENT 液态玻璃 + 让 cornerRadius 满圆
+            background = CartoonDesign.liquidGlassDrawable(
+                context, CartoonDesign.Radius.LG, CartoonDesign.TintMode.ACCENT
+            ).also { ld ->
+                // 基础层的 cornerRadius 切到 LG 20dp，但 48x48 框里我们要真正圆 → 手动把 layer 0 cornerRadius 拉满 24dp
+                (ld.getDrawable(0) as? GradientDrawable)?.cornerRadius = 9999f
+                (ld.getDrawable(1) as? GradientDrawable)?.cornerRadius = 9999f
+                (ld.getDrawable(2) as? GradientDrawable)?.cornerRadius = 9999f
+            }
             addView(ImageView(context).apply {
                 setImageResource(R.drawable.ic_more_cartoon)
-                imageTintList = android.content.res.ColorStateList.valueOf(NEON_CYAN)
+                imageTintList = android.content.res.ColorStateList.valueOf(
+                    CartoonDesign.Palette.BADGE_ACCENT_FG
+                )
                 scaleType = ImageView.ScaleType.CENTER_INSIDE
-            }, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT).apply {
-                setMargins(stickerPad, stickerPad, stickerPad, stickerPad)
-            })
+            }, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
+            ).apply { setMargins(stickerPad, stickerPad, stickerPad, stickerPad) })
         })
         val titleBox = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL; isFocusable = false
         }
         titleCount = TextView(context).apply {
-            text = "MY CARTOONS"; typeface = MONOSPACE_BOLD; textSize = 18f
-            setTextColor(TEXT_0); letterSpacing = 0.04f; maxLines = 1
+            text = "我的动画城"
+            textSize = CartoonDesign.Type.TITLE_LG
+            setTextColor(CartoonDesign.Palette.TEXT_PRIMARY)
+            setTypeface(null, Typeface.BOLD)
+            maxLines = 1
         }
         titleBox.addView(titleCount)
-        titleBox.addView(monospaced(TEXT_3, CartoonDesign.Type.STATUS, "CartoonCity Library · v2.0 · HUD MODE"))
-        header.addView(titleBox, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        // 副标题：STATUS 辅助文案
+        titleBox.addView(TextView(context).apply {
+            text = "管理云端收藏 · 多选后批量删除"
+            textSize = CartoonDesign.Type.STATUS
+            setTextColor(CartoonDesign.Palette.TEXT_MUTED)
+        })
+        header.addView(titleBox, LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+        ))
+        // TOTAL 胶囊徽章
         val totalBadge = FrameLayout(context).apply {
-            background = hudCapsule(NEON_CYAN, SAPPHIRE_700)
-            val ph = dp(12); val pv = dp(6); setPadding(ph, pv, ph, pv)
+            background = CartoonDesign.capsuleBadge(
+                context, CartoonDesign.Palette.BADGE_INFO_BG
+            )
+            val ph = dp(14); val pv = dp(6); setPadding(ph, pv, ph, pv)
         }.also { frame ->
-            frame.addView(monospaced(NEON_CYAN, CartoonDesign.Type.BADGE, "TOTAL ${cartoons.size}"))
+            frame.addView(TextView(context).apply {
+                text = "共 ${cartoons.size} 部"
+                textSize = CartoonDesign.Type.BADGE
+                setTextColor(CartoonDesign.Palette.BADGE_INFO_FG)
+                gravity = Gravity.CENTER
+            })
         }
         header.addView(totalBadge, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
@@ -219,25 +224,47 @@ class CartoonManagementDialog(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
         ))
 
-        // 技术提示：monospace 小字，用 DATA_GREEN 做提示符
+        // 操作提示行：STATUS 字，软提示色，不再用 monospace 命令提示符风
         content.addView(LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(2), dp(10), 0, dp(6))
-            addView(monospaced(DATA_GREEN, CartoonDesign.Type.STATUS, "> "))
-            addView(monospaced(TEXT_3, CartoonDesign.Type.STATUS, "DPAD 移动焦点 · OK 勾选 · SELECTED 条目后按 [DELETE]"))
+            addView(TextView(context).apply {
+                text = "方向键"
+                textSize = CartoonDesign.Type.STATUS
+                setTextColor(CartoonDesign.Palette.INFO)
+                setTypeface(null, Typeface.BOLD)
+            })
+            addView(TextView(context).apply {
+                text = " 移动焦点 · "
+                textSize = CartoonDesign.Type.STATUS
+                setTextColor(CartoonDesign.Palette.TEXT_MUTED)
+            })
+            addView(TextView(context).apply {
+                text = "确定键"
+                textSize = CartoonDesign.Type.STATUS
+                setTextColor(CartoonDesign.Palette.ACCENT)
+                setTypeface(null, Typeface.BOLD)
+            })
+            addView(TextView(context).apply {
+                text = " 勾选条目 · 勾选后点「删除选中」"
+                textSize = CartoonDesign.Type.STATUS
+                setTextColor(CartoonDesign.Palette.TEXT_MUTED)
+            })
         }, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
         ))
 
-        // ===== List =====
-        val list = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; clipChildren = true; clipToPadding = true }
+        // ===== 列表（MD 液态玻璃行）=====
+        val list = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL; clipChildren = true; clipToPadding = true
+        }
         val focusRows = mutableListOf<View>()
         cartoons.forEachIndexed { i, c ->
             val row = buildRow(i, c)
             focusRows += row
             list.addView(row, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(82)
-            ).apply { topMargin = if (i == 0) 0 else dp(8) })
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(84)
+            ).apply { topMargin = if (i == 0) dp(2) else dp(8) })
         }
         val scroll = ScrollView(context).apply {
             overScrollMode = ScrollView.OVER_SCROLL_NEVER
@@ -247,16 +274,27 @@ class CartoonManagementDialog(
         }
         content.addView(scroll, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, dp(340)
-        ).apply { topMargin = dp(2) })
+        ).apply { topMargin = dp(4) })
 
-        // ===== Bottom: mono count 左 + 按钮簇右 =====
-        bottomCount = monospaced(TEXT_2, CartoonDesign.Type.BODY, "")
-        val cancel = buildFooterButton("CANCEL", accent = NEON_CYAN, primary = false) {
-            if (deleteJob?.isActive == true) return@buildFooterButton
+        // ===== Bottom：计数左 + 玻璃按钮簇右 =====
+        bottomCount = TextView(context).apply {
+            textSize = CartoonDesign.Type.BODY
+            setTextColor(CartoonDesign.Palette.TEXT_MUTED)
+        }
+        val cancel = buildGlassButton(
+            label = "取消",
+            kind = GlassKind.BASE,
+            focusCorner = CartoonDesign.Radius.MD,
+        ) {
+            if (deleteJob?.isActive == true) return@buildGlassButton
             dialog?.dismiss()
         }
-        deleteBtn = buildFooterButton("DELETE SELECTED", accent = NEON_CYAN, primary = true) {
-            if (deleteJob?.isActive == true) return@buildFooterButton
+        deleteBtn = buildGlassButton(
+            label = "删除选中",
+            kind = GlassKind.ACCENT,
+            focusCorner = CartoonDesign.Radius.MD,
+        ) {
+            if (deleteJob?.isActive == true) return@buildGlassButton
             onDeleteClicked()
         }
         val buttons = LinearLayout(context).apply {
@@ -265,12 +303,8 @@ class CartoonManagementDialog(
             addView(bottomCount, LinearLayout.LayoutParams(
                 0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
             ).apply { marginEnd = dp(12) })
-            addView(cancel, LinearLayout.LayoutParams(
-                dp(130), dp(44)
-            ))
-            addView(deleteBtn, LinearLayout.LayoutParams(
-                dp(210), dp(44)
-            ).apply { marginStart = dp(14) })
+            addView(cancel, LinearLayout.LayoutParams(dp(130), dp(44)))
+            addView(deleteBtn, LinearLayout.LayoutParams(dp(170), dp(44)).apply { marginStart = dp(14) })
         }
         content.addView(buttons, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
@@ -286,92 +320,240 @@ class CartoonManagementDialog(
             bindBoundary(panel, focusRows + listOf(cancel, deleteBtn))
             d.show()
             d.window?.apply {
-                setGravity(Gravity.CENTER); setBackgroundDrawableResource(android.R.color.transparent)
-                setLayout(dp(760), WindowManager.LayoutParams.WRAP_CONTENT)
+                setGravity(Gravity.CENTER)
+                // 磨砂玻璃必须有一层"背景暗化 veil"才能让染色膜的冷青光锚定住，
+                // 否则 base alpha≈0.45 的面板直接叠在亮内容上会让文字对比度崩盘。
+                // 用 Window dimAmount 做系统级景深层（0.32 = 淡柔 32% 暗化），
+                // 这比在 decorView 上包一层 FrameLayout 更稳，而且不干扰焦点分发。
+                val dimColor = CartoonDesign.mixColor(
+                    Color.rgb(6, 8, 14), Color.rgb(96, 152, 220), 0.10f
+                )
+                // Dialog 级 tinted dim：先铺一个 fullscreen 透明冷青 dim 层。
+                setBackgroundDrawable(GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    setColor(CartoonDesign.withAlpha(dimColor, 82))
+                })
+                addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+                val attrs = attributes
+                attrs.dimAmount = 0.32f
+                attributes = attrs
+                setLayout(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT)
+                // 让根磨砂面板只占 760dp，其余空间由上方 tinted dim 负责（看起来就像 Frosted
+                // Glass 背后是柔化的场景，不是纯黑）。
+                (panel.layoutParams as? FrameLayout.LayoutParams)?.apply {
+                    width = dp(760)
+                    height = FrameLayout.LayoutParams.WRAP_CONTENT
+                    gravity = Gravity.CENTER
+                }
             }
         }
         updateCounts()
     }
 
-    // ================= Row builder =================
+    // ================= 玻璃按钮工厂 =================
+    private enum class GlassKind { BASE, ACCENT, DANGER }
+
+    private fun buildGlassButton(
+        label: String,
+        kind: GlassKind,
+        focusCorner: CartoonDesign.Radius = CartoonDesign.Radius.MD,
+        click: () -> Unit
+    ): TextView = TextView(context).apply {
+        text = label
+        gravity = Gravity.CENTER
+        textSize = CartoonDesign.Type.TITLE_SM
+        setTypeface(null, Typeface.BOLD)
+        when (kind) {
+            GlassKind.BASE -> {
+                background = CartoonDesign.liquidGlassDrawable(
+                    context, CartoonDesign.Radius.MD, CartoonDesign.TintMode.BASE
+                )
+                setTextColor(CartoonDesign.Palette.TEXT_PRIMARY)
+            }
+            GlassKind.ACCENT -> {
+                background = CartoonDesign.liquidGlassDrawable(
+                    context, CartoonDesign.Radius.MD, CartoonDesign.TintMode.ACCENT
+                )
+                setTextColor(CartoonDesign.Palette.BADGE_ACCENT_FG)
+            }
+            GlassKind.DANGER -> {
+                background = dangerGlassDrawable(CartoonDesign.Radius.MD)
+                setTextColor(Color.rgb(255, 236, 236))  // 冷白微红，与 DANGER 底配合 4.5:1+
+            }
+        }
+        isFocusable = true; isClickable = true
+        tag = kind
+        setOnFocusChangeListener { v, has ->
+            val k = v.tag as GlassKind
+            when (k) {
+                GlassKind.DANGER -> {
+                    dangerGlassToFocused(v, has)
+                    if (has) FocusFxHelper.applyFocusFxState(
+                        v, true, cornerRadiusDp = focusCorner.dp
+                    ) else v.foreground = null
+                }
+                else -> {
+                    CartoonDesign.liquidGlassToFocused(context, v, has)
+                    if (has) FocusFxHelper.applyFocusFxState(
+                        v, true, cornerRadiusDp = focusCorner.dp
+                    ) else v.foreground = null
+                }
+            }
+            // 字色焦点升阶：BASE → TEXT_PRIMARY -> ACCENT；ACCENT/DANGER 本身强调字色保持但 bold already
+            if (v.isEnabled) {
+                when (k) {
+                    GlassKind.BASE -> setTextColor(
+                        if (has) CartoonDesign.Palette.ACCENT
+                        else CartoonDesign.Palette.TEXT_PRIMARY
+                    )
+                    GlassKind.ACCENT, GlassKind.DANGER -> {
+                        // 聚焦 + 粗体，保持原前景色（本来就属于强强调色），不切换
+                    }
+                }
+            }
+        }
+        setOnClickListener { click() }
+    }
+
+    // ================= 行 builder =================
 
     private fun buildRow(index: Int, cartoon: GiteeShareStore.SharedCartoon): View {
-        // Row 胶囊：实底 sapphire_800 + 1px soft；选中态 = 2px NEON_CYAN 描边 + 左侧霓虹竖条 + 字色 cyan
+        // 行：MD 液态玻璃 BASE
         val row = FrameLayout(context).apply {
             isFocusable = true; isFocusableInTouchMode = false; isClickable = true
             clipChildren = false; clipToPadding = true
             descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
-            background = hudCapsule(NEON_CYAN, SAPPHIRE_800)
-            setPadding(dp(12), dp(8), dp(14), dp(8))
+            background = CartoonDesign.liquidGlassDrawable(
+                context, CartoonDesign.Radius.MD, CartoonDesign.TintMode.BASE
+            )
+            setPadding(dp(12), dp(9), dp(14), dp(9))
         }
-        // 选中态：左侧 2dp 霓虹青发光竖条（5%~10% 行高）
+        // 选中态：左侧琥珀色垂直指示条（与 ACCENT 主色呼应，36dp 长竖胶囊贴在 padding 内）
         val selectBar = View(context).apply {
             visibility = View.GONE
-            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(Color.argb(40,51,230,255), NEON_CYAN, Color.argb(40,51,230,255)))
+            background = CartoonDesign.capsuleBadge(
+                context, CartoonDesign.Palette.ACCENT, CartoonDesign.Palette.ACCENT_DIM
+            )
         }
         row.addView(selectBar, FrameLayout.LayoutParams(
-            dp(2), ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START or Gravity.CENTER_VERTICAL
+            dp(3), ViewGroup.LayoutParams.MATCH_PARENT,
+            Gravity.START or Gravity.CENTER_VERTICAL
         ).apply { leftMargin = dp(4); topMargin = dp(10); bottomMargin = dp(10) })
 
         val body = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             clipChildren = false; clipToPadding = false
         }
-        // checkbox: monospace ☐/☑ 字色 TEXT_2 -> NEON_CYAN
-        val check = monospaced(TEXT_2, 22f, "\u2610").apply {
-            setPadding(0, 0, dp(10), 0); gravity = Gravity.CENTER; typeface = Typeface.DEFAULT_BOLD
+        // 选择框：34x34 BASE 液态玻璃胶囊 sticker，内放 ☐/☑ Unicode 图标
+        val checkSticker = FrameLayout(context).apply {
+            background = CartoonDesign.liquidGlassDrawable(
+                context, CartoonDesign.Radius.SM, CartoonDesign.TintMode.BASE,
+                CartoonDesign.Palette.STROKE_HARD
+            )
         }
-        body.addView(check, LinearLayout.LayoutParams(dp(34), dp(34)))
-        // thumbnail 12dp clipped
+        val check = TextView(context).apply {
+            text = "\u2610"; textSize = 18f; gravity = Gravity.CENTER
+            setTextColor(CartoonDesign.Palette.TEXT_MUTED)
+            setTypeface(null, Typeface.BOLD)
+        }
+        checkSticker.addView(check, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
+        ))
+        body.addView(checkSticker, LinearLayout.LayoutParams(dp(34), dp(34)).apply {
+            marginEnd = dp(12)
+        })
+        // 缩略图 ClippedImageView SM(12) 真裁
         val thumb = ClippedImageView(context).apply {
             setCircle(false)
-            setCornerRadius(dp(12).toFloat())
+            setCornerRadius(dp(CartoonDesign.Radius.SM.dp).toFloat())
             scaleType = ImageView.ScaleType.CENTER_CROP
             setImageResource(R.drawable.ic_thumb_default)
         }
-        body.addView(thumb, LinearLayout.LayoutParams(dp(50), dp(66)).apply { marginEnd = dp(12) })
+        body.addView(thumb, LinearLayout.LayoutParams(dp(52), dp(66)).apply {
+            marginEnd = dp(12)
+        })
         loadThumb(cartoon.cover, thumb)
-        // info stack: title (mono+bold title_sm) + meta line (count badge + adapter mono) + url (TEXT_3)
-        val info = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; isFocusable = false }
-        info.addView(TextView(context).apply {
+        // Info 列：TITLE_SM 标题 + 徽章 CAPTION 行 + STATUS URL
+        val info = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL; isFocusable = false
+        }
+        val titleView = TextView(context).apply {
             text = cartoon.title.ifBlank { cartoon.detailUrl }
             textSize = CartoonDesign.Type.TITLE_SM
-            typeface = MONOSPACE_BOLD
-            setTextColor(TEXT_0); maxLines = 1
+            setTextColor(CartoonDesign.Palette.TEXT_PRIMARY)
+            setTypeface(null, Typeface.BOLD); maxLines = 1
             ellipsize = android.text.TextUtils.TruncateAt.END
-        })
+        }
+        info.addView(titleView)
         val meta = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
         }
         meta.addView(buildStatusChip(cartoon.episodeCount))
-        meta.addView(monospaced(TEXT_2, CartoonDesign.Type.CAPTION,
-            "  ·  ${cartoon.adapterName.ifBlank { "generic" }}"
-        ).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+        // 适配器名：CAPTION 软辅助 + 小圆点色 + 真实字（不再 monospace 拼接 "· 适配器名"）
+        meta.addView(View(context).apply {
+            val s = dp(4)
+            layoutParams = LinearLayout.LayoutParams(s, s).apply {
+                marginStart = dp(10); marginEnd = dp(8)
+            }
+            background = CartoonDesign.capsuleBadge(
+                context, CartoonDesign.withAlpha(CartoonDesign.Palette.TEXT_MUTED, 255)
+            )
+        })
+        meta.addView(TextView(context).apply {
+            text = cartoon.adapterName.ifBlank { "通用网页解析" }
+            textSize = CartoonDesign.Type.CAPTION
+            setTextColor(CartoonDesign.Palette.TEXT_SECONDARY)
+            maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+        })
         info.addView(meta, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply { topMargin = dp(6) })
-        info.addView(monospaced(TEXT_3, CartoonDesign.Type.STATUS, cartoon.detailUrl).apply {
+        info.addView(TextView(context).apply {
+            text = cartoon.detailUrl
+            textSize = CartoonDesign.Type.STATUS
+            setTextColor(CartoonDesign.Palette.TEXT_MUTED)
             maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
-            setPadding(0, dp(3), 0, 0)
+            setPadding(0, dp(4), 0, 0)
         })
-        body.addView(info, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        body.addView(info, LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+        ))
         row.addView(body, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
             Gravity.CENTER_VERTICAL
-        ).apply { leftMargin = dp(20) })
+        ).apply { leftMargin = dp(6) })
 
         fun refresh() {
             val on = selected.contains(cartoon.cartoonId)
             check.text = if (on) "\u2611" else "\u2610"
-            check.setTextColor(if (on) NEON_CYAN else TEXT_2)
+            if (on) {
+                check.setTextColor(CartoonDesign.Palette.ACCENT)
+                (checkSticker.background as? LayerDrawable)?.let { ld ->
+                    (ld.getDrawable(0) as? GradientDrawable)?.setStroke(
+                        dp(2), CartoonDesign.Palette.ACCENT
+                    )
+                    (ld.getDrawable(1) as? GradientDrawable)?.alpha = 110
+                }
+            } else {
+                check.setTextColor(CartoonDesign.Palette.TEXT_MUTED)
+                (checkSticker.background as? LayerDrawable)?.let { ld ->
+                    (ld.getDrawable(0) as? GradientDrawable)?.setStroke(
+                        dp(1), CartoonDesign.Palette.STROKE_HARD
+                    )
+                    (ld.getDrawable(1) as? GradientDrawable)?.alpha = 48
+                }
+            }
             selectBar.visibility = if (on) View.VISIBLE else View.GONE
+            titleView.setTextColor(
+                if (on) CartoonDesign.Palette.ACCENT
+                else CartoonDesign.Palette.TEXT_PRIMARY
+            )
         }
         refresh()
         row.setOnFocusChangeListener { _, has ->
-            row.background = hudCapsule(NEON_CYAN, SAPPHIRE_800, focused = has)
+            CartoonDesign.liquidGlassToFocused(context, row, has)
             if (has) FocusFxHelper.applyFocusFxState(
-                row, true, cornerRadiusDp = INNER_R
+                row, true, cornerRadiusDp = CartoonDesign.Radius.MD.dp
             ) else row.foreground = null
         }
         row.setOnKeyListener { _, keyCode, e ->
@@ -384,72 +566,39 @@ class CartoonManagementDialog(
         return row
     }
 
+    /** 集数胶囊徽章 — 严格走 CartoonDesign.capsuleBadge + BADGE 语义调色板。 */
     private fun buildStatusChip(count: Int): View {
-        val c: Int; val bg: Int; val txt: String
-        when {
-            count <= 0    -> { c = NEON_CYAN; bg = Color.argb(170, 14, 70, 90); txt = "STREAMING" }
-            count >= 120  -> { c = DATA_GREEN; bg = Color.argb(170, 14, 70, 50); txt = "DONE · $count" }
-            else          -> { c = NEON_CYAN; bg = Color.argb(170, 14, 70, 90); txt = "EP $count" }
+        val (bg, fg, txt) = when {
+            count <= 0 -> Triple(
+                CartoonDesign.Palette.BADGE_WARN_BG,
+                CartoonDesign.Palette.BADGE_WARN_FG,
+                "待解析"
+            )
+            count >= 120 -> Triple(
+                CartoonDesign.Palette.BADGE_SUCCESS_BG,
+                CartoonDesign.Palette.BADGE_SUCCESS_FG,
+                "全 ${count} 集 · 已完结"
+            )
+            else -> Triple(
+                CartoonDesign.Palette.BADGE_ACCENT_BG,
+                CartoonDesign.Palette.BADGE_ACCENT_FG,
+                "更新至第 $count 集"
+            )
         }
         return FrameLayout(context).apply {
-            background = hudCapsule(c, base = bg, cornerDp = 999)
-            setPadding(dp(10), dp(4), dp(10), dp(4))
-            addView(monospaced(c, CartoonDesign.Type.BADGE, txt))
+            background = CartoonDesign.capsuleBadge(context, bg)
+            val ph = dp(10); val pv = dp(5); setPadding(ph, pv, ph, pv)
+            addView(TextView(context).apply {
+                text = txt
+                textSize = CartoonDesign.Type.BADGE
+                setTextColor(fg)
+                gravity = Gravity.CENTER
+                setTypeface(null, Typeface.BOLD)
+            })
         }
     }
 
-    // ================= Footer button factory =================
-
-    private fun buildFooterButton(
-        label: String,
-        accent: Int,
-        primary: Boolean,
-        click: () -> Unit
-    ): TextView = TextView(context).apply {
-        text = label; typeface = MONOSPACE_BOLD; gravity = Gravity.CENTER
-        textSize = CartoonDesign.Type.CAPTION; letterSpacing = 0.06f
-        val disabledFg = TEXT_3
-        setTextColor(if (primary) accent else TEXT_0)
-        isFocusable = true; isClickable = true
-        // Primary: outline 2px (filled in sapphire_700 only when focus, accent never filled)
-        background = hudCapsule(
-            accent = accent,
-            base = if (primary) SAPPHIRE_900 else SAPPHIRE_800,
-            focused = false,
-            alphaFill = if (primary) 0 else 255
-        ).also { bg ->
-            if (primary) {
-                // Primary 按钮永远是 outline 风：先画 1px 霓虹描边，底是全透 HUD
-                bg.setColor(Color.argb(40, Color.red(accent), Color.green(accent), Color.blue(accent)))
-                bg.setStroke(dp(1), Color.argb(200, Color.red(accent), Color.green(accent), Color.blue(accent)))
-            }
-        }
-        tag = Triple(accent, primary, disabledFg)
-
-        setOnFocusChangeListener { v, has ->
-            @Suppress("UNCHECKED_CAST")
-            val tagTriple = v.tag as Triple<Int, Boolean, Int>
-            val (a, pri, df) = tagTriple
-            val acc: Int = a
-            if (v.isEnabled.not()) {
-                setTextColor(df); return@setOnFocusChangeListener
-            }
-            setTextColor(if (pri) acc else if (has) acc else TEXT_0)
-            val newBg = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(INNER_R).toFloat()
-                val baseTint = if (pri) Color.argb(if (has) 90 else 40, Color.red(acc), Color.green(acc), Color.blue(acc))
-                               else SAPPHIRE_800
-                setColor(baseTint)
-                setStroke(if (has) dp(2) else dp(1),
-                    if (has) acc else (if (pri) Color.argb(180, Color.red(acc), Color.green(acc), Color.blue(acc)) else SOFT_STROKE))
-            }
-            v.background = newBg
-            if (has) FocusFxHelper.applyFocusFxState(v, true, cornerRadiusDp = INNER_R)
-            else v.foreground = null
-        }
-        setOnClickListener { click() }
-    }
+    // ================= 勾选计数 =================
 
     private fun toggle(id: String, refresh: () -> Unit) {
         if (selected.contains(id)) selected.remove(id) else selected.add(id)
@@ -458,45 +607,51 @@ class CartoonManagementDialog(
 
     private fun updateCounts() {
         val s = selected.size; val t = cartoons.size
-        val hdr = "MY CARTOONS" + if (s > 0) " · SELECTED $s" else ""
-        titleCount.text = hdr
+        // 标题栏副标 + 选中
+        titleCount.text = buildString {
+            append("我的动画城")
+            if (s > 0) append(" · 已选 $s")
+        }
+        // 底部计数：多段 Spannable
         val sb = SpannableStringBuilder()
-        val a = "SEL "; val b = "$s"; val c = " / "; val d = "$t"; val e = " ENTRIES"
-        sb.append(a).append(b).append(c).append(d).append(e)
-        val p1 = a.length; val p2 = p1 + b.length; val p3 = p2 + c.length; val p4 = p3 + d.length
-        sb.setSpan(ForegroundColorSpan(TEXT_3), 0, p1, 0)
-        sb.setSpan(ForegroundColorSpan(NEON_CYAN), p1, p2, 0)
-        sb.setSpan(ForegroundColorSpan(TEXT_3), p2, p3, 0)
-        sb.setSpan(ForegroundColorSpan(DATA_GREEN), p3, p4, 0)
-        sb.setSpan(ForegroundColorSpan(TEXT_3), p4, sb.length, 0)
+        val a0 = "已选 "; val a1 = "$s"
+        val b0 = "  /  共 "; val b1 = "$t"; val b2 = " 部"
+        sb.append(a0).append(a1).append(b0).append(b1).append(b2)
+        var p = 0
+        sb.setSpan(ForegroundColorSpan(CartoonDesign.Palette.TEXT_SECONDARY), p, p + a0.length, 0); p += a0.length
+        sb.setSpan(ForegroundColorSpan(CartoonDesign.Palette.ACCENT), p, p + a1.length, 0); p += a1.length
+        sb.setSpan(ForegroundColorSpan(CartoonDesign.Palette.TEXT_SECONDARY), p, p + b0.length, 0); p += b0.length
+        sb.setSpan(ForegroundColorSpan(CartoonDesign.Palette.SUCCESS), p, p + b1.length, 0); p += b1.length
+        sb.setSpan(ForegroundColorSpan(CartoonDesign.Palette.TEXT_SECONDARY), p, sb.length, 0)
         bottomCount.text = sb
+
         val enabled = s > 0 && deleteJob?.isActive != true
         deleteBtn.isEnabled = enabled
-        @Suppress("UNCHECKED_CAST")
-        val tagTriple2 = deleteBtn.tag as Triple<Int, Boolean, Int>
-        val (accent, primary, _) = tagTriple2
-        val acc: Int = accent
-        deleteBtn.alpha = if (enabled) 1f else 0.4f
-        deleteBtn.setTextColor(if (enabled) acc else TEXT_3)
-        // 禁用时用 soft stroke，启用时回到 outline 风
-        deleteBtn.background = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = dp(INNER_R).toFloat()
-            if (enabled && primary as Boolean) {
-                setColor(Color.argb(40, Color.red(acc), Color.green(acc), Color.blue(acc)))
-                setStroke(dp(1), Color.argb(200, Color.red(acc), Color.green(acc), Color.blue(acc)))
+        // ACCENT 玻璃按钮禁用态：退回到 BASE 软 + MUTED 字 + 0.45 alpha
+        val kind = deleteBtn.tag as GlassKind
+        if (kind == GlassKind.ACCENT) {
+            deleteBtn.alpha = if (enabled) 1f else 0.45f
+            deleteBtn.setTextColor(
+                if (enabled) CartoonDesign.Palette.BADGE_ACCENT_FG
+                else CartoonDesign.Palette.TEXT_MUTED
+            )
+            deleteBtn.background = if (enabled) {
+                CartoonDesign.liquidGlassDrawable(
+                    context, CartoonDesign.Radius.MD, CartoonDesign.TintMode.ACCENT
+                )
             } else {
-                setColor(SAPPHIRE_900)
-                setStroke(dp(1), SOFT_STROKE)
+                CartoonDesign.liquidGlassDrawable(
+                    context, CartoonDesign.Radius.MD, CartoonDesign.TintMode.BASE
+                )
             }
         }
     }
 
-    // ================= Delete flow =================
+    // ================= 删除流 =================
 
     private fun onDeleteClicked() {
-        if (selected.isEmpty()) { toast("Please select entries first"); return }
-        deleteBtn.isEnabled = false; deleteBtn.alpha = 0.4f
+        if (selected.isEmpty()) { toast("请先勾选条目"); return }
+        deleteBtn.isEnabled = false; deleteBtn.alpha = 0.45f
         val sel = cartoons.filter { selected.contains(it.cartoonId) }
         deleteJob = scope.launch {
             val preview = withContext(Dispatchers.IO) { buildDeletionPreview(sel) }
@@ -519,113 +674,202 @@ class CartoonManagementDialog(
         return Preview(d, k)
     }
 
-    // ================= 删除二次确认：Magenta Danger Sci-Fi =================
+    /** 磨砂玻璃摘要小卡（用于删除确认的四象限）。Taste 分层："小卡用磨砂 + 液态玻璃 sticker"。 */
+    private fun glassSummaryChip(
+        @ColorInt bgTint: Int,
+        @ColorInt fgColor: Int,
+        iconText: String,
+        body: CharSequence
+    ): View {
+        // 语义 dye：把 4 种语义色映射到 FrostKind，不走 frosted base + 再次混色——
+        // 这样每个小卡都是"真正磨砂配方"，不是液态玻璃基上叠一个 25% 染色的怪胎。
+        val frost = when {
+            bgTint == CartoonDesign.Palette.SUCCESS -> CartoonDesign.FrostKind.INFO      // SUCCESS 没有磨砂档，INFO 冷蓝与"保留/清理"语义最搭
+            bgTint == CartoonDesign.Palette.INFO -> CartoonDesign.FrostKind.INFO
+            bgTint == CartoonDesign.Palette.DANGER -> CartoonDesign.FrostKind.DANGER
+            else -> CartoonDesign.FrostKind.PURE
+        }
+        return FrameLayout(context).apply {
+            background = CartoonDesign.frostedGlassDrawable(
+                context, CartoonDesign.Radius.MD, frost
+            )
+            elevation = dp(4).toFloat()
+            val ph = dp(12); val pv = dp(10); setPadding(ph, pv, ph, pv)
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            }
+            // 语义图标贴纸（液态玻璃胶囊 sticker，磨砂卡上叠液态 => 两材对比）
+            row.addView(FrameLayout(context).apply {
+                background = CartoonDesign.capsuleBadge(
+                    context, CartoonDesign.withAlpha(bgTint, 200), CartoonDesign.withAlpha(fgColor, 255)
+                )
+                val ph2 = dp(6); val pv2 = dp(4); setPadding(ph2, pv2, ph2, pv2)
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { marginEnd = dp(10) }
+                addView(TextView(context).apply {
+                    text = iconText; textSize = CartoonDesign.Type.BADGE
+                    setTextColor(fgColor); gravity = Gravity.CENTER
+                    setTypeface(null, Typeface.BOLD)
+                })
+            })
+            row.addView(TextView(context).apply {
+                text = body
+                textSize = CartoonDesign.Type.TITLE_SM
+                setTextColor(CartoonDesign.Palette.TEXT_PRIMARY)
+                maxLines = 2
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            })
+            addView(row)
+        }
+    }
+
+    // ================= 删除二次确认（Frosted + DANGER 染色膜） =================
     private fun showConfirmDialog(count: Int, preview: Preview) {
         val parent = dialog ?: return
-        // 面板：hudPanel with MAGENTA accent + SAPPHIRE_900 底层
+        // 根面板：XL 磨砂玻璃（FrostKind.DANGER = 冷玫红染色膜）+ 软冷玫红折射描边
+        // 视觉信号层级：主弹窗冷青（中性管理）→ 删除确认冷玫红（危险浮层），ACCENT 只有按钮。
         val panel = FrameLayout(context).apply {
-            background = hudPanel(NEON_MAGENTA, SAPPHIRE_900)
-            foreground = scanlineOverlay()
+            background = CartoonDesign.frostedGlassDrawable(
+                context, CartoonDesign.Radius.XL, CartoonDesign.FrostKind.DANGER,
+                stroke = Color.argb(190, 250, 178, 188)
+            )
+            elevation = dp(14).toFloat()
             clipChildren = true; clipToPadding = true
-            val padX = dp(24); val padY = dp(20)
+            val padX = dp(24); val padY = dp(22)
             setPadding(padX, padY, padX, padY)
         }
         val content = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL; clipChildren = false; clipToPadding = false
         }
-        // Header: magenta rounded square warning (not circle)
+
+        // Header：DANGER 玻璃方贴纸 + 标题行
         val header = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             clipChildren = false; clipToPadding = false
         }
         header.addView(FrameLayout(context).apply {
-            val size = dp(48); layoutParams = LinearLayout.LayoutParams(size, size).apply { marginEnd = dp(14) }
-            background = hudCapsule(NEON_MAGENTA, SAPPHIRE_800, INNER_R)
+            val size = dp(48)
+            layoutParams = LinearLayout.LayoutParams(size, size).apply { marginEnd = dp(14) }
+            background = dangerGlassDrawable(CartoonDesign.Radius.MD)
             addView(ImageView(context).apply {
                 setImageResource(R.drawable.ic_parse_fail)
-                imageTintList = android.content.res.ColorStateList.valueOf(NEON_MAGENTA)
+                imageTintList = android.content.res.ColorStateList.valueOf(
+                    Color.rgb(255, 236, 236)
+                )
                 scaleType = ImageView.ScaleType.CENTER_INSIDE
-            }, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT).apply {
-                setMargins(dp(8), dp(8), dp(8), dp(8))
-            })
+            }, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
+            ).apply { setMargins(dp(10), dp(10), dp(10), dp(10)) })
         })
         val tb = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; isFocusable = false }
         tb.addView(TextView(context).apply {
-            text = "PURGE $count ENTRIES?"; typeface = MONOSPACE_BOLD; textSize = 20f
-            setTextColor(TEXT_0); letterSpacing = 0.05f; maxLines = 1
+            text = "确定删除选中的 $count 部动画吗？"
+            textSize = CartoonDesign.Type.TITLE_LG
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(CartoonDesign.Palette.TEXT_PRIMARY)
+            maxLines = 2
         })
-        tb.addView(monospaced(TEXT_3, CartoonDesign.Type.STATUS, "Destructive · Gitee Cloud Write · No Rollback"))
-        header.addView(tb, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        tb.addView(TextView(context).apply {
+            text = "此操作将同步修改 Gitee 云端数据，无法撤销"
+            textSize = CartoonDesign.Type.STATUS
+            setTextColor(CartoonDesign.Palette.TEXT_MUTED)
+        })
+        header.addView(tb, LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+        ))
         content.addView(header, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
         ))
 
-        // 分隔：霓虹品红 1px 横线（中间粗两端渐变）
+        // 分隔：1px DANGER 软渐变横线（中间色 DANGER，两端透）
         content.addView(View(context).apply {
-            background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(Color.argb(0, 255, 62, 165), NEON_MAGENTA, Color.argb(0, 255, 62, 165)))
+            background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(
+                Color.argb(0, Color.red(CartoonDesign.Palette.DANGER),
+                    Color.green(CartoonDesign.Palette.DANGER),
+                    Color.blue(CartoonDesign.Palette.DANGER)),
+                CartoonDesign.withAlpha(CartoonDesign.Palette.DANGER, 220),
+                Color.argb(0, Color.red(CartoonDesign.Palette.DANGER),
+                    Color.green(CartoonDesign.Palette.DANGER),
+                    Color.blue(CartoonDesign.Palette.DANGER))
+            ))
         }, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, dp(1)
-        ).apply { topMargin = dp(14); bottomMargin = dp(14) })
+        ).apply { topMargin = dp(16); bottomMargin = dp(16) })
 
-        // 破坏栅格摘要：三行 grid 风格 summary cards
-        val grid = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        val builder = mutableListOf<Triple<CharSequence, CharSequence, Int>>()  // flag, text, accent
+        // 玻璃摘要小卡 2~4 枚：每枚都是 BASE 玻璃 + 语义染色膜 28% 混色
+        val cards = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL; clipChildren = false
+        }
         if (preview.adapterDrops > 0) {
-            builder += Triple("[-]", "drop unused adapter rules × ${preview.adapterDrops}", DATA_GREEN)
-        }
-        if (preview.adapterKept > 0) {
-            builder += Triple("[!]", "keep shared adapter files × ${preview.adapterKept} (in use)", NEON_CYAN)
-        }
-        if (builder.isEmpty()) {
-            builder += Triple("[·]", "no adapter effect — only index + cache affected", TEXT_3)
-        }
-        builder += Triple("[!]", "will write Gitee repo `bdCasttv/video-source` — irreversible", NEON_MAGENTA)
-
-        builder.forEach { (flag, text, ac) ->
-            grid.addView(FrameLayout(context).apply {
-                background = hudCapsule(SOFT_STROKE, base = SAPPHIRE_800, cornerDp = INNER_R)
-                val pv = dp(8); val ph = dp(10)
-                setPadding(ph, pv, ph, pv)
-                val row = LinearLayout(this@CartoonManagementDialog.context).apply {
-                    orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                }
-                // monospace colored flag
-                row.addView(monospaced(ac, CartoonDesign.Type.CAPTION, flag).apply {
-                    minWidth = dp(40); setPadding(0, 0, dp(8), 0)
-                })
-                row.addView(monospaced(TEXT_1, CartoonDesign.Type.BODY, text).apply {
-                    maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END
-                })
-                addView(row)
-            }, LinearLayout.LayoutParams(
+            cards.addView(glassSummaryChip(
+                bgTint = CartoonDesign.Palette.SUCCESS,
+                fgColor = CartoonDesign.Palette.BADGE_SUCCESS_FG,
+                iconText = "清理",
+                body = "将删除 ${preview.adapterDrops} 个无人引用的自定义解析规则"
+            ), LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { bottomMargin = dp(8) })
         }
-        content.addView(grid, LinearLayout.LayoutParams(
+        if (preview.adapterKept > 0) {
+            cards.addView(glassSummaryChip(
+                bgTint = CartoonDesign.Palette.INFO,
+                fgColor = CartoonDesign.Palette.BADGE_INFO_FG,
+                iconText = "保留",
+                body = "${preview.adapterKept} 个解析规则仍被其他条目引用，不会删除"
+            ), LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(8) })
+        }
+        if (preview.adapterDrops == 0 && preview.adapterKept == 0) {
+            cards.addView(glassSummaryChip(
+                bgTint = CartoonDesign.Palette.TEXT_MUTED,
+                fgColor = CartoonDesign.Palette.TEXT_PRIMARY,
+                iconText = "缓存",
+                body = "仅清理动画城索引与本地缓存，不涉及解析规则"
+            ), LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(8) })
+        }
+        cards.addView(glassSummaryChip(
+            bgTint = CartoonDesign.Palette.DANGER,
+            fgColor = Color.rgb(255, 236, 236),
+            iconText = "云端",
+            body = "将写入 Gitee 仓库 bdCasttv/video-source · 不可逆"
+        ), LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
         ))
-        // monospace 验证码风格行："CONFIRM > BACK = CANCEL" 用 magenta 单色 monospace
-        content.addView(monospaced(NEON_MAGENTA, CartoonDesign.Type.CAPTION,
-            "⚠ BACK key cancels automatically · focus defaults to [ABORT]"
-        ).apply {
-            setPadding(dp(2), dp(6), 0, 0); typeface = MONOSPACE_BOLD
+        content.addView(cards, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
+
+        // 验证码行：粗体 DANGER 色小字（不再 monospace 命令风）
+        content.addView(TextView(context).apply {
+            text = "按返回键自动取消 · 默认焦点在「再想想」"
+            textSize = CartoonDesign.Type.CAPTION
+            setTypeface(null, Typeface.BOLD)
+            setTextColor(CartoonDesign.Palette.DANGER)
+            setPadding(dp(2), dp(10), 0, 0)
         }, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
         ))
 
-        // Buttons: ABORT (cancel) + EXECUTE (danger primary magenta outline)
+        // 按钮簇：BASE「再想想」+ DANGER 玻璃「确认删除」
         val btns = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END or Gravity.CENTER_VERTICAL
             clipChildren = false; clipToPadding = false
         }
-        val abort = buildFooterButton("ABORT", NEON_CYAN, primary = false) { /* dismiss */ }
-        val confirm = buildFooterButton("EXECUTE PURGE", NEON_MAGENTA, primary = true) { /* confirm */ }
-        btns.addView(abort, LinearLayout.LayoutParams(dp(140), dp(44)))
-        btns.addView(confirm, LinearLayout.LayoutParams(dp(230), dp(44)).apply { marginStart = dp(14) })
+        val abort = buildGlassButton("再想想", GlassKind.BASE, CartoonDesign.Radius.MD) { /* dismiss */ }
+        val confirm = buildGlassButton(
+            "确认删除", GlassKind.DANGER, CartoonDesign.Radius.MD
+        ) { /* confirm */ }
+        btns.addView(abort, LinearLayout.LayoutParams(dp(150), dp(44)))
+        btns.addView(confirm, LinearLayout.LayoutParams(dp(170), dp(44)).apply {
+            marginStart = dp(14)
+        })
         content.addView(btns, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = dp(20); gravity = Gravity.END })
+        ).apply { topMargin = dp(22) })
 
         panel.addView(content, FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
@@ -637,9 +881,29 @@ class CartoonManagementDialog(
         dlg.setOnShowListener { abort.requestFocus() }
         dlg.window?.takeIf { parent.isShowing }?.let { win ->
             dlg.show()
-            win.setBackgroundDrawableResource(android.R.color.transparent)
-            win.setLayout(dp(700), WindowManager.LayoutParams.WRAP_CONTENT)
+            // 删除确认 dim = 冷玫红染色膜 tinted 暗化层。危险弹窗的景深层应当比主管理弹窗
+            // 再厚 8%（dimAmount 0.40），信号感更强。
+            val dimColor = CartoonDesign.mixColor(
+                Color.rgb(10, 4, 8), Color.rgb(200, 90, 112), 0.14f
+            )
+            win.setBackgroundDrawable(GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                setColor(CartoonDesign.withAlpha(dimColor, 100))
+            })
+            win.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            val attrs = win.attributes
+            attrs.dimAmount = 0.40f
+            win.attributes = attrs
+            win.setLayout(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT
+            )
             win.setGravity(Gravity.CENTER)
+            (panel.layoutParams as? FrameLayout.LayoutParams)?.apply {
+                width = dp(700)
+                height = FrameLayout.LayoutParams.WRAP_CONTENT
+                gravity = Gravity.CENTER
+            }
             win.decorView.isFocusable = true
             win.decorView.setOnKeyListener { _, keyCode, ev ->
                 if (keyCode == KeyEvent.KEYCODE_BACK) {
@@ -652,9 +916,11 @@ class CartoonManagementDialog(
 
     private fun doDelete() {
         val ids = selected.toList(); if (ids.isEmpty()) return
-        deleteBtn.isEnabled = false; deleteBtn.alpha = 0.4f
-        bottomCount.text = monospaced(NEON_CYAN, CartoonDesign.Type.BODY, "> PURGING ${ids.size} ...").text
-        bottomCount.setTextColor(TEXT_0); bottomCount.typeface = MONOSPACE_BOLD
+        deleteBtn.isEnabled = false; deleteBtn.alpha = 0.45f
+        // 计数行切到「删除中…」琥珀强调色
+        bottomCount.text = "正在删除 ${ids.size} 部…"
+        bottomCount.setTextColor(CartoonDesign.Palette.ACCENT)
+        bottomCount.setTypeface(null, Typeface.BOLD)
         deleteJob = scope.launch {
             val (ok, fail) = withContext(Dispatchers.IO) {
                 val latest = (GiteeShareStore.fetchCartoonsIndex() as? GiteeApi.ApiResult.Success)?.value ?: cartoons
@@ -678,13 +944,14 @@ class CartoonManagementDialog(
             }
             withContext(Dispatchers.Main) {
                 val (s, c) = when {
-                    ok > 0 && fail == 0 -> "✓ PURGED $ok" to DATA_GREEN
-                    ok == 0 -> "× ALL FAILED - CHECK NETWORK" to NEON_MAGENTA
-                    else -> "OK $ok / FAIL $fail" to NEON_CYAN
+                    ok > 0 && fail == 0 -> "✓ 已删除 $ok 部" to CartoonDesign.Palette.SUCCESS
+                    ok == 0 -> "× 全部失败，请检查网络" to CartoonDesign.Palette.DANGER
+                    else -> "成功 $ok / 失败 $fail" to CartoonDesign.Palette.ACCENT
                 }
-                bottomCount.text = s; bottomCount.setTextColor(c); bottomCount.typeface = MONOSPACE_BOLD
+                bottomCount.text = s; bottomCount.setTextColor(c)
+                bottomCount.setTypeface(null, Typeface.BOLD)
                 deleteBtn.isEnabled = selected.isNotEmpty()
-                deleteBtn.alpha = if (deleteBtn.isEnabled) 1f else 0.4f
+                deleteBtn.alpha = if (deleteBtn.isEnabled) 1f else 0.45f
                 if (deleteBtn.isEnabled) updateCounts()
                 if (ok > 0) {
                     onChanged()
@@ -739,11 +1006,4 @@ class CartoonManagementDialog(
     }
 
     private fun toast(s: String) = Toast.makeText(context, s, Toast.LENGTH_SHORT).show()
-
-    companion object {
-        private val MONOSPACE_BOLD: Typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
-    }
 }
-
-// === 私有的 DrawableCompat/ColorInt 存根：不使用 CartoonDesign 外部依赖 ===
-private fun Drawable.tinted(@ColorInt c: Int): Drawable = mutate().also { d -> DrawableCompat.setTint(d, c) }

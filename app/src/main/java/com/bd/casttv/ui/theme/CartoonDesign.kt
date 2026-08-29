@@ -81,6 +81,130 @@ object CartoonDesign {
      */
     enum class TintMode { BASE, ELEVATED, ACCENT }
 
+    /**
+     * 磨砂玻璃（Frosted Glass）染色膜：5 档语义。
+     * 磨砂玻璃 ≠ 液态玻璃：液态玻璃是"厚实不透明玻璃片（高对比 + 实底）"，
+     * 磨砂玻璃是"高透 base + 染色膜 + 软白折射描边 + veil 微粒 + 加厚外阴影"——
+     * 视觉上"浮在内容之上"，适合弹窗 / 二次确认浮层。
+     *
+     * 透明度基线：base alpha ≈ 0.42~0.48（107~122），文字对比度靠 veil + 染色膜双保险。
+     * dye（染色膜）：低饱和单色偏光 14%~18% 与 SURFACE_0 混色，避免"AI 彩虹毛玻璃"。
+     */
+    enum class FrostKind {
+        /** 主浮层：冷青染色膜。用于管理弹窗主面板、详情浮层面板。 */
+        COOL,
+        /** 琥珀暖浮层：ACCENT 染色膜。用于动画城主页面板、管理弹窗 CTA 背景。 */
+        WARM,
+        /** 危险浮层：冷玫红染色膜。用于删除二次确认根面板。 */
+        DANGER,
+        /** 信息浮层：浅冷蓝染色膜。用于 status chip / 浮层内摘要小卡（信息类）。 */
+        INFO,
+        /** 纯净浮层：几乎不染，只做冷灰 8% 微染色。用于中性摘要 chip / 空态背景。 */
+        PURE
+    }
+
+    /** 磨砂玻璃：6 层 LayerDrawable 骨架。与 liquidGlassDrawable 语义分离，不混实现。 */
+    fun frostedGlassDrawable(
+        ctx: Context,
+        radius: Radius,
+        frost: FrostKind = FrostKind.COOL,
+        @ColorInt stroke: Int = Color.argb(170, 220, 228, 246),  // 软白折射描边
+        strokePx: Int = Math.max(1, dp(ctx, 1))
+    ): LayerDrawable {
+        val rPx = dp(ctx, radius.dp).toFloat()
+        // ---- 染色膜（语义偏光 14%~18%，与 SURFACE_0 混色）----
+        val (dyeColor, topBoost, baseAlpha) = when (frost) {
+            FrostKind.COOL -> Triple(Color.rgb(96, 152, 220), 10, 112)
+            FrostKind.WARM -> Triple(Color.rgb(220, 170, 72), 16, 118)
+            FrostKind.DANGER -> Triple(Color.rgb(200, 90, 112), 12, 122)
+            FrostKind.INFO -> Triple(Color.rgb(120, 164, 230), 8, 108)
+            FrostKind.PURE -> Triple(Color.rgb(140, 152, 176), 4, 107)
+        }
+        val s0 = Palette.SURFACE_0
+        val top = mixColor(s0, dyeColor, 0.18f)
+        val bot = mixColor(s0, dyeColor, 0.12f)
+        val topA = withAlpha(setLum(top, lum(top) + topBoost), baseAlpha + 12)
+        val botA = withAlpha(bot, baseAlpha - 6)
+        // Layer 0：磨砂 base（高透 + 染色膜渐变）
+        val base = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(topA, botA)).apply {
+            shape = GradientDrawable.RECTANGLE; cornerRadius = rPx
+            setStroke(strokePx, stroke)
+        }
+        // Layer 1：软白折射"内描边"（靠外 1px inset 的全圆角透明图 + 42% 白边）——
+        // 这一层是磨砂和液态玻璃的视觉分水岭：磨砂的描边是"向内折射的软白边"，液态玻璃是硬外描边。
+        val innerStroke = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE; cornerRadius = rPx
+            setColor(Color.argb(0, 0, 0, 0))
+            setStroke(Math.max(1, dp(ctx, 1)), Color.argb(106, 255, 255, 255))
+        }
+        // Layer 2：top highlight（加厚 26dp 内高光，磨砂要"显厚"，所以高光比液态玻璃更宽）
+        val topGlow = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(
+            Color.argb(64, 255, 255, 255),
+            Color.argb(0, 255, 255, 255)
+        )).apply {
+            shape = GradientDrawable.RECTANGLE; cornerRadius = rPx
+            setSize(-1, dp(ctx, 26))
+        }
+        // Layer 3：bottom inner shadow（加厚 30dp，黑色 32%）——磨砂比液态玻璃"体积感更强"
+        val bottomShadow = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(
+            Color.argb(96, 0, 0, 0),
+            Color.argb(0, 0, 0, 0)
+        )).apply {
+            shape = GradientDrawable.RECTANGLE; cornerRadius = rPx
+            setSize(-1, dp(ctx, 30))
+        }
+        // Layer 4：veil 微粒膜（用斜向 128° 细线性渐变模拟磨砂散射，避免纯平透明）
+        val veil = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(
+            Color.argb(26, 255, 255, 255),
+            Color.argb(10, 255, 255, 255),
+            Color.argb(20, 255, 255, 255),
+            Color.argb(8, 255, 255, 255)
+        )).apply {
+            shape = GradientDrawable.RECTANGLE; cornerRadius = rPx
+        }
+        val layers = arrayOf(base, veil, innerStroke, topGlow, bottomShadow)
+        return LayerDrawable(layers).apply {
+            val h1 = dp(ctx, 1); val h2 = dp(ctx, 2)
+            // veil 贴满全矩形，不 inset，保证散射膜连续
+            setLayerGravity(2, Gravity.FILL)            // innerStroke 用 inset 1px 内缩
+            setLayerInset(2, h1, h1, h1, h1)
+            setLayerGravity(3, Gravity.TOP)             // topGlow 贴顶
+            setLayerInset(3, h2, h2, h2, 0)
+            setLayerGravity(4, Gravity.BOTTOM)          // bottomShadow 贴底
+            setLayerInset(4, h2, 0, h2, h2)
+        }
+    }
+
+    /** 把磨砂玻璃面板切到聚焦态：软白描边 → 粗 2px 琥珀 + veil 加亮 + innerHighlight 提升 alpha。 */
+    fun frostedGlassToFocused(ctx: Context, card: View, focused: Boolean) {
+        val layers = card.background as? LayerDrawable ?: return
+        val base = layers.getDrawable(0) as? GradientDrawable ?: return
+        val veil = layers.getDrawable(1) as? GradientDrawable ?: return
+        val glow = layers.getDrawable(3) as? GradientDrawable ?: return
+        if (focused) {
+            base.setStroke(Math.max(2, dp(ctx, 2)), Palette.ACCENT)
+            veil.alpha = 78
+            glow.alpha = 140
+        } else {
+            base.setStroke(Math.max(1, dp(ctx, 1)), Color.argb(170, 220, 228, 246))
+            veil.alpha = 255
+            glow.alpha = 255
+        }
+    }
+
+    // ---- 颜色辅助（lum/setLum 给磨砂染色膜计算用）----
+    private fun lum(@ColorInt c: Int): Int =
+        (0.299 * Color.red(c) + 0.587 * Color.green(c) + 0.114 * Color.blue(c)).toInt()
+    @ColorInt
+    private fun setLum(@ColorInt c: Int, targetLum: Int): Int {
+        val cur = lum(c).coerceAtLeast(1)
+        val tl = targetLum.coerceIn(0, 255)
+        val r = (Color.red(c) * tl / cur).coerceIn(0, 255)
+        val g = (Color.green(c) * tl / cur).coerceIn(0, 255)
+        val b = (Color.blue(c) * tl / cur).coerceIn(0, 255)
+        return Color.rgb(r, g, b)
+    }
+
     fun liquidGlassDrawable(
         ctx: Context,
         radius: Radius,

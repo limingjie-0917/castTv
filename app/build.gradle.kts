@@ -17,8 +17,8 @@ plugins {
 //    - 人工禁止手改 BASE_VERSION_* / defaultConfig.versionCode / defaultConfig.versionName
 // =====================================================================
 // ⚠ 基线：每次构建 bumpVersion 会递增并写回本处这两行
-val BASE_VERSION_CODE: Int = 466
-val BASE_VERSION_NAME: String = "1.2.191"
+val BASE_VERSION_CODE: Int = 468
+val BASE_VERSION_NAME: String = "1.2.193"
 
 val buildGradleFile = layout.projectDirectory.file("build.gradle.kts").asFile
 
@@ -61,9 +61,17 @@ val bumpVersion = tasks.register("bumpVersion") {
     description = "Auto-increment versionCode+versionName before every assemble* build (conventions.md 约束)"
     outputs.upToDateWhen { false }  // 必须每次都跑：不能因为是 UP-TO-DATE 就跳
     doFirst {
-        // 真正把新版本号写回 build.gradle.kts 文件字面量（下次配置期就直接用新版本作为 old 值）
-        bumpVersionWriteBack(versionBump.toCode, versionBump.toName)
-        println("bumpVersion: versionCode ${versionBump.fromCode} → ${versionBump.toCode} ; versionName ${versionBump.fromName} → ${versionBump.toName} (已写回 app/build.gradle.kts)")
+        // ponytail: CI 环境（GitHub Actions 等）不写回版本号，避免污染构建工作树；
+        //           仍会把 +1 的 versionBump.toCode/toName 注入 APK manifest，不影响版本展示。
+        val isCi = providers.environmentVariable("CI").orNull.toBoolean() ||
+                providers.environmentVariable("GITHUB_ACTIONS").orNull.toBoolean()
+        if (!isCi) {
+            // 真正把新版本号写回 build.gradle.kts 文件字面量（下次配置期就直接用新版本作为 old 值）
+            bumpVersionWriteBack(versionBump.toCode, versionBump.toName)
+            println("bumpVersion: versionCode ${versionBump.fromCode} → ${versionBump.toCode} ; versionName ${versionBump.fromName} → ${versionBump.toName} (已写回 app/build.gradle.kts)")
+        } else {
+            println("bumpVersion: CI 环境跳过写回 build.gradle.kts (manifest versionCode=${versionBump.toCode} versionName=${versionBump.toName} 仍生效)")
+        }
     }
 }
 

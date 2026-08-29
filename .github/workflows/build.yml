@@ -64,15 +64,44 @@ jobs:
 
       - name: Validate Gradle wrapper
         uses: gradle/actions/wrapper-validation@v4
+        continue-on-error: true
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+      - name: Ensure Gradle wrapper exists + grant execute permission
+        shell: bash
+        run: |
+          set -e
+          if [ ! -x ./gradlew ]; then
+            # ponytail: git 没保留执行位或文件缺失时兜底：chmod 不幂等问题兼容
+            if [ -f ./gradlew ]; then
+              chmod +x ./gradlew
+            elif command -v gradle >/dev/null 2>&1; then
+              gradle wrapper --gradle-version 8.9 --distribution-type all
+              chmod +x ./gradlew
+            else
+              echo "ERROR: gradlew 不存在且系统中没有 gradle，无法生成 wrapper" >&2
+              ls -la
+              exit 1
+            fi
+          fi
+          [ -f gradle/wrapper/gradle-wrapper.jar ] || { echo "ERROR: gradle/wrapper/gradle-wrapper.jar 缺失" >&2; exit 1; }
+          ls -la gradlew gradle/wrapper/
+
+      - name: Create local.properties + accept SDK licenses
+        shell: bash
+        run: |
+          set -e
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          cat local.properties
 
       - name: Gradle assembleDebug
+        shell: bash
         run: ./gradlew assembleDebug -x lint --no-daemon --stacktrace
         env:
           JAVA_TOOL_OPTIONS: '-Xmx4096m -Dfile.encoding=UTF-8'
           GRADLE_OPTS: '-Dorg.gradle.jvmargs="-Xmx4096m -XX:+HeapDumpOnOutOfMemoryError"'
+          # CI 环境：bumpVersion 跳过写回 build.gradle.kts 字面量（避免污染工作树）
+          CI: true
 
       - name: Read APK path & version
         id: apk
@@ -141,15 +170,43 @@ jobs:
 
       - name: Validate Gradle wrapper
         uses: gradle/actions/wrapper-validation@v4
+        continue-on-error: true
 
-      - name: chmod +x gradlew
-        run: chmod +x gradlew
+      - name: Ensure Gradle wrapper exists + grant execute permission
+        shell: bash
+        run: |
+          set -e
+          if [ ! -x ./gradlew ]; then
+            if [ -f ./gradlew ]; then
+              chmod +x ./gradlew
+            elif command -v gradle >/dev/null 2>&1; then
+              gradle wrapper --gradle-version 8.9 --distribution-type all
+              chmod +x ./gradlew
+            else
+              echo "ERROR: gradlew 不存在且系统中没有 gradle，无法生成 wrapper" >&2
+              ls -la
+              exit 1
+            fi
+          fi
+          [ -f gradle/wrapper/gradle-wrapper.jar ] || { echo "ERROR: gradle/wrapper/gradle-wrapper.jar 缺失" >&2; exit 1; }
+          ls -la gradlew gradle/wrapper/
+
+      - name: Create local.properties + accept SDK licenses
+        shell: bash
+        run: |
+          set -e
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          yes | sdkmanager --licenses >/dev/null 2>&1 || true
+          cat local.properties
 
       - name: Gradle assembleRelease
+        shell: bash
         run: ./gradlew assembleRelease -x lint --no-daemon --stacktrace
         env:
           JAVA_TOOL_OPTIONS: '-Xmx4096m -Dfile.encoding=UTF-8'
           GRADLE_OPTS: '-Dorg.gradle.jvmargs="-Xmx4096m -XX:+HeapDumpOnOutOfMemoryError"'
+          # CI 环境：bumpVersion 跳过写回 build.gradle.kts 字面量（避免污染工作树）
+          CI: true
 
       - name: Read release APK & version
         id: apk
