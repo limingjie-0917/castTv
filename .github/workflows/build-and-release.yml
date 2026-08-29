@@ -3,6 +3,19 @@ name: Build & Release APK
 on:
   push:
     branches: [ main, master ]
+    # 跳过纯文档/清理类推送 —— 与 build.yml 同步避免浪费 runner
+    paths-ignore:
+      - '**/*.md'
+      - 'design/**'
+      - 'docs/**'
+      - 'tmp/**'
+      - 'node_modules/**'
+      - 'builds/**'
+      - 'preview_card_layout.png'
+      - 'review_report.xml'
+      - '**/*.idsig'
+      - 'LICENSE'
+      - '.gitignore'
   workflow_dispatch:
 
 env:
@@ -18,20 +31,25 @@ jobs:
     timeout-minutes: 40
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
           submodules: recursive
 
       - name: Setup JDK 17 (Temurin)
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: ${{ env.JAVA_DISTRO }}
           cache: 'gradle'
 
+      - name: Setup Android SDK (API 34 + BuildTools 34)
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools build-tools;34.0.0 platforms;android-34'
+
       - name: Validate Gradle wrapper
-        uses: gradle/actions/wrapper-validation@v4
+        uses: gradle/actions/wrapper-validation@v5
         continue-on-error: true
 
       - name: Ensure Gradle wrapper exists + grant execute permission
@@ -59,11 +77,6 @@ jobs:
           echo "Gradle wrapper ready:"
           ls -la gradlew gradle/wrapper/
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: 'platform-tools build-tools;34.0.0 platforms;android-34'
-
       - name: Create local.properties + accept SDK licenses
         shell: bash
         run: |
@@ -71,7 +84,8 @@ jobs:
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           # assembleRelease 必须接受 SDK 许可，否则 AGP 会弹窗中断
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          echo "local.properties:"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "--- local.properties ---"
           cat local.properties
 
       - name: Build release APK
@@ -82,34 +96,47 @@ jobs:
           GRADLE_OPTS: '-Dorg.gradle.jvmargs="-Xmx4096m -XX:+HeapDumpOnOutOfMemoryError"'
           # 明确标记 CI 环境，bumpVersion 不写回 build.gradle.kts 字面量
           CI: true
+          GITHUB_ACTIONS: true
 
       - name: Read release APK & version
         id: apk
+        if: success()
         shell: bash
         run: |
           set -e
-          APK=$(ls app/build/outputs/apk/release/*.apk 2>/dev/null || ls builds/*/casttv-receiver-*-release.apk 2>/dev/null || ls casttv-receiver-v*.apk 2>/dev/null | head -1)
-          [ -z "$APK" ] && { echo "No release APK found"; ls -la app/build/outputs/apk/release/ 2>/dev/null; ls builds/*/ 2>/dev/null; exit 1; }
+          APK=$(find app/build/outputs/apk/release builds -maxdepth 4 -name "casttv-receiver-v*-release.apk" 2>/dev/null | head -1)
+          APK=${APK:-$(find . -maxdepth 2 -name "casttv-receiver-v*.apk" ! -name "*-debug.apk" ! -name "*-gitee-sync.apk" 2>/dev/null | head -1)}
+          if [ -z "$APK" ]; then
+            echo "No release APK found" >&2
+            echo "--- app/build/outputs/apk/release ---" >&2; ls -la app/build/outputs/apk/release/ 2>&1 || true
+            echo "--- builds/*/ ---" >&2; ls -la builds/*/ 2>&1 || true
+            echo "--- root ---" >&2; ls -la casttv-receiver-v*.apk 2>&1 || true
+            exit 1
+          fi
           NAME=$(basename "$APK")
           SIZE=$(du -h "$APK" | cut -f1)
-          VERSION=$(grep -oE 'versionName\s*=\s*"[^"]+"' app/build.gradle.kts | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          VERSION=$(echo "$NAME" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          [ -z "$VERSION" ] && VERSION=$(grep -oE 'versionName\s*=\s*"[^"]+"' app/build.gradle.kts | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
           SHA=$(git rev-parse --short HEAD)
           echo "apk=$APK" >> $GITHUB_OUTPUT
           echo "name=$NAME" >> $GITHUB_OUTPUT
           echo "size=$SIZE" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "sha=$SHA"  >> $GITHUB_OUTPUT
-          echo "VERSION: $VERSION  SHA: $SHA  FILE: $NAME($SIZE)"
+          echo "VERSION: $VERSION  SHA: $SHA  FILE: $NAME($SIZE)  PATH: $APK"
 
       - name: Upload APK to Gitee Releases + update version.json
-        if: env.GITEE_TOKEN != ''
+        id: gitee
+        if: success() && env.GITEE_TOKEN != ''
+        continue-on-error: true
         shell: bash
-        run: ./gradlew syncReleaseToGitee --no-daemon --stacktrace || echo "syncReleaseToGitee skipped (需要 GITEE_TOKEN secret 或检查 version.json 是否存在)"
+        run: ./gradlew syncReleaseToGitee --no-daemon --stacktrace
         env:
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
 
       - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
+        if: success()
+        uses: actions/upload-artifact@v5
         with:
           name: release-apk-v${{ steps.apk.outputs.version }}-${{ steps.apk.outputs.sha }}
           path: |
