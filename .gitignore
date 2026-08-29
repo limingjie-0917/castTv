@@ -13,8 +13,24 @@ local.properties
 *.dex
 *.keystore
 *.jks
+*.idsig
 # 项目专用签名文件，需要随仓库同步到所有构建设备
 !app/casttv.keystore
+
+# 本地 APK 输出目录（本机构建产物，不应入库）
+builds/
+
+# AI / Skill / Agent 辅助目录与临时文件（与 Android 构建无关）
+.trae/
+.ai/
+.skills/
+docs/
+design/
+node_modules/
+package.json
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
 
 # IntelliJ / Android Studio
 .idea/
