@@ -240,6 +240,7 @@ class MoreFunctionsPage(
         cards += FunctionCard("favorites", "我的收藏", intArrayOf(Color.rgb(255, 190, 88), Color.rgb(214, 109, 55)), Color.rgb(192, 87, 26), R.drawable.ic_more_favorites)
         if (settings.webParseEnabled) {
             cards += FunctionCard(Settings.PAGE_ID_WEB_PARSE, "网页解析播放", intArrayOf(Color.rgb(83, 190, 255), Color.rgb(42, 112, 214)), Color.rgb(26, 110, 110), R.drawable.ic_more_web_parse)
+            cards += FunctionCard("cartoon_city", "动画城", intArrayOf(Color.rgb(255, 140, 200), Color.rgb(180, 60, 140)), Color.rgb(80, 26, 64), R.drawable.ic_more_cartoon)
         }
         if (settings.douyinCastEnabled) {
             cards += FunctionCard(Settings.PAGE_ID_DOUYIN_CAST, "抖音投屏", intArrayOf(Color.rgb(255, 110, 150), Color.rgb(180, 40, 96)), Color.rgb(26, 26, 46), R.drawable.ic_more_douyin_cast)
@@ -349,7 +350,7 @@ class MoreFunctionsPage(
             }
 
             val name = TextView(parent.context).apply {
-                textSize = 14f
+                textSize = 16f
                 typeface = Typeface.DEFAULT_BOLD
                 setTextColor(Color.WHITE)
                 maxLines = 1
@@ -508,8 +509,12 @@ class MoreFunctionsPage(
                 name.text = item.title
                 image.setImageDrawable(null)
 
-                // Logo 底板固定为浅灰描边圆，复用时不再按卡片主题色填充。
+                // 图标 chip 按卡品牌色渐变填充，每卡获得色彩身份（复活死代码 colors）。
                 logoIcon.setImageResource(item.iconRes)
+                if (item.colors.isNotEmpty()) {
+                    logoBgDrawable.colors = item.colors
+                    logoBgDrawable.orientation = GradientDrawable.Orientation.TL_BR
+                }
 
                 updateBorder(outer.hasFocus())
                 applyVisualState(animated = true)

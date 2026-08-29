@@ -2,6 +2,8 @@ package com.bd.casttv.ui.framework.pages
 
 import android.content.Context
 import android.graphics.Color
+import android.graphics.LinearGradient
+import android.graphics.Shader
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
@@ -22,6 +24,7 @@ import com.bd.casttv.favorites.FavoritesStore
 import com.bd.casttv.ui.ClippedImageView
 import com.bd.casttv.ui.framework.BoundaryFocusHandler
 import com.bd.casttv.ui.framework.FocusFxHelper
+import com.bd.casttv.util.ThemeManager
 import com.bd.casttv.webparse.ParsedMovie
 import com.bd.casttv.webparse.WebParseHtml
 import kotlinx.coroutines.CoroutineScope
@@ -36,7 +39,7 @@ class WebParseSaveDialog(
     private val movie: ParsedMovie,
     private val resolve: suspend (String) -> String?
 ) {
-    private val warm = Color.parseColor("#FFD700")
+    private val warm: Int get() = ThemeManager.accentColor(context)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val store = FavoritesStore(context)
     private var dialog: AlertDialog? = null
@@ -44,7 +47,7 @@ class WebParseSaveDialog(
     fun show() {
         val panel = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            background = bottomSheetPanelBg()
+            background = ThemeManager.dialogPanelBg(context, 26)
             setPadding(dp(20), dp(16), dp(20), dp(18))
             clipChildren = false
             clipToPadding = false
@@ -251,31 +254,34 @@ class WebParseSaveDialog(
             scaleType = ImageView.ScaleType.CENTER_CROP
             foreground = context.getDrawable(R.drawable.fg_sticker_circle_border)
         }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(12) })
-        addView(TextView(context).apply {
-            text = "保存到合集"
-            textSize = 20f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(warm)
-            gravity = Gravity.CENTER_VERTICAL
-            setShadowLayer(2f, 0f, 1f, Color.argb(130, 0, 0, 0))
+        addView(object : TextView(context) {
+            init {
+                text = "保存到合集"
+                textSize = 20f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER_VERTICAL
+                setShadowLayer(2f, 0f, 1f, Color.argb(130, 0, 0, 0))
+            }
+            override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+                super.onSizeChanged(w, h, oldw, oldh)
+                if (w <= 0 || h <= 0) return
+                val grad = ThemeManager.dialogTitleGradient(context)
+                if (grad.isEmpty()) return
+                paint.shader = LinearGradient(0f, h * 0.5f, w.toFloat(), h * 0.5f, grad, null, Shader.TileMode.CLAMP)
+            }
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-    }
-
-    private fun bottomSheetPanelBg() = GradientDrawable().apply {
-        cornerRadius = dp(26).toFloat()
-        setColor(0xFF4169E1.toInt())
     }
 
     private fun inputBg(focused: Boolean) = GradientDrawable().apply {
         cornerRadius = dp(14).toFloat()
         setColor(Color.argb(18, 255, 255, 255))
-        setStroke(dp(if (focused) 3 else 1), if (focused) warm else Color.argb(170, 210, 214, 222))
+        ThemeManager.strokeFor(context, focused).let { setStroke(dp(it.first), it.second) }
     }
 
     private fun rowBg(focused: Boolean) = GradientDrawable().apply {
         cornerRadius = dp(14).toFloat()
         setColor(if (focused) Color.TRANSPARENT else Color.argb(18, 255, 255, 255))
-        setStroke(dp(if (focused) 3 else 1), if (focused) warm else Color.argb(170, 210, 214, 222))
+        ThemeManager.strokeFor(context, focused).let { setStroke(dp(it.first), it.second) }
     }
 
     private fun dialogButton(label: String, click: () -> Unit): TextView = TextView(context).apply {
@@ -290,7 +296,7 @@ class WebParseSaveDialog(
             background = GradientDrawable().apply {
                 cornerRadius = dp(60).toFloat()
                 setColor(if (focused) Color.TRANSPARENT else Color.argb(18, 255, 255, 255))
-                setStroke(dp(if (focused) 3 else 1), if (focused) warm else Color.argb(170, 210, 214, 222))
+                ThemeManager.strokeFor(context, focused).let { setStroke(dp(it.first), it.second) }
             }
         }
         refresh(false)

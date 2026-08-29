@@ -8,6 +8,68 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// =====================================================================
+//  1. 版本号自动递增（满足 AGENT.md §"每次打包必须递增"的硬约束）
+//  在任何 assemble* 任务之前，preBuild → bumpVersion：
+//    - BASE_VERSION_CODE += 1
+//    - BASE_VERSION_NAME 末位十进制 +1（例 "1.2.164" → "1.2.165"）
+//    - 结果立刻写回本文件顶部这两行 BASE_VERSION_* 常量，下次 Gradle 同步即生效
+//    - 人工禁止手改 BASE_VERSION_* / defaultConfig.versionCode / defaultConfig.versionName
+// =====================================================================
+// ⚠ 基线：每次构建 bumpVersion 会递增并写回本处这两行
+val BASE_VERSION_CODE: Int = 466
+val BASE_VERSION_NAME: String = "1.2.191"
+
+val buildGradleFile = layout.projectDirectory.file("build.gradle.kts").asFile
+
+fun readCurrentVersions(): Pair<Int, String>? {
+    val text = buildGradleFile.readText(Charsets.UTF_8)
+    // 基线常量：BASE_VERSION_CODE / BASE_VERSION_NAME（独立于 defaultConfig，避免被 dsl 混淆值）
+    // 允许可选类型标注：val BASE_VERSION_CODE[: Int] = 445 / val BASE_VERSION_NAME[: String] = "1.2.170"
+    val vcRe = """val\s+BASE_VERSION_CODE\s*(?::\s*Int)?\s*=\s*(\d+)""".toRegex()
+    val vnRe = """val\s+BASE_VERSION_NAME\s*(?::\s*String)?\s*=\s*"([^"]+)"""".toRegex()
+    val vc = vcRe.find(text)?.groupValues?.get(1)?.toIntOrNull() ?: return null
+    val vn = vnRe.find(text)?.groupValues?.get(1) ?: return null
+    return vc to vn
+}
+
+fun bumpVersionWriteBack(newCode: Int, newName: String) {
+    val text = buildGradleFile.readText(Charsets.UTF_8)
+    var out = text.replaceFirst(Regex("""val\s+BASE_VERSION_CODE\s*(?::\s*Int)?\s*=\s*\d+"""), "val BASE_VERSION_CODE: Int = $newCode")
+    out = out.replaceFirst(Regex("""val\s+BASE_VERSION_NAME\s*(?::\s*String)?\s*=\s*"[^"]+""""), "val BASE_VERSION_NAME: String = \"$newName\"")
+    if (out == text) error("未能在 app/build.gradle.kts 找到 BASE_VERSION_CODE/BASE_VERSION_NAME 基线常量，版本号递增失败")
+    buildGradleFile.writeText(out, Charsets.UTF_8)
+}
+
+fun nextVersionName(cur: String): String {
+    val parts = cur.split(".")
+    require(parts.size >= 3) { "versionName 必须为三段式 (如 1.2.164)，实际=$cur" }
+    val last = parts.last().toIntOrNull() ?: error("versionName 末位不是数字：$cur")
+    return (parts.dropLast(1) + (last + 1).toString()).joinToString(".")
+}
+
+// 新版本号（配置阶段立即计算并通过 androidComponents.onVariants 写入 manifest；执行阶段 bumpVersion 再落盘写回文件字面量）
+data class VersionBump(val fromCode: Int, val toCode: Int, val fromName: String, val toName: String)
+val versionBump: VersionBump = run {
+    val (vc, vn) = readCurrentVersions()
+        ?: throw GradleException("读取 app/build.gradle.kts 中 versionCode/versionName 字面量失败，请检查格式")
+    VersionBump(fromCode = vc, toCode = vc + 1, fromName = vn, toName = nextVersionName(vn))
+}
+
+val bumpVersion = tasks.register("bumpVersion") {
+    group = "build"
+    description = "Auto-increment versionCode+versionName before every assemble* build (conventions.md 约束)"
+    outputs.upToDateWhen { false }  // 必须每次都跑：不能因为是 UP-TO-DATE 就跳
+    doFirst {
+        // 真正把新版本号写回 build.gradle.kts 文件字面量（下次配置期就直接用新版本作为 old 值）
+        bumpVersionWriteBack(versionBump.toCode, versionBump.toName)
+        println("bumpVersion: versionCode ${versionBump.fromCode} → ${versionBump.toCode} ; versionName ${versionBump.fromName} → ${versionBump.toName} (已写回 app/build.gradle.kts)")
+    }
+}
+
+// 让任何 assemble* 先过 bumpVersion：preBuild 被所有 assemble* 依赖
+tasks.named("preBuild") { dependsOn(bumpVersion) }
+
 android {
     namespace = "com.bd.casttv"
     compileSdk = 34
@@ -16,8 +78,11 @@ android {
         applicationId = "com.bd.casttv"
         minSdk = 21          // Android 5.0 — covers virtually all Android TV boxes
         targetSdk = 34
-        versionCode = 438
-        versionName = "1.2.163"
+        // ⚠ 注意：字面量 versionCode/versionName 仅作为「上次已写回」的基线，真正写入 APK manifest / 文件名的是下面这两行：
+        //   versionBump.toCode = versionCode（字面量） + 1；versionBump.toName = versionName 末位十进制 +1
+        //   bumpVersion 任务在 preBuild 时才把 toCode/toName 写回成新的字面量。人工不得直接手改。
+        versionCode = versionBump.toCode
+        versionName = versionBump.toName
     }
 
     signingConfigs {
@@ -75,46 +140,114 @@ android {
     }
 }
 
-// 生成固定命名的 APK 输出
-// 约定：执行 assembleDebug 后自动导出到：casttv-receiver/casttv-receiver-v{versionName}-gitee-sync.apk
-val exportApk = tasks.register("exportApk") {
-    group = "build"
-    description = "Copy debug APK to casttv-receiver-v{versionName}-gitee-sync.apk"
+// =====================================================================
+//  2. APK 输出命名 + 文件树镜像（conventions.md 约束：文件树形式展示路径）
+//  约定：
+//    a) app/build/outputs/apk/<buildType>/casttv-receiver-v<ver>-<buildType>.apk
+//    b) 根目录 builds/<versionName>/casttv-receiver-v<ver>-<buildType>.apk
+//    c) 为兼容历史：debug 仍额外复制一份 casttv-receiver-v<ver>-gitee-sync.apk 到根目录
+//    d) release 仍额外复制一份 casttv-receiver-v<ver>.apk 到根目录
+// =====================================================================
+android.applicationVariants.configureEach {
+    val variant = this
+    val buildType = variant.buildType.name
+    // 注意：版本号已经在 androidComponents.onVariants 里覆盖为 versionBump.toCode/toName
+    fun effectiveVersions(): Pair<Int, String> {
+        return versionBump.toCode to versionBump.toName
+    }
 
-    doLast {
-        val versionName = android.defaultConfig.versionName ?: "unknown"
-        val fromApk = layout.buildDirectory.file("outputs/apk/debug/app-debug.apk").get().asFile
-        val toApk = rootProject.layout.projectDirectory
-            .file("casttv-receiver-v${versionName}-gitee-sync.apk")
-            .asFile
+    val apkBaseNameProvider = project.provider {
+        val (_, vn) = effectiveVersions()
+        "casttv-receiver-v${vn}-${buildType}"
+    }
 
-        if (!fromApk.exists()) {
-            throw GradleException("APK not found: ${fromApk.absolutePath} (please run assembleDebug first)")
+    variant.outputs.configureEach {
+        if (this is com.android.build.gradle.internal.api.ApkVariantOutputImpl) {
+            // 改写默认 outputs/apk/<buildType>/app-<buildType>.apk → casttv-receiver-v<ver>-<buildType>.apk
+            outputFileName = apkBaseNameProvider.get() + ".apk"
         }
+    }
+    // 变体打包完成后：复制 builds/<ver>/ 镜像 + 兼容根目录快捷文件
+    variant.assembleProvider.configure {
+        doLast {
+            val (vc, vn) = effectiveVersions()
+            val baseName = apkBaseNameProvider.get()
+            val variantOutputDir = layout.buildDirectory.dir("outputs/apk/${buildType}").get().asFile
+            val canonical = variantOutputDir.resolve("${baseName}.apk")
+            if (!canonical.exists()) {
+                val fallback = variantOutputDir.listFiles()?.firstOrNull { f -> f.extension == "apk" }
+                if (fallback != null) {
+                    println("assemble${buildType.replaceFirstChar(Char::titlecase)}: canonical 名未命中，使用 fallback APK=${fallback.name}")
+                    fallback.renameTo(canonical)
+                } else {
+                    throw GradleException("assemble${buildType.replaceFirstChar(Char::titlecase)} 完成但找不到预期 APK：${canonical.absolutePath}，目录内容：${variantOutputDir.list()?.joinToString(",")}")
+                }
+            }
+            // (b) builds/<ver>/ 镜像
+            val mirrorDir = rootProject.layout.projectDirectory.dir("builds/${vn}").asFile.apply { mkdirs() }
+            val mirror = mirrorDir.resolve("${baseName}.apk")
+            canonical.copyTo(target = mirror, overwrite = true)
 
-        toApk.parentFile?.mkdirs()
-        fromApk.copyTo(target = toApk, overwrite = true)
-        println("Exported APK => ${toApk.absolutePath}")
+            // (c)/(d) 兼容：debug → root/casttv-receiver-v<ver>-gitee-sync.apk；release → root/casttv-receiver-v<ver>.apk
+            when (buildType) {
+                "debug" -> {
+                    val legacy = rootProject.layout.projectDirectory
+                        .file("casttv-receiver-v${vn}-gitee-sync.apk").asFile
+                    canonical.copyTo(target = legacy, overwrite = true)
+                    println("debugAPK: canonical=${canonical.absolutePath}")
+                    println("debugAPK: mirror   =${mirror.absolutePath}")
+                    println("debugAPK: legacy   =${legacy.absolutePath}")
+                }
+                "release" -> {
+                    val legacy = releaseExportApkFile(vn)
+                    canonical.copyTo(target = legacy, overwrite = true)
+                    println("releaseAPK: canonical=${canonical.absolutePath}")
+                    println("releaseAPK: mirror   =${mirror.absolutePath}")
+                    println("releaseAPK: legacy   =${legacy.absolutePath}")
+                }
+            }
+            println("assemble${variant.name.replaceFirstChar(Char::titlecase)}: versionCode=${vc}, versionName=${vn}, size=${canonical.length()} bytes")
+        }
     }
 }
 
-// 正式包导出：执行 assembleRelease 后自动导出到 casttv-receiver/casttv-receiver-v{versionName}.apk
+// 保留现有 `exportApk`/`exportReleaseApk` 任务：作为手动二次导出别名，读取 canonical 产物按当前文件字面量版本复制
+val exportApk = tasks.register("exportApk") {
+    group = "build"
+    description = "Alias: copies debug APK mirror (no-op unless assembleDebug ran)"
+    doLast {
+        val (_, vn) = readCurrentVersions() ?: throw GradleException("读取版本号失败")
+        val fromApk = layout.buildDirectory
+            .file("outputs/apk/debug/casttv-receiver-v${vn}-debug.apk").get().asFile
+        if (!fromApk.exists()) {
+            throw GradleException("请先运行 assembleDebug，APK not found: ${fromApk.absolutePath}")
+        }
+        val mirrorDir = rootProject.layout.projectDirectory.dir("builds/${vn}").asFile.apply { mkdirs() }
+        val mirror = mirrorDir.resolve("casttv-receiver-v${vn}-debug.apk")
+        val legacy = rootProject.layout.projectDirectory
+            .file("casttv-receiver-v${vn}-gitee-sync.apk").asFile
+        fromApk.copyTo(target = mirror, overwrite = true)
+        fromApk.copyTo(target = legacy, overwrite = true)
+        println("Exported debug APK => ${mirror.absolutePath} + ${legacy.absolutePath}")
+    }
+}
+
 val exportReleaseApk = tasks.register("exportReleaseApk") {
     group = "build"
-    description = "Copy release APK to casttv-receiver-v{versionName}.apk"
-
+    description = "Alias: copies release APK mirror (no-op unless assembleRelease ran)"
     doLast {
-        val versionName = android.defaultConfig.versionName ?: "unknown"
-        val fromApk = layout.buildDirectory.file("outputs/apk/release/app-release.apk").get().asFile
-        val toApk = releaseExportApkFile(versionName)
-
+        val (_, vn) = readCurrentVersions() ?: throw GradleException("读取版本号失败")
+        val fromApk = layout.buildDirectory
+            .file("outputs/apk/release/casttv-receiver-v${vn}-release.apk").get().asFile
         if (!fromApk.exists()) {
-            throw GradleException("APK not found: ${fromApk.absolutePath} (please run assembleRelease first)")
+            throw GradleException("请先运行 assembleRelease，APK not found: ${fromApk.absolutePath}")
         }
-
-        toApk.parentFile?.mkdirs()
-        fromApk.copyTo(target = toApk, overwrite = true)
-        println("Exported APK => ${toApk.absolutePath}")
+        val mirrorDir = rootProject.layout.projectDirectory.dir("builds/${vn}").asFile.apply { mkdirs() }
+        val mirror = mirrorDir.resolve("casttv-receiver-v${vn}-release.apk")
+        val legacy = releaseExportApkFile(vn)
+        fromApk.copyTo(target = mirror, overwrite = true)
+        fromApk.copyTo(target = legacy, overwrite = true)
+        println("Exported release APK => ${mirror.absolutePath} + ${legacy.absolutePath}")
     }
 }
 

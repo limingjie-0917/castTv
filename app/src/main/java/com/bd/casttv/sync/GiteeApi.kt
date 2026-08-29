@@ -49,6 +49,16 @@ object GiteeApi {
 
     private val accessToken: String by lazy { deobfuscateToken() }
 
+    /** 只暴露令牌状态摘要（长度+前缀），用于诊断 UI，绝不输出明文。 */
+    fun tokenStateSummary(): String {
+        val raw = accessToken
+        return when {
+            raw.isBlank() -> "NO_TOKEN"
+            raw.length < 8 -> "WEAK(len=${raw.length})"
+            else -> "OK(${raw.length}B, ${raw.take(3)}***${raw.takeLast(2)})"
+        }
+    }
+
     private const val CONNECT_TIMEOUT = 15_000
     private const val READ_TIMEOUT = 30_000
     private const val TAG = "GiteeApi"
@@ -97,8 +107,10 @@ object GiteeApi {
             val content = if (contentB64.isBlank()) "" else String(Base64.decode(contentB64, Base64.DEFAULT), Charsets.UTF_8)
             ApiResult.Success(FileResult(content = content, sha = sha))
         } catch (e: Exception) {
-            SsdpDiagnostics.logCloudSync("请求异常：GET $path，${e.javaClass.simpleName}${e.message?.let { ": $it" }.orEmpty()}，按新文件处理")
-            ApiResult.NotFound
+            val msg = "GET $path 异常：${e.javaClass.simpleName}${e.message?.let { ": $it" }.orEmpty()}"
+            SsdpDiagnostics.logCloudSync(msg)
+            // 404 只有响应码 404 才算；异常（网络/解析/鉴权缺失）向上抛出 Error，让上层显示真实原因（不静默变空列表）
+            ApiResult.Error(msg)
         } finally {
             conn?.disconnect()
         }

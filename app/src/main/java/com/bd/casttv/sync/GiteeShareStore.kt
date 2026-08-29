@@ -18,10 +18,13 @@ import java.util.UUID
  */
 object GiteeShareStore {
 
+    private const val TAG = "GiteeShareStore"
     private const val ADAPTERS_DIR = "shared_data/adapters"
     private const val RECORDS_DIR = "shared_data/records"
+    private const val CARTOONS_DIR = "shared_data/cartoons"
     private const val ADAPTERS_INDEX = "$ADAPTERS_DIR/_index.json"
     private const val RECORDS_INDEX = "$RECORDS_DIR/_index.json"
+    private const val CARTOONS_INDEX = "$CARTOONS_DIR/_index.json"
 
     // 内置适配器 ID，不上传
     private val BUILT_IN_ADAPTERS = setOf("maccms", "zyplayer", "nemo", "generic", "snailcms", "snail_cms")
@@ -53,6 +56,22 @@ object GiteeShareStore {
         val uploadedAt: Long
     )
 
+    /** 动画城卡片：一条指向详情页 + 适配器的云端记录。 */
+    data class SharedCartoon(
+        val cartoonId: String,
+        val title: String,
+        val detailUrl: String,
+        val cover: String,
+        val globalAdapterId: String?,
+        val adapterName: String,
+        val episodeCount: Int,
+        val creatorId: String,
+        val deviceName: String,
+        val uploadedAt: Long,
+        /** 剧情/简介文案：新增字段，历史记录缺失时为空字符串。 */
+        val description: String = ""
+    )
+
     data class CloudIndex(
         val adapters: List<SharedAdapter>,
         val records: List<SharedRecord>
@@ -61,6 +80,19 @@ object GiteeShareStore {
     /** 生成全局唯一适配器 ID：creatorId + host + pageKind 的 SHA-256 前 12 位 */
     fun generateGlobalAdapterId(creatorId: String, host: String, pageKind: String): String {
         val raw = "$creatorId|$host|$pageKind"
+        val bytes = MessageDigest.getInstance("SHA-256").digest(raw.toByteArray(Charsets.UTF_8))
+        return buildString(bytes.size * 2) {
+            for (b in bytes) {
+                val v = b.toInt() and 0xFF
+                if (v < 0x10) append('0')
+                append(Integer.toHexString(v))
+            }
+        }.take(12)
+    }
+
+    /** 生成动画城卡片 ID：detailUrl 的 SHA-256 前 12 位（同 URL = 同卡片，upsert 幂等） */
+    fun generateCartoonId(detailUrl: String): String {
+        val raw = detailUrl.trim()
         val bytes = MessageDigest.getInstance("SHA-256").digest(raw.toByteArray(Charsets.UTF_8))
         return buildString(bytes.size * 2) {
             for (b in bytes) {
@@ -103,7 +135,7 @@ object GiteeShareStore {
         }
     }
 
-    private fun fetchRecordsIndex(): GiteeApi.ApiResult<List<SharedRecord>> {
+    fun fetchRecordsIndex(): GiteeApi.ApiResult<List<SharedRecord>> {
         return when (val result = GiteeApi.getFileResult(RECORDS_INDEX)) {
             is GiteeApi.ApiResult.Success -> {
                 val list = parseRecordsIndex(result.value.content)
@@ -425,7 +457,6 @@ object GiteeShareStore {
 
         val errors = mutableListOf<String>()
         val store = WebParseStore(context)
-        val adapterStore = WebParseAdapterStore(context)
         var recordsSaved = 0
         var skippedRecords = 0
         var adaptersSaved = 0
@@ -441,55 +472,17 @@ object GiteeShareStore {
             .distinct()
             .filter { it.isNotBlank() }
 
-        // Step1: 下载并保存适配器
+        // Step1: 下载并保存适配器（复用 downloadAdapterById，保持单一下载入口）
         for (globalAdapterId in adapterIdsToDownload) {
             val meta = adapterMap[globalAdapterId]
             if (meta == null) {
                 errors.add("适配器 $globalAdapterId 无元数据，跳过")
                 continue
             }
-            val path = "$ADAPTERS_DIR/$globalAdapterId.json"
-            val result = GiteeApi.getFileResult(path)
-            when (result) {
-                is GiteeApi.ApiResult.Success -> {
-                    // 解析 JSON 规则内容（rule 字段）
-                    val ruleText = runCatching {
-                        val obj = JSONObject(result.value.content)
-                        obj.optJSONObject("rule")?.toString(2) ?: result.value.content
-                    }.getOrElse { result.value.content }
-
-                    // 写入本地规则文件
-                    val pageKind = runCatching {
-                        com.bd.casttv.webparse.ParsePageKind.valueOf(meta.pageKind)
-                    }.getOrElse { com.bd.casttv.webparse.ParsePageKind.DETAIL }
-                    val frameworkType = runCatching {
-                        com.bd.casttv.webparse.WebFrameworkType.valueOf(meta.frameworkType)
-                    }.getOrElse { com.bd.casttv.webparse.WebFrameworkType.UNKNOWN }
-
-                    val ruleInfo = runCatching {
-                        RuleBasedAdapter.saveRule(context, ruleText, meta.name, pageKind)
-                    }.getOrElse {
-                        errors.add("适配器保存失败: ${meta.name}")
-                        null
-                    }
-                    if (ruleInfo != null) {
-                        // 写入域名绑定
-                        val binding = WebParseAdapterStore.DomainBinding(
-                            pageKind = pageKind,
-                            host = meta.host,
-                            adapterId = globalAdapterId,
-                            adapterKind = com.bd.casttv.webparse.AdapterKind.CUSTOM_JSON,
-                            adapterName = meta.name,
-                            ruleFileName = ruleInfo.fileName,
-                            frameworkType = frameworkType,
-                            updatedAt = meta.uploadedAt
-                        )
-                        adapterStore.forceUpdateBinding(binding)
-                        adaptersSaved++
-                    }
-                }
+            when (val r = downloadAdapterById(context, globalAdapterId, meta)) {
+                is GiteeApi.ApiResult.Success -> adaptersSaved++
                 is GiteeApi.ApiResult.NotFound -> { errors.add("适配器文件不存在: ${meta.name}"); skippedAdapters++ }
-                is GiteeApi.ApiResult.Error -> { errors.add("适配器下载失败: ${meta.name}, ${result.message}"); skippedAdapters++ }
+                is GiteeApi.ApiResult.Error -> { errors.add("适配器下载失败: ${meta.name}, ${r.message}"); skippedAdapters++ }
             }
         }
 
@@ -520,6 +513,53 @@ object GiteeShareStore {
         }
 
         return GiteeApi.ApiResult.Success(DownloadResult(recordsSaved, adaptersSaved, skippedRecords, skippedAdapters, errors))
+    }
+
+    /**
+     * 按 globalAdapterId 从云端下载适配器规则文件，保存到本地 filesDir/json_adapters/，
+     * 并更新 WebParseAdapterStore 的 DomainBinding。
+     * 动画城打开动画时按需调用：若本地已存在同名规则文件则覆盖更新。
+     * @return Success(fileName)=保存成功并返回规则文件名；NotFound/Error=失败
+     */
+    fun downloadAdapterById(
+        context: Context,
+        globalAdapterId: String,
+        meta: SharedAdapter
+    ): GiteeApi.ApiResult<String> {
+        val path = "$ADAPTERS_DIR/$globalAdapterId.json"
+        return when (val result = GiteeApi.getFileResult(path)) {
+            is GiteeApi.ApiResult.Success -> {
+                val ruleText = runCatching {
+                    val obj = JSONObject(result.value.content)
+                    obj.optJSONObject("rule")?.toString(2) ?: result.value.content
+                }.getOrElse { result.value.content }
+                val pageKind = runCatching {
+                    com.bd.casttv.webparse.ParsePageKind.valueOf(meta.pageKind)
+                }.getOrElse { com.bd.casttv.webparse.ParsePageKind.DETAIL }
+                val frameworkType = runCatching {
+                    com.bd.casttv.webparse.WebFrameworkType.valueOf(meta.frameworkType)
+                }.getOrElse { com.bd.casttv.webparse.WebFrameworkType.UNKNOWN }
+                val ruleInfo = runCatching {
+                    RuleBasedAdapter.saveRule(context, ruleText, meta.name, pageKind)
+                }.getOrElse {
+                    return GiteeApi.ApiResult.Error("适配器保存失败: ${meta.name}")
+                }
+                val binding = WebParseAdapterStore.DomainBinding(
+                    pageKind = pageKind,
+                    host = meta.host,
+                    adapterId = globalAdapterId,
+                    adapterKind = com.bd.casttv.webparse.AdapterKind.CUSTOM_JSON,
+                    adapterName = meta.name,
+                    ruleFileName = ruleInfo.fileName,
+                    frameworkType = frameworkType,
+                    updatedAt = meta.uploadedAt
+                )
+                WebParseAdapterStore(context).forceUpdateBinding(binding)
+                GiteeApi.ApiResult.Success(ruleInfo.fileName)
+            }
+            is GiteeApi.ApiResult.NotFound -> GiteeApi.ApiResult.NotFound
+            is GiteeApi.ApiResult.Error -> result
+        }
     }
 
     // ===================== 删除 =====================
@@ -590,34 +630,306 @@ object GiteeShareStore {
             if (globalAdapterId != null && globalAdapterId.isNotBlank()) {
                 val refCount = remaining.count { it.globalAdapterId == globalAdapterId }
                 if (refCount == 0) {
-                    val adapterPath = "$ADAPTERS_DIR/$globalAdapterId.json"
-                    val adapterFile = GiteeApi.getFile(adapterPath)
-                    if (adapterFile != null) {
-                        GiteeApi.deleteFile(adapterPath, adapterFile.sha)
-                    }
-                    // 从适配器索引中移除
-                    val adapterIndexResult = fetchAdaptersIndex()
-                    val adapterIndex = (adapterIndexResult as? GiteeApi.ApiResult.Success)?.value ?: emptyList()
-                    val remainingAdapters = adapterIndex.filterNot { it.globalAdapterId == globalAdapterId }
-                    val adapterArray = JSONArray()
-                    remainingAdapters.forEach { a ->
-                        adapterArray.put(JSONObject().apply {
-                            put("globalAdapterId", a.globalAdapterId)
-                            put("localAdapterId", a.localAdapterId)
-                            put("name", a.name)
-                            put("host", a.host)
-                            put("pageKind", a.pageKind)
-                            put("frameworkType", a.frameworkType)
-                            put("creatorId", a.creatorId)
-                            put("uploadedAt", a.uploadedAt)
-                        })
-                    }
-                    val adapterSha = GiteeApi.getFile(ADAPTERS_INDEX)?.sha
-                    GiteeApi.putFile(ADAPTERS_INDEX, adapterArray.toString(2), adapterSha)
+                    deleteCloudAdapter(globalAdapterId)
                 }
             }
         }
 
         return GiteeApi.ApiResult.Success(true)
+    }
+
+    /**
+     * 单个适配器上传：写适配器文件 + 更新索引。
+     * 用于「添加到动画城」时上传当前页面的自定义 JSON 规则（非 BUILT_IN）。
+     * 幂等：按 generateGlobalAdapterId(creatorId, host, pageKind.name) 覆盖更新。
+     * @return Success(globalAdapterId) 或 Error(message)
+     */
+    fun upsertSharedAdapter(
+        context: Context,
+        binding: WebParseAdapterStore.DomainBinding,
+        ruleText: String
+    ): GiteeApi.ApiResult<String> {
+        if (ruleText.isBlank()) return GiteeApi.ApiResult.Error("规则为空")
+        if (isBuiltInAdapter(binding.adapterId)) return GiteeApi.ApiResult.Success("")
+        val creatorId = CreatorIdProvider.get(context)
+        val now = System.currentTimeMillis()
+        val globalId = generateGlobalAdapterId(creatorId, binding.host, binding.pageKind.name)
+        val adapterJson = buildAdapterJson(globalId, binding.adapterId, binding, ruleText, creatorId, now)
+        val path = "$ADAPTERS_DIR/$globalId.json"
+        val existing = GiteeApi.getFile(path)
+        when (val r = GiteeApi.putFileResult(path, adapterJson, existing?.sha, "upsert adapter $globalId")) {
+            is GiteeApi.ApiResult.Success -> { /* ok */ }
+            is GiteeApi.ApiResult.Error -> return GiteeApi.ApiResult.Error("适配器上传失败: ${r.message}")
+            is GiteeApi.ApiResult.NotFound -> return GiteeApi.ApiResult.Error("适配器上传失败: NotFound")
+        }
+        // 更新索引（单条目 upsert）
+        val existingIndex = (fetchAdaptersIndex() as? GiteeApi.ApiResult.Success)?.value ?: emptyList()
+        val merged = existingIndex.associateBy { it.globalAdapterId }.toMutableMap()
+        merged[globalId] = SharedAdapter(
+            globalAdapterId = globalId,
+            localAdapterId = binding.adapterId,
+            name = binding.adapterName,
+            host = binding.host,
+            pageKind = binding.pageKind.name,
+            frameworkType = binding.frameworkType.name,
+            creatorId = creatorId,
+            uploadedAt = now
+        )
+        val array = JSONArray()
+        merged.values.forEach { a ->
+            array.put(JSONObject().apply {
+                put("globalAdapterId", a.globalAdapterId)
+                put("localAdapterId", a.localAdapterId)
+                put("name", a.name)
+                put("host", a.host)
+                put("pageKind", a.pageKind)
+                put("frameworkType", a.frameworkType)
+                put("creatorId", a.creatorId)
+                put("uploadedAt", a.uploadedAt)
+            })
+        }
+        val idxResult = putIndexWithRetry(ADAPTERS_INDEX, array.toString(2), "upsert adapter index $globalId")
+        return when (idxResult) {
+            is GiteeApi.ApiResult.Success -> GiteeApi.ApiResult.Success(globalId)
+            is GiteeApi.ApiResult.Error -> GiteeApi.ApiResult.Error("适配器索引写入失败: ${idxResult.message}")
+            is GiteeApi.ApiResult.NotFound -> GiteeApi.ApiResult.Error("适配器索引写入失败: NotFound")
+        }
+    }
+
+    /** 删除云端适配器文件和索引条目。调用方需先确认无其他引用。 */
+    private fun deleteCloudAdapter(globalAdapterId: String) {
+        val adapterPath = "$ADAPTERS_DIR/$globalAdapterId.json"
+        val adapterFile = GiteeApi.getFile(adapterPath)
+        if (adapterFile != null) {
+            GiteeApi.deleteFile(adapterPath, adapterFile.sha)
+        }
+        val adapterIndexResult = fetchAdaptersIndex()
+        val adapterIndex = (adapterIndexResult as? GiteeApi.ApiResult.Success)?.value ?: emptyList()
+        val remainingAdapters = adapterIndex.filterNot { it.globalAdapterId == globalAdapterId }
+        val adapterArray = JSONArray()
+        remainingAdapters.forEach { a ->
+            adapterArray.put(JSONObject().apply {
+                put("globalAdapterId", a.globalAdapterId)
+                put("localAdapterId", a.localAdapterId)
+                put("name", a.name)
+                put("host", a.host)
+                put("pageKind", a.pageKind)
+                put("frameworkType", a.frameworkType)
+                put("creatorId", a.creatorId)
+                put("uploadedAt", a.uploadedAt)
+            })
+        }
+        // ponytail: 索引写入失败只记录不抛，防止级联删除失败（后续下次 upsert 会重建）。
+        runCatching { putIndexWithRetry(ADAPTERS_INDEX, adapterArray.toString(2), "delete adapter index $globalAdapterId") }
+    }
+
+    // ===================== 动画城 =====================
+
+    /** 拉取云端动画城索引。 */
+    fun fetchCartoonsIndex(): GiteeApi.ApiResult<List<SharedCartoon>> {
+        return when (val result = GiteeApi.getFileResult(CARTOONS_INDEX)) {
+            is GiteeApi.ApiResult.Success -> {
+                GiteeApi.ApiResult.Success(parseCartoonsIndex(result.value.content))
+            }
+            is GiteeApi.ApiResult.NotFound -> GiteeApi.ApiResult.Success(emptyList())
+            is GiteeApi.ApiResult.Error -> result
+        }
+    }
+
+    /** 取 _index.json 的原始文本（供脏数据自检用）。 */
+    fun fetchRawCartoonsIndexText(): GiteeApi.ApiResult<String> {
+        return when (val result = GiteeApi.getFileResult(CARTOONS_INDEX)) {
+            is GiteeApi.ApiResult.Success -> GiteeApi.ApiResult.Success(result.value.content)
+            is GiteeApi.ApiResult.NotFound -> GiteeApi.ApiResult.Success("[]")
+            is GiteeApi.ApiResult.Error -> result
+        }
+    }
+
+    /** 只用于诊断 UI：返回 token 状态（绝不外泄明文）。 */
+    fun tokenSummary(): String = runCatching { GiteeApi.tokenStateSummary() }.getOrDefault("UNKNOWN")
+
+    private fun parseCartoonsIndex(content: String): List<SharedCartoon> {
+        return runCatching {
+            val raw = content.trim()
+            val array = JSONArray(raw)
+            val out = buildList<SharedCartoon> {
+                for (i in 0 until array.length()) {
+                    val obj = array.optJSONObject(i) ?: continue
+                    add(com.bd.casttv.cartoon.CartoonStore.decodeSharedCartoon(obj))
+                }
+            }
+            android.util.Log.i(TAG, "parseCartoonsIndex: parsed ${out.size} from ${raw.length}B, JSONArray=${array.length()}")
+            out
+        }.getOrElse {
+            android.util.Log.e(TAG, "parseCartoonsIndex: parse failed, contentHead=${content.take(200)}", it)
+            emptyList()
+        }
+    }
+
+    /**
+     * 创建或更新动画城卡片（按 detailUrl 幂等）。
+     *
+     * 新字段 cartoonId：如果调用方指定了明确的 cartoonId（例如动画城结果页回写既有卡片），
+     * 就用指定 id；否则按 [generateCartoonId] 从 detailUrl 生成，保证 URL=ID 幂等。
+     *
+     * @return Success(SharedCartoon)=写入成功的卡片
+     */
+    fun upsertCartoon(
+        context: Context,
+        title: String,
+        detailUrl: String,
+        cover: String,
+        globalAdapterId: String?,
+        adapterName: String,
+        episodeCount: Int,
+        description: String = "",
+        cartoonId: String? = null
+    ): GiteeApi.ApiResult<SharedCartoon> {
+        val creatorId = CreatorIdProvider.get(context)
+        val deviceName = com.bd.casttv.settings.Settings(context).deviceName
+        val resolvedId = cartoonId?.trim()?.ifBlank { null } ?: generateCartoonId(detailUrl)
+        val now = System.currentTimeMillis()
+        val cartoon = SharedCartoon(
+            cartoonId = resolvedId,
+            title = title.trim().ifBlank { detailUrl },
+            detailUrl = detailUrl.trim(),
+            cover = cover.trim(),
+            globalAdapterId = globalAdapterId?.takeIf { it.isNotBlank() },
+            adapterName = adapterName.trim(),
+            episodeCount = episodeCount,
+            creatorId = creatorId,
+            deviceName = deviceName,
+            uploadedAt = now,
+            description = description.trim()
+        )
+        val cartoonJson = JSONObject().apply {
+            put("cartoonId", cartoon.cartoonId)
+            put("title", cartoon.title)
+            put("detailUrl", cartoon.detailUrl)
+            put("cover", cartoon.cover)
+            put("globalAdapterId", cartoon.globalAdapterId ?: JSONObject.NULL)
+            put("adapterName", cartoon.adapterName)
+            put("episodeCount", cartoon.episodeCount)
+            put("creatorId", cartoon.creatorId)
+            put("deviceName", cartoon.deviceName)
+            put("uploadedAt", cartoon.uploadedAt)
+            if (cartoon.description.isNotEmpty()) put("description", cartoon.description)
+        }
+        val path = "$CARTOONS_DIR/$resolvedId.json"
+        val sha = GiteeApi.getFile(path)?.sha
+        when (val r = GiteeApi.putFileResult(path, cartoonJson.toString(2), sha, "upsert cartoon $resolvedId")) {
+            is GiteeApi.ApiResult.Success -> { /* ok */ }
+            is GiteeApi.ApiResult.NotFound -> return GiteeApi.ApiResult.Error("上传失败: NotFound")
+            is GiteeApi.ApiResult.Error -> return GiteeApi.ApiResult.Error("上传失败: ${r.message}")
+        }
+        // 更新索引（upsert by cartoonId）
+        val existing = (fetchCartoonsIndex() as? GiteeApi.ApiResult.Success)?.value ?: emptyList()
+        val merged = existing.associateBy { it.cartoonId }.toMutableMap()
+        merged[resolvedId] = cartoon
+        val array = JSONArray()
+        merged.values.forEach { c ->
+            array.put(JSONObject().apply {
+                put("cartoonId", c.cartoonId)
+                put("title", c.title)
+                put("detailUrl", c.detailUrl)
+                put("cover", c.cover)
+                put("globalAdapterId", c.globalAdapterId ?: JSONObject.NULL)
+                put("adapterName", c.adapterName)
+                put("episodeCount", c.episodeCount)
+                put("creatorId", c.creatorId)
+                put("deviceName", c.deviceName)
+                put("uploadedAt", c.uploadedAt)
+                if (c.description.isNotEmpty()) put("description", c.description)
+            })
+        }
+        val idx = putIndexWithRetry(CARTOONS_INDEX, array.toString(2), "upsert cartoon index $resolvedId")
+        return when (idx) {
+            is GiteeApi.ApiResult.Success -> GiteeApi.ApiResult.Success(cartoon)
+            is GiteeApi.ApiResult.Error -> GiteeApi.ApiResult.Error("动画索引写入失败: ${idx.message}")
+            is GiteeApi.ApiResult.NotFound -> GiteeApi.ApiResult.Error("动画索引写入失败: NotFound")
+        }
+    }
+
+    /**
+     * 检查指定动画卡片关联的适配器是否被其他卡片或记录引用。
+     * @return 适配器关联的其他卡片+记录数量（当前卡片除外）
+     */
+    fun countCartoonAdapterReferences(
+        cartoon: SharedCartoon,
+        allCartoons: List<SharedCartoon>,
+        allRecords: List<SharedRecord>
+    ): Int {
+        val globalAdapterId = cartoon.globalAdapterId ?: return 0
+        if (globalAdapterId.isBlank()) return 0
+        val cartoonRefs = allCartoons.count { other ->
+            other.cartoonId != cartoon.cartoonId && other.globalAdapterId == globalAdapterId
+        }
+        val recordRefs = allRecords.count { it.globalAdapterId == globalAdapterId }
+        return cartoonRefs + recordRefs
+    }
+
+    /**
+     * 删除云端动画卡片并更新索引。
+     * 若卡片关联的适配器没有被其他卡片或记录引用，适配器也一并删除。
+     */
+    fun deleteCartoon(
+        cartoonId: String,
+        allCartoons: List<SharedCartoon>,
+        allRecords: List<SharedRecord>
+    ): GiteeApi.ApiResult<Boolean> {
+        val cartoon = allCartoons.firstOrNull { it.cartoonId == cartoonId }
+        // Step1: 删除 cartoon 文件
+        val path = "$CARTOONS_DIR/$cartoonId.json"
+        val fileResult = GiteeApi.getFile(path)
+        if (fileResult != null) {
+            if (!GiteeApi.deleteFile(path, fileResult.sha)) {
+                return GiteeApi.ApiResult.Error("删除卡片文件失败")
+            }
+        }
+        // Step2: 重建索引（排除被删除的卡片）
+        val remaining = allCartoons.filterNot { it.cartoonId == cartoonId }
+        val array = JSONArray()
+        remaining.forEach { c ->
+            array.put(JSONObject().apply {
+                put("cartoonId", c.cartoonId)
+                put("title", c.title)
+                put("detailUrl", c.detailUrl)
+                put("cover", c.cover)
+                put("globalAdapterId", c.globalAdapterId ?: JSONObject.NULL)
+                put("adapterName", c.adapterName)
+                put("episodeCount", c.episodeCount)
+                put("creatorId", c.creatorId)
+                put("deviceName", c.deviceName)
+                put("uploadedAt", c.uploadedAt)
+            })
+        }
+        val del = putIndexWithRetry(CARTOONS_INDEX, array.toString(2), "delete cartoon index $cartoonId")
+        if (del is GiteeApi.ApiResult.Error) return GiteeApi.ApiResult.Error("动画索引删除更新失败: ${del.message}")
+        // Step3: 如果卡片关联的适配器没有被其他卡片或记录引用，一起删除适配器
+        if (cartoon != null) {
+            val globalAdapterId = cartoon.globalAdapterId
+            if (globalAdapterId != null && globalAdapterId.isNotBlank()) {
+                val cartoonRefCount = remaining.count { it.globalAdapterId == globalAdapterId }
+                val recordRefCount = allRecords.count { it.globalAdapterId == globalAdapterId }
+                if (cartoonRefCount == 0 && recordRefCount == 0) {
+                    deleteCloudAdapter(globalAdapterId)
+                }
+            }
+        }
+        return GiteeApi.ApiResult.Success(true)
+    }
+
+    /**
+     * 索引类文件写入：先读 sha → PUT。若因 Gitee 端写后读一致性延迟或 sha 陈旧导致 4xx，
+     * 再拉一次最新 sha 重试一次，覆盖掉 boolean putFile 静默吞错的旧写法。
+     * ponytail: 不做无限重试，1 次足以覆盖常见冲突；更大的冲突由调用方/用户下次 upsert 重建。
+     */
+    private fun putIndexWithRetry(path: String, content: String, commitMsg: String): GiteeApi.ApiResult<Unit> {
+        var sha = GiteeApi.getFile(path)?.sha
+        val first = GiteeApi.putFileResult(path, content, sha, commitMsg)
+        if (first is GiteeApi.ApiResult.Success) return first
+        // 刷新 sha 再重试一次
+        sha = GiteeApi.getFile(path)?.sha
+        return GiteeApi.putFileResult(path, content, sha, commitMsg)
     }
 }

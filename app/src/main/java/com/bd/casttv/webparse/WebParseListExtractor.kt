@@ -58,16 +58,9 @@ class WebParseListExtractor {
                 .let { WebParseHtml.absolute(ruleBaseUrl, it) }
             ParsedListMovie(title = title, coverUrl = cover, detailUrl = detailUrl)
         }.distinctBy { it.detailUrl }
-        // 下一页地址：优先用 nextPageSelector，无则通用提取
-        val nextPageUrl = if (nextPageSelector.isNotBlank()) {
-            selectElements(html, nextPageSelector).firstNotNullOfOrNull { el ->
-                elementUrl(el).takeIf { it.isNotBlank() }
-                    ?.let { WebParseHtml.absolute(ruleBaseUrl, it) }
-                    ?.takeIf { isValidNextPageUrl(it) }
-            }
-        } else {
-            extractNextPageUrl(ruleBaseUrl, html)
-        }
+        // 下一页地址：多级兜底链（L1 用户规则 → L3 数字按钮组 → L3 class/文字）
+        val nextPageUrl = extractNextPageUrlChain(ruleBaseUrl, html, nextPageSelector)
+        Log.d(TAG, "parseWithJsonRule nextPageSelector='${nextPageSelector.take(40)}' movies=${movies.size} nextPageUrl=$nextPageUrl")
         return ParsedListResult(movies, nextPageUrl)
     }
 
@@ -167,6 +160,81 @@ class WebParseListExtractor {
     }
 
     // ---- 下一页地址提取 ----
+
+    /**
+     * 下一页地址多级兜底链：
+     * L1 用户规则 nextPageSelector（Jsoup select）→ 没命中继续回退
+     * L3-1 数字按钮组（当前页 N → 取 N+1 的 href，查父 li 的 active）
+     * L3-2 class 含 next / 文字含"下一页"（extractNextPageUrl）
+     * 任一级命中且通过 isValidNextPageUrl 校验即返回；全未命中返回 null。
+     */
+    private fun extractNextPageUrlChain(
+        baseUrl: String,
+        html: String,
+        nextPageSelector: String
+    ): String? {
+        // L1：用户规则 nextPageSelector
+        if (nextPageSelector.isNotBlank()) {
+            val hit = selectElements(html, nextPageSelector).firstNotNullOfOrNull { el ->
+                elementUrl(el).takeIf { it.isNotBlank() }
+                    ?.let { WebParseHtml.absolute(baseUrl, it) }
+                    ?.takeIf { isValidNextPageUrl(it) }
+            }
+            if (hit != null) {
+                Log.d(TAG, "nextPage L1(selector) hit=$hit")
+                return hit
+            }
+            Log.d(TAG, "nextPage L1(selector) miss, fallback to numeric-pager")
+        }
+        // L3-1：数字按钮组（当前页 N → N+1）
+        extractFromNumericPager(baseUrl, html)?.let {
+            Log.d(TAG, "nextPage L3(numeric-pager) hit=$it")
+            return it
+        }
+        Log.d(TAG, "nextPage L3(numeric-pager) miss, fallback to class/text")
+        // L3-2：class/文字兜底（现有）
+        return extractNextPageUrl(baseUrl, html)
+    }
+
+    /**
+     * 数字按钮组识别：定位"有序数字排列"的分页按钮，从当前页 N 取 N+1 的 href。
+     * 基于 cupfox/netfly（STUI 组件）实测校准：
+     * - 按钮文本为纯数字（1-3 位），排除"第1集"/价格/年份(4 位)/"1/314"总页数指示
+     * - 仅在分页容器内查找（[class*=pag]/[class*=page]/[class*=pager]/nav/ul），
+     *   避免误判详情集数、导航数字等
+     * - 当前页 active/current/selected/on 常在父 <li> 上而非 <a> 上，故查 parent
+     * - 取 N+1 对应按钮的 href，经 absolute + isValidNextPageUrl 校验
+     * - 末页无 N+1 → 返回 null（由上层"列表为空则停"自然停止）
+     */
+    private fun extractFromNumericPager(baseUrl: String, html: String): String? {
+        val numRegex = Regex("^\\d{1,3}$")
+        val doc = Jsoup.parse(html)
+        val containers = doc.select("[class*=pag], [class*=page], [class*=pager], nav, ul")
+        for (container in containers) {
+            val numAs = container.select("a").toList().filter { numRegex.matches(it.text().trim()) }
+            if (numAs.size < 2) continue
+            // 至少存在两个连续递增的数字，排除散落数字链接
+            val nums = numAs.mapNotNull { it.text().trim().toIntOrNull() }.sorted()
+            val hasAscending = nums.zipWithNext().any { (a, b) -> b == a + 1 }
+            if (!hasAscending) continue
+            // 当前页识别：active/current/selected/on 在父 <li> 上，或 aria-current
+            val currentBtn = numAs.firstOrNull { a ->
+                val p = a.parent()
+                val pcls = p?.className()?.lowercase().orEmpty()
+                pcls.contains("active") || pcls.contains("current") ||
+                    pcls.contains("selected") || pcls.contains("on") ||
+                    p?.attr("aria-current")?.isNotBlank() == true
+            } ?: continue
+            val n = currentBtn.text().trim().toIntOrNull() ?: continue
+            // 取 N+1 对应按钮的 href
+            val next = numAs.firstOrNull { it.text().trim().toIntOrNull() == n + 1 } ?: continue
+            val href = next.attr("href").trim()
+            if (href.isBlank()) continue
+            val abs = WebParseHtml.absolute(baseUrl, href)
+            if (isValidNextPageUrl(abs)) return abs
+        }
+        return null
+    }
 
     /** 从列表页 HTML 中提取下一页地址：优先 class 匹配，其次文字匹配。 */
     private fun extractNextPageUrl(baseUrl: String, html: String): String? {

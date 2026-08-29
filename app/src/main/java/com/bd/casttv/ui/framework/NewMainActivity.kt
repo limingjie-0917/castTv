@@ -43,6 +43,7 @@ import com.bd.casttv.settings.Settings
 import com.bd.casttv.ui.ClippedImageView
 import com.bd.casttv.ui.CustomDockIconPresets
 import com.bd.casttv.util.ThemeManager
+import com.bd.casttv.ui.framework.pages.CartoonCityPage
 import com.bd.casttv.ui.framework.pages.CustomTabPage
 import com.bd.casttv.ui.framework.pages.DiagnosticsPage
 import com.bd.casttv.ui.framework.pages.DouyinCastPage
@@ -834,6 +835,7 @@ class NewMainActivity : AppCompatActivity(), SettingsChangeBus.Listener, PageCon
             detachAndRemovePageInstance(Settings.PAGE_ID_DOUYIN_CAST)
         }
         pageFactories["favorites"] = { FavoritesPage(this) }
+        pageFactories["cartoon_city"] = { CartoonCityPage(this) }
         if (settings.webParseEnabled) {
             pageFactories[Settings.PAGE_ID_WEB_PARSE] = { WebParsePage(this) }
         } else if (oldWebParseEnabled) {
@@ -857,6 +859,7 @@ class NewMainActivity : AppCompatActivity(), SettingsChangeBus.Listener, PageCon
         pageId == Settings.PAGE_ID_DOUYIN_CAST -> PageContainer.PageSpec(pageId, "抖音投屏", R.drawable.ic_history_tv) { getPage(pageId) }
         pageId == Settings.PAGE_ID_WEB_PARSE -> PageContainer.PageSpec(pageId, "网页解析播放", R.drawable.ic_web_parse) { getPage(pageId) }
         pageId == "favorites" -> PageContainer.PageSpec(pageId, "小新的收藏哦！", R.drawable.ic_dock_favorite) { getPage(pageId) }
+        pageId == "cartoon_city" -> PageContainer.PageSpec(pageId, "动画城", R.drawable.ic_more_cartoon) { getPage(pageId) }
         pageId.startsWith("customtab_") -> {
             val tabId = pageId.removePrefix("customtab_")
             val tab = CustomDockTabsStore(this).list().firstOrNull { it.id == tabId }

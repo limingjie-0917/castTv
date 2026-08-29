@@ -43,6 +43,7 @@ import com.bd.casttv.webparse.ParsedListMovie
 import com.bd.casttv.webparse.ParsedMovie
 import com.bd.casttv.webparse.RuleBasedAdapter
 import com.bd.casttv.webparse.WebFrameworkType
+import com.bd.casttv.sync.GiteeShareStore
 import com.bd.casttv.webparse.WebParseAdapterStore
 import com.bd.casttv.webparse.WebParseExtractor
 import com.bd.casttv.webparse.WebParseHtml
@@ -97,6 +98,10 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
     private var listBackUrl: String = ""
     private var listBackMovies: List<ParsedListMovie> = emptyList()
     private var detailFromList = false
+    /** 动画城上下文：来自 [WebParseRequestBus] 的动画城请求，非空时解析成功后回写云端 cartoons。 */
+    private var cartoonContext: CartoonContext? = null
+    /** 最近一次解析用到的适配器信息，供「添加到动画城」判断是否要上传自定义适配器。 */
+    private var lastAdapterMeta: AdapterMeta? = null
     private var selectedSourceIndex = 0
     private var selectedEpisodeIndex = 0
     private var extractor = WebParseExtractor(context.applicationContext)
@@ -215,6 +220,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         ).show()
     }
     private val saveButton = dialogButton("保存到合集") { movie?.let { WebParseSaveDialog(context, it) { url -> extractor.resolve(url) }.show() } }
+    private val addToCartoonButton = dialogButton("添加到动画城") { onAddToCartoon() }
     private val jsonButton = dialogButton("JSON解析") { showJsonAdapterDialog() }
     private val listJsonButton = dialogButton("JSON 解析") { showListJsonAdapterDialog() }
     private val jsonTip = TextView(context).apply {
@@ -249,6 +255,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         visibility = View.GONE
         addView(jsonTip, LinearLayout.LayoutParams(dp(270), dp(42)).apply { marginEnd = dp(10) })
         addView(jsonButton, LinearLayout.LayoutParams(dp(118), dp(42)).apply { marginEnd = dp(10) })
+        addView(addToCartoonButton, LinearLayout.LayoutParams(dp(150), dp(42)).apply { marginEnd = dp(10) })
         addView(saveButton, LinearLayout.LayoutParams(dp(132), dp(42)))
     }
 
@@ -283,10 +290,81 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         if (url.isBlank()) return
         inputEdit.setText(url)
         inputEdit.setSelection(inputEdit.text?.length ?: 0)
+        // 动画城上下文：携带 adapterId/adapterName 供解析成功后回写云端 cartoons。
+        cartoonContext = request.cartoonId?.let {
+            CartoonContext(it, url, request.adapterId, request.adapterName)
+        }
         when (request.pageType) {
             WebParsePageType.LIST -> startParseList(url)
             WebParsePageType.DETAIL -> startParse(url)
         }
+    }
+
+    /** 动画城解析上下文，解析成功后据此全量覆盖回写云端 cartoons（集数等）。 */
+    private data class CartoonContext(
+        val cartoonId: String,
+        val detailUrl: String,
+        val adapterId: String?,
+        val adapterName: String?
+    )
+
+    /** 最近一次详情解析的适配器快照，用于「添加到动画城」时决定是否上传规则。 */
+    private data class AdapterMeta(
+        val adapterId: String,
+        val adapterName: String,
+        val kind: AdapterKind,
+        val ruleFileName: String? = null,
+        val host: String = "",
+        val frameworkType: WebFrameworkType = WebFrameworkType.UNKNOWN
+    ) {
+        val isCustomJson: Boolean get() = kind == AdapterKind.CUSTOM_JSON
+    }
+
+    /**
+     * 解析成功后回写云端 cartoons：以 detailUrl 为主键 upsert，更新 title/cover/集数。
+     * 仅当 cartoonContext 非空（来自动画城请求）时触发，回写后清空上下文，避免后续手动解析误回写。
+     */
+    private fun maybeWritebackCartoon(parsed: ParsedMovie) {
+        val ctx = cartoonContext ?: return
+        cartoonContext = null
+        val episodeCount = parsed.sources.sumOf { it.episodes.size }
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    GiteeShareStore.upsertCartoon(
+                        context,
+                        title = parsed.title,
+                        detailUrl = ctx.detailUrl,
+                        cover = parsed.coverUrl,
+                        globalAdapterId = ctx.adapterId,
+                        adapterName = ctx.adapterName.orEmpty(),
+                        episodeCount = episodeCount
+                    )
+                }.onFailure { Log.w(TAG, "cartoon writeback failed: ${it.message}") }
+            }
+        }
+    }
+
+    /** 「添加到动画城」按钮：仅在解析成功后可用。 */
+    private fun onAddToCartoon() {
+        val data = movie ?: run { toast("先解析出影片详情后才能添加"); return }
+        if (currentUrl.isBlank() || !currentUrl.startsWith("http", true)) {
+            toast("当前网址无效"); return
+        }
+        val m = lastAdapterMeta
+        AddToCartoonDialog(
+            context = context,
+            title = data.title,
+            coverUrl = data.coverUrl,
+            detailUrl = currentUrl,
+            episodeCount = data.sources.sumOf { it.episodes.size },
+            adapterIsCustom = m?.isCustomJson == true,
+            adapterId = m?.adapterId.orEmpty(),
+            adapterName = m?.adapterName.orEmpty(),
+            adapterRuleFileName = m?.ruleFileName,
+            adapterHost = m?.host.orEmpty(),
+            adapterFramework = m?.frameworkType ?: WebFrameworkType.UNKNOWN
+        ).show()
     }
 
     override fun onJsonAdapterImported(fileName: String, pageKind: ParsePageKind) {
@@ -546,6 +624,21 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                     adapterSelection = selectAdapterForHistory(url, ParsePageKind.DETAIL)
                 }
                 movie = parsed
+                // 记录适配器快照（CUSTOM_JSON 时附带 ruleFileName + host，便于添加到动画城时上传规则）
+                val host = adapterStore.normalizeHost(url)
+                val binding = if (preselectedAdapter.source == AdapterSelectResult.SelectSource.DOMAIN_BINDING &&
+                    preselectedAdapter.adapterInfo.kind == AdapterKind.CUSTOM_JSON
+                ) {
+                    adapterStore.getBinding(ParsePageKind.DETAIL, host)
+                } else null
+                lastAdapterMeta = AdapterMeta(
+                    adapterId = adapterSelection.adapterInfo.id,
+                    adapterName = adapterSelection.adapterInfo.name,
+                    kind = adapterSelection.adapterInfo.kind,
+                    ruleFileName = binding?.ruleFileName,
+                    host = binding?.host.orEmpty().ifBlank { host },
+                    frameworkType = binding?.frameworkType ?: WebFrameworkType.UNKNOWN
+                )
                 store.saveParseHistory(
                     title = parsed.title,
                     url = url,
@@ -558,6 +651,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                 selectedSourceIndex = progress?.sourceIndex?.coerceIn(0, parsed.sources.lastIndex.coerceAtLeast(0)) ?: 0
                 selectedEpisodeIndex = progress?.episodeIndex?.coerceIn(0, (parsed.sources.getOrNull(selectedSourceIndex)?.episodes?.lastIndex ?: 0).coerceAtLeast(0)) ?: 0
                 render()
+                maybeWritebackCartoon(parsed)
                 progressDialog.update(ParseStep.LOADING_DONE)
                 progressDialog.dismissDelayed()
             } catch (t: Throwable) {
@@ -585,6 +679,16 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
             try {
                 val parsed = extractor.extractWithRule(url, fileName)
                 val ruleName = RuleBasedAdapter.listRuleInfos(context).firstOrNull { it.fileName == fileName }?.name.orEmpty().ifBlank { fileName }
+                val host = adapterStore.normalizeHost(url)
+                val binding = adapterStore.getBinding(ParsePageKind.DETAIL, host)
+                lastAdapterMeta = AdapterMeta(
+                    adapterId = binding?.adapterId ?: fileName,
+                    adapterName = ruleName,
+                    kind = AdapterKind.CUSTOM_JSON,
+                    ruleFileName = binding?.ruleFileName ?: fileName,
+                    host = binding?.host.orEmpty().ifBlank { host },
+                    frameworkType = binding?.frameworkType ?: WebFrameworkType.UNKNOWN
+                )
                 movie = parsed
                 store.saveParseHistory(
                     title = parsed.title,
@@ -597,6 +701,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                 selectedSourceIndex = 0
                 selectedEpisodeIndex = 0
                 render()
+                maybeWritebackCartoon(parsed)
                 progressDialog.update(ParseStep.LOADING_DONE)
                 progressDialog.dismissDelayed()
             } catch (t: Throwable) {

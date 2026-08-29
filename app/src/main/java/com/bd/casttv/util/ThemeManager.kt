@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.SharedPreferences
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.util.TypedValue
 import androidx.annotation.AttrRes
 import androidx.annotation.DrawableRes
@@ -114,6 +115,41 @@ object ThemeManager {
         val tv = TypedValue()
         val ok = context.theme.resolveAttribute(attr, tv, true)
         return if (ok && tv.resourceId != 0) tv.resourceId else fallback
+    }
+
+    fun accentColor(context: Context): Int = currentPalette(context).accent
+    fun dialogTitleGradient(context: Context): IntArray = currentPalette(context).dialogTitleGradient
+
+    /** 弹窗外层面板背景：对齐 [BasePage.contentPanelBg] 的语义（读自定义面板设置 + 当前 palette）。 */
+    fun dialogPanelBg(context: Context, cornerRadiusDp: Int = 26): GradientDrawable {
+        val palette = currentPalette(context)
+        val s = com.bd.casttv.settings.Settings(context)
+        val shouldUseCustom = s.pageContentPanelEnabled && s.pageContentPanelCustomized
+        val gradA = if (shouldUseCustom) s.pageContentPanelGradientA else palette.contentPanelGradientA
+        val gradB = if (shouldUseCustom) s.pageContentPanelGradientB else palette.contentPanelGradientB
+        val transparency = if (shouldUseCustom) s.pageContentPanelTransparency else palette.contentPanelTransparency
+        val alpha = ((100 - transparency.coerceIn(0, 100)) * 255 / 100)
+        val colorA = withAlpha(parseColor(gradA, Color.rgb(0, 72, 186)), alpha)
+        val colorB = withAlpha(parseColor(gradB, Color.rgb(91, 181, 255)), alpha)
+        val r = (context.resources.displayMetrics.density * cornerRadiusDp).toFloat()
+        val strokeW = (context.resources.displayMetrics.density * 1).toInt()
+        val strokeColor = withAlpha(Color.WHITE, (72f * 255f / 100f).toInt())
+        return GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(colorA, colorB)).apply {
+            cornerRadius = r
+            setStroke(strokeW, strokeColor)
+        }
+    }
+
+    /** 面板内卡片/输入框/按钮聚焦边框色：跟随 accent，默认态 1px 浅灰，聚焦 3px accent。 */
+    fun strokeFor(context: Context, focused: Boolean): Pair<Int, Int> {
+        val accent = accentColor(context)
+        val defaultStroke = Color.argb(170, 210, 214, 222)
+        return ((if (focused) 3 else 1) to if (focused) accent else defaultStroke)
+    }
+
+    private fun withAlpha(rgb: Int, alpha: Int): Int {
+        val a = alpha.coerceIn(0, 255) and 0xFF
+        return (0x00FFFFFF and rgb) or (a shl 24)
     }
 
     private fun parseColor(hex: String, fallback: Int): Int = try { Color.parseColor(hex) } catch (_: Throwable) { fallback }

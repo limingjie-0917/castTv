@@ -19,7 +19,11 @@ enum class WebParsePageType {
 
 data class WebParseRequest(
     val url: String,
-    val pageType: WebParsePageType = WebParsePageType.DETAIL
+    val pageType: WebParsePageType = WebParsePageType.DETAIL,
+    /** 动画城上下文：非空时解析成功后回写云端 cartoons（更新集数等）。 */
+    val cartoonId: String? = null,
+    val adapterId: String? = null,
+    val adapterName: String? = null
 )
 
 object WebParseRequestBus {
@@ -42,10 +46,16 @@ object WebParseRequestBus {
 
     fun removeListener(listener: Listener) { listeners.remove(listener) }
 
-    fun submit(url: String, pageType: WebParsePageType = WebParsePageType.DETAIL) {
+    fun submit(
+        url: String,
+        pageType: WebParsePageType = WebParsePageType.DETAIL,
+        cartoonId: String? = null,
+        adapterId: String? = null,
+        adapterName: String? = null
+    ) {
         val normalized = url.trim()
         if (normalized.isBlank()) return
-        val request = WebParseRequest(normalized, pageType)
+        val request = WebParseRequest(normalized, pageType, cartoonId, adapterId, adapterName)
         pendingRequest = request
         main.post { listeners.toList().forEach { it.onWebParseRequest(request) } }
     }
