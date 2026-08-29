@@ -19,6 +19,7 @@ local.properties
 
 # 本地 APK 输出目录（本机构建产物，不应入库）
 builds/
+tmp/
 
 # AI / Skill / Agent 辅助目录与临时文件（与 Android 构建无关）
 .trae/
@@ -31,6 +32,8 @@ package.json
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
+tmp_*.apk
+tmp_*.apkm
 
 # IntelliJ / Android Studio
 .idea/
