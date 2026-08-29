@@ -327,32 +327,17 @@ class CartoonCityPage(context: Context) : BasePage(context) {
                             emptyView.show(
                                 loading = false,
                                 titleText = "动画城还是空的",
-                                detailText = "云端与本地都暂无动画卡片。\n打开网页解析播放页 → 解析成功后点「添加到动画城」。\n当前云端返回 0 条（本地缓存也是空）。",
+                                detailText = "打开网页解析播放页 → 解析成功后点「添加到动画城」。",
                                 hintText = "按 OK 键重新加载",
                                 autoHideOnResult = false
                             )
                         } else {
-                            emptyView.show(
-                                loading = false,
-                                titleText = "加载完成",
-                                detailText = buildString {
-                                    append("从云端拿到 ").append(cartoons.size).append(" 部动画：\n")
-                                    cartoons.take(3).forEachIndexed { i, c ->
-                                        append("  ").append(i + 1).append(". ").append(c.title)
-                                            .append("（").append(c.episodeCount).append("集）\n")
-                                    }
-                                    if (cartoons.size > 3) append("  …另 ").append(cartoons.size - 3).append(" 部未列示")
-                                }.trim(),
-                                hintText = "",
-                                resultCount = cartoons.size,
-                                autoHideOnResult = true
-                            ) {
-                                // 900ms 后自动隐藏面板：把焦点从面板交给第 0 张卡片，避免用户还要手动按方向键
-                                val rv = grid ?: return@show
-                                val target = (rv.layoutManager as? GridLayoutManager)
-                                    ?.findViewByPosition(0)
-                                (target ?: rv).requestFocus()
-                            }
+                            // ponytail: 保留 loading 动画但不展示获取结果文案——成功时直接隐藏面板，露出网格卡片
+                            emptyView.visibility = View.GONE
+                            val rv = grid ?: return@runOnUiAnchor
+                            val target = (rv.layoutManager as? GridLayoutManager)
+                                ?.findViewByPosition(0)
+                            (target ?: rv).requestFocus()
                         }
                         Log.i(TAG, "loadCartoons: applied items=${adapter.itemCount}, empty=${cartoons.isEmpty()}")
                     }
