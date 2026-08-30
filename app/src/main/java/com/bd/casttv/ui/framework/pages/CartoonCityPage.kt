@@ -9,6 +9,7 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.text.TextUtils
 import android.util.Log
 import android.view.Gravity
@@ -219,7 +220,8 @@ class CartoonCityPage(context: Context) : BasePage(context) {
 
     init {
         val outer = FrameLayout(context).apply {
-            setPadding(dp(16), dp(8), dp(16), dp(24))
+            // 左右 20 / 上 12 / 下 28：保持 clipChildren=true 裁剪溢出
+            setPadding(dp(20), dp(12), dp(20), dp(28))
         }
         val rv = RecyclerView(context).apply {
             layoutManager = GridLayoutManager(context, SPAN_COUNT)
@@ -229,6 +231,7 @@ class CartoonCityPage(context: Context) : BasePage(context) {
             isFocusable = false
             isFocusableInTouchMode = false
             descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+            clipChildren = true
             clipToPadding = false
             // 内边距主要由 outer 承担，RV 自身只留少量上下边距避免首/末行卡到顶/底边
             setPadding(0, dp(context, 6), 0, dp(context, 6))
@@ -666,10 +669,9 @@ class CartoonCityPage(context: Context) : BasePage(context) {
             val hGapPx = CartoonDesign.dp(parent.context, 14)
             val totalGapPx = hGapPx * (SPAN_COUNT - 1)
             val cellW = (((parent.width - rvPaddingH - totalGapPx).toFloat()) / SPAN_COUNT).toInt()
-            // 宽 +1dp，封面高等比例（3:4）；整体圆角从 MD 16 下调到 SM 12，
-            // 遮罩覆盖从 20dp 降到 14dp，让底部 12dp 圆角干净露出来（不被渐变遮罩"吃"角）。
+            // 宽 +13dp（原 +1dp 基础上再 +12dp），封面高等比例（3:4）
             val CARD_R = CartoonDesign.Radius.SM
-            val cardW = ((cellW * 0.85f).toInt() + CartoonDesign.dp(parent.context, 1))
+            val cardW = ((cellW * 0.85f).toInt() + CartoonDesign.dp(parent.context, 13))
                 .coerceAtLeast(CartoonDesign.dp(parent.context, 150))
             val coverH = (cardW * 4f / 3f).toInt()
             val titleBar = CartoonDesign.dp(parent.context, 42)
@@ -709,7 +711,10 @@ class CartoonCityPage(context: Context) : BasePage(context) {
                 }
             }.apply {
                 clipChildren = false
-                clipToPadding = true
+                clipToPadding = false
+                // 1dp 内边距：封面几乎填满卡片，仅留极细玻璃边
+                val pad = CartoonDesign.dp(parent.context, 1)
+                setPadding(pad, pad, pad, pad)
                 outlineProvider = ViewOutlineProvider.BACKGROUND
                 background = CartoonDesign.liquidGlassDrawable(
                     parent.context,
@@ -782,7 +787,7 @@ class CartoonCityPage(context: Context) : BasePage(context) {
                 textSize = CartoonDesign.Type.TITLE_SM
                 typeface = Typeface.DEFAULT_BOLD
                 setTextColor(CartoonDesign.Palette.TEXT_PRIMARY)
-                maxLines = 2
+                maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
                 val ph = CartoonDesign.dp(ctx, 12)
                 val pv = CartoonDesign.dp(ctx, 6)
@@ -814,12 +819,38 @@ class CartoonCityPage(context: Context) : BasePage(context) {
             root: FrameLayout, outer: FrameLayout, parent: ViewGroup, cardR: CartoonDesign.Radius
         ): MgmtVH {
             val ctx = parent.context
-            // 管理卡：ACCENT tinted 液态玻璃，显得"不同"而不是又一张封面卡
-            outer.background = CartoonDesign.liquidGlassDrawable(
-                ctx, cardR,
-                CartoonDesign.TintMode.ACCENT,
-                Color.argb(180, 190, 156, 62)
-            )
+            // 管理卡：宝蓝→浅蓝渐变（与剧集卡片的暖色调形成对比）
+            val rPx = CartoonDesign.dp(ctx, cardR.dp).toFloat()
+            val base = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                intArrayOf(Color.parseColor("#1C9BDB"), Color.parseColor("#5BC0EB"))
+            ).apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = rPx
+                setStroke(Math.max(1, CartoonDesign.dp(ctx, 1)), CartoonDesign.Palette.STROKE_SOFT)
+            }
+            val topGlow = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(
+                Color.argb(48, 255, 255, 255), Color.argb(0, 255, 255, 255)
+            )).apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = rPx
+                setSize(-1, CartoonDesign.dp(ctx, 22))
+            }
+            val bottomShadow = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(
+                Color.argb(72, 0, 0, 0), Color.argb(0, 0, 0, 0)
+            )).apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = rPx
+                setSize(-1, CartoonDesign.dp(ctx, 26))
+            }
+            outer.background = LayerDrawable(arrayOf(base, topGlow, bottomShadow)).apply {
+                val insetH = CartoonDesign.dp(ctx, 1)
+                val insetV = CartoonDesign.dp(ctx, 1)
+                setLayerInset(1, insetH, insetV, insetH, 0)
+                setLayerGravity(1, Gravity.TOP)
+                setLayerInset(2, insetH, 0, insetH, insetV)
+                setLayerGravity(2, Gravity.BOTTOM)
+            }
             val icon = ImageView(ctx).apply {
                 scaleType = ImageView.ScaleType.FIT_CENTER
                 setImageResource(R.drawable.ic_more_settings)

@@ -273,31 +273,27 @@ object CartoonDesign {
 
     /**
      * 把液态玻璃卡切到聚焦态：
-     *  · 聚焦：4px 暖黄实描边（外）+ 1.5dp 琥珀内边光环 + 高光层满亮度
+     *  · 聚焦：4px 暖黄实描边（base 层唯一边框）+ 高光层满亮度
      *  · 默认：1px STROKE_SOFT 描边 + 高光层 48 透明度
      *
-     * 为什么「4px + 内边光环」两层？Android TV 4K 显示上 poster 常有接近暖黄的亮色局部
-     * （皮卡丘/猫和老鼠等），单层 3px 经常被"吃掉"。第二层内边环是半透明琥珀，从视觉上
-     * 把边框整体厚度推到 ~5.5dp，在任意颜色海报外都能明显锚定焦点。
+     * 2026-08-30 修复：之前聚焦态同时在 base(4px) 和 glow(1px stroke+半透填充) 画了
+     * 两层暖黄边框，导致"两个重叠的边框"。现在聚焦态 glow 层完全透明（无描边/无填充），
+     * 只保留 base 的 4px 单层边框，视觉干净清晰。
      */
     fun liquidGlassToFocused(ctx: Context, card: View, focused: Boolean) {
         val layers = card.background as? LayerDrawable ?: return
         val base = layers.getDrawable(0) as? GradientDrawable ?: return
         val glow = layers.getDrawable(1) as? GradientDrawable ?: return
         if (focused) {
-            // 外层实描边：4px（大屏最小可感厚度）
+            // 唯一边框：4px 暖黄实描边（base 层）
             base.setStroke(dp(ctx, 4), Palette.ACCENT)
-            // 内侧半透环：用 topGlow 层改造成"1.5dp 琥珀描边 + 透明填充"，再贴一层到
-            // inset 1px 位置 —— 因为 topGlow 本身是 LayerDrawable[1]，这里通过 mutate +
-            // setStroke 让其在聚焦态变成"内缘光环"，与外层 4px 实边形成双层结构。
+            // glow 层聚焦态完全透明：不画描边/不画填充，避免与 base 边框重叠
             glow.mutate()
             (glow as? GradientDrawable)?.apply {
-                setColor(Color.argb(90, Color.red(Palette.ACCENT), Color.green(Palette.ACCENT), Color.blue(Palette.ACCENT)))
-                setStroke(Math.max(1, dp(ctx, 1)), Palette.ACCENT)
+                setStroke(0, Color.TRANSPARENT)
+                setColor(Color.TRANSPARENT)
             }
-            layers.setLayerInset(1, dp(ctx, 3), dp(ctx, 3), dp(ctx, 3), dp(ctx, 3))
-            layers.setLayerGravity(1, Gravity.NO_GRAVITY)
-            glow.alpha = 255
+            glow.alpha = 0
         } else {
             base.setStroke(Math.max(1, dp(ctx, 1)), Palette.STROKE_SOFT)
             // 还原 topGlow：默认贴顶部的线性内高光条（22dp 高），避免丢失液态玻璃"上亮下暗"质感

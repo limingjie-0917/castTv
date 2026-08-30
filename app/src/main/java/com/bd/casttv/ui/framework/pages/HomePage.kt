@@ -174,7 +174,7 @@ class HomePage(context: Context) : BasePage(context), PlaybackController.StateOb
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(dp(96), dp(72), dp(96), dp(72))
+            setPadding(dp(96), dp(48), dp(96), dp(48))
         }
         homeBodyRoot = root
         homeBodyRootDescendantFocusability = root.descendantFocusability
@@ -211,7 +211,7 @@ class HomePage(context: Context) : BasePage(context), PlaybackController.StateOb
 
         root.addView(tutorialText, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         // 移动端开关/切换按钮已按需求移除：屏幕两侧的翻页按钮（‹ ›）默认常驻，无需入口按钮。
-        root.addView(stateCard, LinearLayout.LayoutParams(dp(560), dp(315)).apply { topMargin = dp(26) })
+        root.addView(stateCard, LinearLayout.LayoutParams(dp(560), dp(315)).apply { topMargin = dp(16) })
 
         if (launcherMode) {
             buildLauncherMoreIndicator()

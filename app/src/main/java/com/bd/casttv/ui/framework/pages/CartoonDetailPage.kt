@@ -151,16 +151,18 @@ class CartoonDetailPage(
         text = "展开"
         textSize = CartoonDesign.Type.TITLE_SM
         typeface = Typeface.DEFAULT_BOLD
-        setTextColor(CartoonDesign.Palette.ACCENT)
+        setTextColor(Color.WHITE)
         visibility = View.GONE
         isFocusable = true
         isClickable = true
         val ph = CartoonDesign.dp(context, 10); val pv = CartoonDesign.dp(context, 4)
         setPadding(ph, pv, ph, pv)
-        background = CartoonDesign.capsuleBadge(
-            context, CartoonDesign.withAlpha(CartoonDesign.Palette.ACCENT_DIM, 90),
-            CartoonDesign.withAlpha(CartoonDesign.Palette.ACCENT, 120)
-        )
+        background = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            cornerRadius = 9999f
+            setStroke(Math.max(1, CartoonDesign.dp(context, 1)), Color.argb(198, 198, 214, 230))
+            setColor(Color.TRANSPARENT)
+        }
         setOnClickListener { toggleDesc() }
     }
     // 状态：胶囊徽 + spinner 行（按钮簇下）
@@ -817,15 +819,17 @@ class CartoonDetailPage(
             this.text = text
             textSize = CartoonDesign.Type.TITLE_SM
             typeface = Typeface.DEFAULT_BOLD
-            setTextColor(CartoonDesign.Palette.BADGE_ACCENT_FG)
+            setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
             isFocusable = true; isClickable = true
             val ph = CartoonDesign.dp(context, 18); val pv = CartoonDesign.dp(context, 12)
             setPadding(ph, pv, ph, pv)
-            background = CartoonDesign.liquidGlassDrawable(
-                context, CartoonDesign.Radius.MD, CartoonDesign.TintMode.ACCENT,
-                CartoonDesign.withAlpha(CartoonDesign.Palette.ACCENT_DIM, 200)
-            )
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = CartoonDesign.dp(context, CartoonDesign.Radius.MD.dp).toFloat()
+                setStroke(Math.max(1, CartoonDesign.dp(context, 1)), Color.argb(198, 198, 214, 230))
+                setColor(Color.TRANSPARENT)
+            }
             setOnClickListener { onClick() }
             setOnKeyListener { _, k, e ->
                 if (e.action == KeyEvent.ACTION_DOWN &&
@@ -834,7 +838,11 @@ class CartoonDetailPage(
                 } else false
             }
             setOnFocusChangeListener { _, has ->
-                CartoonDesign.liquidGlassToFocused(context, this@apply, has)
+                val bg = background as? GradientDrawable
+                bg?.setStroke(
+                    CartoonDesign.dp(context, if (has) 3 else 1),
+                    if (has) accent else Color.argb(198, 198, 214, 230)
+                )
                 BoundaryFocusHandler.cancelShake(this@apply)
                 if (has) FocusFxHelper.applyFocusFxState(
                     this@apply, true, cornerRadiusDp = CartoonDesign.Radius.MD.dp
@@ -881,10 +889,12 @@ class CartoonDetailPage(
                 isFocusable = true; isClickable = true
                 clipChildren = false; clipToPadding = false
                 layoutParams = RecyclerView.LayoutParams(cellW, cellH)
-                background = CartoonDesign.liquidGlassDrawable(
-                    ctx, CartoonDesign.Radius.SM, CartoonDesign.TintMode.BASE,
-                    defaultStrokeColor, Math.max(1, CartoonDesign.dp(ctx, defaultStrokePx))
-                )
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = CartoonDesign.dp(ctx, CartoonDesign.Radius.SM.dp).toFloat()
+                    setStroke(Math.max(1, CartoonDesign.dp(ctx, defaultStrokePx)), defaultStrokeColor)
+                    setColor(Color.TRANSPARENT)
+                }
                 // RecyclerView 内的全局焦点态：关闭向上最多 3 层父容器 clip，保证 scale / translationZ 发光不被裁切。
                 FocusFxHelper.disableClippingUp(this, maxDepth = 3)
             }
@@ -911,33 +921,24 @@ class CartoonDetailPage(
         RecyclerView.ViewHolder(outer) {
         private var cur: EpisodeItem? = null
 
-        /** 根据状态重绘剧集卡片背景：聚焦态用 ThemeManager 全局 accent + 粗描边；失焦态区分"当前/上次播放"与普通态。 */
+        /** 根据状态重绘剧集卡片背景：透明底 + 银白/暖黄描边；失焦态区分"当前/上次播放"与普通态。 */
         private fun applyBg(ctx: Context, focused: Boolean) {
             val (strokePxDp, strokeColor) = ThemeManager.strokeFor(ctx, focused)
             val baseStrokePx = Math.max(if (focused) CartoonDesign.dp(ctx, strokePxDp) else CartoonDesign.dp(ctx, strokePxDp), 1)
-            // 聚焦态：液体玻璃抬升一层（ELEVATED）+ 全局主题描边色 + 高光加亮
-            val tintMode = when {
-                focused -> CartoonDesign.TintMode.ELEVATED
-                isCurrentOrLastPlayed(cur) -> CartoonDesign.TintMode.ELEVATED
-                else -> CartoonDesign.TintMode.BASE
-            }
             val bgStroke = when {
                 focused -> strokeColor
                 isCurrentOrLastPlayed(cur) -> {
-                    // 非焦点 + 当前播放：沿用主题 accent（更柔和，透明度 75%）保持可见性
                     val accent = ThemeManager.accentColor(ctx)
                     Color.argb(192, Color.red(accent), Color.green(accent), Color.blue(accent))
                 }
                 else -> strokeColor
             }
-            outer.background = CartoonDesign.liquidGlassDrawable(
-                ctx, CartoonDesign.Radius.SM, tintMode, bgStroke, baseStrokePx
-            )
-            // 聚焦态额外加亮 topGlow，对齐 CartoonDesign.liquidGlassToFocused 的语义但不硬编码琥珀色
-            if (focused) {
-                val layers = outer.background as? android.graphics.drawable.LayerDrawable
-                val glow = layers?.getDrawable(1) as? GradientDrawable
-                glow?.alpha = 110
+            val rPx = CartoonDesign.dp(ctx, CartoonDesign.Radius.SM.dp).toFloat()
+            outer.background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = rPx
+                setStroke(baseStrokePx, bgStroke)
+                setColor(Color.TRANSPARENT)
             }
         }
 

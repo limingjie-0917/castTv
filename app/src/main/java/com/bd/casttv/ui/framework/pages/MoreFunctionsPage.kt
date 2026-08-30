@@ -70,8 +70,7 @@ class MoreFunctionsPage(
         val root = FrameLayout(context).apply {
             clipChildren = false
             clipToPadding = false
-            // 左右边距 32dp → 12dp：标题区域与滚动容器统一收紧，让 4 列功能卡片栅格更贴近屏幕两侧
-            setPadding(dp(12), dp(24), dp(12), dp(24))
+            setPadding(0, 0, 0, 0)
         }
         val title = TextView(context).apply {
             text = "更多功能"
@@ -84,9 +83,9 @@ class MoreFunctionsPage(
         root.addView(title, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46), Gravity.TOP or Gravity.START))
 
         val scrollContainer = FrameLayout(context).apply {
-            // 只在 RecyclerView 的父容器裁剪滚动内容，避免列表滚出标题以下区域。
-            clipChildren = true
-            clipToPadding = true
+            clipChildren = false
+            clipToPadding = false
+            setPadding(dp(16), dp(16), dp(16), dp(16))
         }
 
         val grid = RecyclerView(context).apply {
@@ -102,7 +101,8 @@ class MoreFunctionsPage(
             // 超出标题下方滚动区域的内容统一交给父容器裁剪。
             clipChildren = false
             clipToPadding = false
-            setPadding(dp(8), dp(8), dp(8), dp(8))
+            // 卡片左右各 9dp margin → 4 列卡片间 18dp 间隙，且首尾卡片距屏幕两侧也 = rootPad(12)+9=21dp 对称
+            setPadding(dp(0), dp(8), dp(0), dp(8))
         }
         this.grid = grid
         scrollContainer.addView(grid, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -302,10 +302,9 @@ class MoreFunctionsPage(
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
             val screenW = resources.displayMetrics.widthPixels
-            val horizontal = dp(64) + dp(16) + dp(18) * 3
-            // 宽度比栅格可用宽度再缩 2dp，高度按 9:16 等比缩小；卡片右/下 margin 不变（18dp），
-            // 缩出来的 2dp 顺势变成相邻卡片间的额外间隙
-            val cardW = (((screenW - horizontal) / 4f).toInt() - dp(2)).coerceAtLeast(dp(180))
+            // scrollContainerPad(16*2=32) + 卡片左右 margin(12*2*4=96) = 128dp
+            val horizontal = dp(32) + dp(12) * 8
+            val cardW = ((screenW - horizontal) / 4f).toInt()
             val cardH = (cardW * 9f / 16f).toInt()
 
             val outer = FrameLayout(parent.context).apply {
@@ -316,7 +315,8 @@ class MoreFunctionsPage(
                 clipToPadding = false
                 setPadding(0, 0, 0, 0)
                 layoutParams = RecyclerView.LayoutParams(cardW, cardH + dp(18)).apply {
-                    rightMargin = dp(18)
+                    leftMargin = dp(12)
+                    rightMargin = dp(12)
                     bottomMargin = dp(18)
                 }
             }
@@ -358,13 +358,15 @@ class MoreFunctionsPage(
                 setTextColor(Color.WHITE)
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
-                setPadding(dp(8), 0, dp(8), dp(8))
+                // 文字阴影：在渐变缩略图上增强可读性（Taste skill: contrast check）
+                setShadowLayer(4f, 0f, 2f, Color.argb(160, 0, 0, 0))
+                setPadding(dp(10), 0, dp(10), dp(10))
                 gravity = Gravity.BOTTOM or Gravity.START
             }
 
             card.addView(image, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             card.addView(logo, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
-            card.addView(shade, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (cardH * 0.35f).toInt(), Gravity.BOTTOM))
+            card.addView(shade, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, (cardH * 0.42f).toInt(), Gravity.BOTTOM))
             card.addView(name, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             outer.addView(card, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, cardH, Gravity.CENTER))
 
@@ -406,8 +408,8 @@ class MoreFunctionsPage(
 
             private val logoBgDrawable = GradientDrawable().apply {
                 shape = GradientDrawable.OVAL
-                setColor(Color.argb(40, 180, 190, 210))
-                setStroke(dp(1), Color.argb(120, 180, 190, 210))
+                setColor(Color.argb(30, 180, 190, 210))
+                setStroke(dp(1), Color.argb(90, 180, 190, 210))
             }
 
             private var lastCardWidth: Int = 0
@@ -643,23 +645,37 @@ private class GlassCardDrawable(
         rect.set(b.left.toFloat(), b.top.toFloat(), b.right.toFloat(), b.bottom.toFloat())
         val radius = dp(16).toFloat()
 
+        // 基底：深蓝半透填充（液态玻璃质感）
         paint.reset()
         paint.isAntiAlias = true
         paint.style = Paint.Style.FILL
         paint.color = Color.argb(200, 16, 28, 68)
         canvas.drawRoundRect(rect, radius, radius, paint)
 
-        // BlurMaskFilter 在硬件加速 Drawable 场景下兼容性不稳定，这里用外圈 + 内圈描边叠加模拟蓝色微光。
+        // 外层蓝光：收敛 alpha 60→28，避免与暖黄焦点边框抢色（Color Consistency Lock）
         paint.style = Paint.Style.STROKE
         paint.shader = null
         paint.strokeWidth = dp(3).toFloat()
-        paint.color = Color.argb(60, 80, 140, 255)
+        paint.color = Color.argb(28, 80, 140, 255)
         canvas.drawRoundRect(rect.insetCopy(dp(1).toFloat()), radius, radius, paint)
 
+        // 内层描边：1px 蓝白细线，保持玻璃边缘锐利
         paint.strokeWidth = dp(1).toFloat()
-        paint.color = Color.argb(200, 80, 140, 255)
+        paint.color = Color.argb(180, 80, 140, 255)
         canvas.drawRoundRect(rect.insetCopy(dp(1).toFloat()), radius, radius, paint)
 
+        // 顶部内高光：1px 白色半透线，模拟玻璃折射光（Taste skill glassmorphism: inner border highlight）
+        paint.strokeWidth = dp(1).toFloat()
+        paint.color = Color.argb(20, 255, 255, 255)
+        val highlightRect = RectF(
+            rect.left + dp(2).toFloat(),
+            rect.top + dp(1).toFloat(),
+            rect.right - dp(2).toFloat(),
+            rect.top + dp(2).toFloat()
+        )
+        canvas.drawRoundRect(highlightRect, radius * 0.6f, radius * 0.6f, paint)
+
+        // 对角微光渐变：保持原有斜向光泽
         paint.style = Paint.Style.FILL
         paint.shader = LinearGradient(
             rect.left,

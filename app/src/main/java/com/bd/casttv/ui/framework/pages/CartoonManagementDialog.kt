@@ -102,8 +102,14 @@ class CartoonManagementDialog(
         // ===== §一 容器：主题磨砂面板 + 分栏四段式骨架（顶栏 / 按键提示 / 滚动列表 / 按钮栏） =====
         val panel = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            // §二 主面板：ThemeManager.dialogPanelBg（跟随主题），圆角 26dp
-            background = ThemeManager.dialogPanelBg(context, 26)
+            // §二 主面板：dialogTitleGradient 渐变背景 + 暖黄描边（对齐 WebParseHistoryDialog 样式）
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                ThemeManager.currentPalette(context).dialogTitleGradient
+            ).apply {
+                cornerRadius = dp(26).toFloat()
+                setStroke(dp(2), accent)
+            }
             setPadding(dp(24), dp(22), dp(24), dp(20))
             clipChildren = false
             clipToPadding = false
@@ -269,7 +275,8 @@ class CartoonManagementDialog(
                 setColor(Color.argb(56, 10, 12, 22))
                 setStroke(Math.max(1, dp(1)), Color.argb(90, 160, 172, 206))
             }
-            val pad = dp(6)
+            // 10→14dp：再 +4dp 内边距，使行卡片聚焦态边框/发光充分不被面板边缘裁切
+            val pad = dp(14)
             setPadding(pad, pad, pad, pad)
             addView(scroll, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
@@ -901,12 +908,14 @@ class CartoonManagementDialog(
     }
 
     private fun buildDangerPanelBg(): GradientDrawable {
-        val base = ThemeManager.dialogPanelBg(context, 26)
-        // LayerDrawable 不可用（dialogPanelBg 返回 GradientDrawable），所以 clone 并叠加 danger 描边
-        return base.constantState?.newDrawable()?.mutate()?.let { it as GradientDrawable }?.apply {
-            // danger 2dp 描边（与主题原有的 1dp 描边叠加语义：只替换为统一的 danger 色更粗）
+        // 对齐 WebParseHistoryDialog 样式：dialogTitleGradient 渐变背景 + danger 描边
+        return GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            ThemeManager.currentPalette(context).dialogTitleGradient
+        ).apply {
+            cornerRadius = dp(26).toFloat()
             setStroke(dp(2), Color.argb(220, Color.red(dangerColor), Color.green(dangerColor), Color.blue(dangerColor)))
-        } ?: base
+        }
     }
 
     private fun buildDangerHeaderDrawable(): GradientDrawable {

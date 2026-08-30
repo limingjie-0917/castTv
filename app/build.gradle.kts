@@ -17,8 +17,8 @@ plugins {
 //    - 人工禁止手改 BASE_VERSION_* / defaultConfig.versionCode / defaultConfig.versionName
 // =====================================================================
 // ⚠ 基线：每次构建 bumpVersion 会递增并写回本处这两行
-val BASE_VERSION_CODE: Int = 488
-val BASE_VERSION_NAME: String = "1.2.213"
+val BASE_VERSION_CODE: Int = 506
+val BASE_VERSION_NAME: String = "1.2.231"
 
 val buildGradleFile = layout.projectDirectory.file("build.gradle.kts").asFile
 
