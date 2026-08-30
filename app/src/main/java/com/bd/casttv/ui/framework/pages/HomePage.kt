@@ -227,7 +227,7 @@ class HomePage(context: Context) : BasePage(context), PlaybackController.StateOb
                 addView(launcherMoreButton, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(58), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
                     leftMargin = dp(96)
                     rightMargin = dp(96)
-                    bottomMargin = dp(16)
+                    bottomMargin = dp(36)
                 })
             } else {
                 addView(bottomGuide, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
