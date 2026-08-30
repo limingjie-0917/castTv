@@ -26,7 +26,7 @@ env:
   GRADLE_OPTS: '-Dorg.gradle.jvmargs="-Xmx4608m -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8" -Dorg.gradle.daemon=false'
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: build-release-${{ github.workflow }}-${{ github.ref }}
@@ -173,6 +173,75 @@ jobs:
           retention-days: 90
           compression-level: 6
           if-no-files-found: error
+
+      - name: Create GitHub Release + update DownloadApk/latest.md
+        if: steps.gradleBuild.outcome == 'success'
+        shell: bash
+        run: |
+          set -e
+          VER="${{ steps.apk.outputs.version }}"
+          SHA="${{ steps.apk.outputs.sha }}"
+          APK="${{ steps.apk.outputs.apk }}"
+          APK_NAME="$(basename "$APK")"
+          SIZE=$(du -h "$APK" | cut -f1)
+          DATE=$(date -u '+%Y-%m-%d')
+          TAG="v${VER}"
+
+          echo "=== Creating GitHub Release $TAG ==="
+          gh release create "$TAG" "$APK" \
+            --title "CastTV Receiver $TAG" \
+            --notes "自动构建 · $TAG · commit $SHA" \
+            --repo "$GITHUB_REPOSITORY" \
+            || echo "Release $TAG may already exist, uploading asset..."
+          # 若 release 已存在则单独上传 asset
+          gh release upload "$TAG" "$APK" --clobber --repo "$GITHUB_REPOSITORY" || true
+
+          GH_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${APK_NAME}"
+          GITEE_URL="https://gitee.com/bdCasttv/video-source/releases/download/${TAG}/casttv-v${VER}.apk"
+          ACTIONS_URL="https://github.com/${GITHUB_REPOSITORY}/actions"
+
+          echo "=== Updating DownloadApk/latest.md ==="
+          mkdir -p DownloadApk
+          cat > DownloadApk/latest.md <<MD
+          # APK 下载
+
+          > 此文件由 GitHub Actions 自动更新，请勿手动编辑。
+
+          ## 最新版本
+
+          | 项目 | 值 |
+          |---|---|
+          | 版本号 | v${VER} |
+          | 提交 | ${SHA} |
+          | 构建时间 | ${DATE} |
+          | 文件大小 | ${SIZE} |
+
+          ## 下载地址
+
+          ### GitHub Release（推荐，永久有效）
+
+          [${APK_NAME}](${GH_URL})
+
+          ### GitHub Actions Artifacts（需登录 GitHub，90 天有效）
+
+          [构建记录](${ACTIONS_URL})
+
+          ### Gitee Releases（国内镜像）
+
+          [casttv-v${VER}.apk](${GITEE_URL})
+
+          ## 安装说明
+
+          将 APK 拷贝到 Android TV 盒子（U盘安装或 adb install），覆盖安装即可，数据不受影响。
+          MD
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add DownloadApk/latest.md
+          git commit -m "chore: 更新 APK 下载地址 ${TAG} (${SHA})" || echo "Nothing to commit"
+          git push
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: Final status gate
         if: always()
