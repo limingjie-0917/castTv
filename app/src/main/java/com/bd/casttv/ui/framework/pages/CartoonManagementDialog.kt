@@ -91,11 +91,15 @@ class CartoonManagementDialog(
     private var dialog: AlertDialog? = null
     private var deleteJob: Job? = null
     private val selected = LinkedHashSet<String>()
+    /** 每一行 checkbox/selectBar/title 状态刷新回调，供「再想想 → 清空勾选」批量回滚 UI 用。 */
+    private val rowRefreshers = mutableListOf<() -> Unit>()
     private lateinit var titleCount: TextView
     private lateinit var bottomCount: TextView
     private lateinit var deleteBtn: TextView
 
     fun show() {
+        rowRefreshers.clear()
+        selected.clear()
         // ===== §一 容器尺寸 + §七 padding（标准型 560dp，四周 26dp） =====
         val panel = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -120,22 +124,20 @@ class CartoonManagementDialog(
             scaleType = ImageView.ScaleType.CENTER_CROP
             foreground = ResourcesCompat.getDrawable(context.resources, R.drawable.fg_sticker_circle_border, null)
         }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(12) })
-        // 标题牌 TextView：bg_dialog_crayon_header 语义（§二 标题牌 + §三 参数）
+        // 标题文字：去掉渐变背景牌与描边，改为纯文字（参考 FavoritesPage.crayonDialogTitle）
+        // 焦点态/主题感仅通过文字色 + 投影保留，避免与底部操作按钮争抢视觉层级。
         titleCount = object : TextView(context) {
             init {
                 textSize = 20f
                 typeface = Typeface.DEFAULT_BOLD
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(17), dp(9), dp(17), dp(9))
+                setPadding(0, 0, 0, 0)
                 setShadowLayer(2f, 0f, 1f, Color.argb(140, 0, 0, 0))
-                // §二 标题牌 drawable（橙→黄→蓝 横向渐变 18dp 圆角）
-                background = buildHeaderDrawable()
-                setTextColor(Color.rgb(0x10, 0x12, 0x17)) // §三 #101217
+                setTextColor(textPrimary)
             }
             override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
                 super.onSizeChanged(w, h, oldw, oldh)
                 if (w <= 0 || h <= 0) return
-                // 标题文字叠加主题渐变，提升主题跟随性
                 val grad = ThemeManager.dialogTitleGradient(context)
                 if (grad.isEmpty()) return
                 paint.shader = LinearGradient(
@@ -170,12 +172,15 @@ class CartoonManagementDialog(
         // ===== §二 通用可聚焦选项行（bg_dialog_focus_item 语义，三态） =====
         val list = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            clipChildren = false; clipToPadding = false
+            // 2026-08 UI 调整：滚动容器与其内层都开启默认裁剪，
+            // 避免滚动到边缘时行卡片/焦点辉光溢出 340dp 高容器，与底部按钮撞边。
         }
         val focusRows = mutableListOf<View>()
+        lateinit var refresher: () -> Unit
         cartoons.forEachIndexed { i, c ->
-            val row = buildRow(i, c)
+            val row = buildRow(i, c) { cb -> refresher = cb }
             focusRows += row
+            rowRefreshers += refresher
             list.addView(row, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(78)
             ).apply { topMargin = if (i == 0) dp(2) else dp(8) })
@@ -184,12 +189,25 @@ class CartoonManagementDialog(
             overScrollMode = ScrollView.OVER_SCROLL_NEVER
             isFocusable = false; isFocusableInTouchMode = false
             descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
-            clipChildren = false; clipToPadding = false
+            // 2026-08 UI 要求：滑动时内容必须限制在容器区域内，溢出隐藏。
+            // ScrollView 默认会按自身绘制区域 canvas.clipRect 裁剪子 View，但为了阻止运行期
+            // FocusFxHelper.disableClippingUp / setClipChildren(false) 等副作用，这里显式锁死
+            // clipChildren（针对子 View 超界绘制的运行期开关）与 clipToPadding（针对 padding 内边距区的超界）。
+            isVerticalScrollBarEnabled = false
+            clipChildren = true
+            clipToPadding = true
             addView(list)
         }
         panel.addView(scroll, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, dp(340)
         ).apply { topMargin = dp(4) })
+        // 防御：等 view 首次布局后，再把 ScrollView + 行列表两层的裁剪开关强制锁回 true；
+        // 避免任何 disableClippingUp（maxDepth 误传）在挂载前后的调用"溢出"到滚动容器。
+        list.clipChildren = true; list.clipToPadding = true
+        scroll.post {
+            scroll.clipChildren = true; scroll.clipToPadding = true
+            list.clipChildren = true; list.clipToPadding = true
+        }
 
         // ===== §四 底部操作按钮（BatchBottomButton 语义） =====
         bottomCount = TextView(context).apply {
@@ -257,12 +275,13 @@ class CartoonManagementDialog(
     // ================= §四 底部操作按钮工厂（标准型 BatchBottomButton 语义） =================
 
     /**
-     * §四 标准型（BatchBottomButton）：
-     *  · 默认：暗底 #22FFFFFF + 白描边 1dp，文字 #EEFFFFFF
-     *  · 焦点：暖黄半透明 #33F6C445 + 暖黄描边 2dp，文字 crayon_yellow
-     *  · 按下：橙色半透明 #33F2913D + 橙色描边 2dp，文字 crayon_yellow
-     *  · 禁用：alpha = 0.4f
-     *  · 危险按钮：默认描边/文字均为 dangerColor（#C4463E），焦点仍变暖黄焦点色
+     * §四 标准型（BatchBottomButton）语义更新（2026-08 UI 优化）：
+     *  · 默认（非危险）：暗底 #22FFFFFF + 浅灰白描边 1dp，文字 #EEFFFFFF（冷白 主文字）
+     *  · 默认（危险 — 删除按钮）：透明底 + **浅灰白 1dp 描边 + 纯白文字**（与危险填充底色剥离，
+     *    焦点/按下才切换为暖黄/橙色渐变以提示动作）
+     *  · 焦点：accent 半透明 #33 + accent 描边 2dp，文字 accent（与 FavoritesPage.crayonDialogButton 对齐）
+     *  · 按下：橙色半透明 #33 + 橙色描边 2dp，文字 crayon_yellow
+     *  · 禁用：alpha = 0.4（updateCounts 负责）
      *  · 宽 wrap_content，minWidth 88dp，padding 18dp / 10dp，字号 15sp bold，圆角 18dp
      */
     private fun dialogButton(label: String, danger: Boolean = false, click: () -> Unit): TextView =
@@ -276,7 +295,13 @@ class CartoonManagementDialog(
             isFocusable = true; isFocusableInTouchMode = true; isClickable = true
             var pressed = false
             fun refresh(focused: Boolean) {
-                val normalStrokeColor = if (danger) dangerColor else Color.argb(255, 220, 226, 236)
+                // 危险按钮默认态：浅灰 1dp 描边 + 白色文字（无红底/红字）
+                val defaultStrokeColor = Color.argb(255, 210, 214, 222) // 浅灰白 ≈ Favorites crayonDialogButton 默边
+                val defaultFillColor = Color.argb(
+                    if (danger) 0 else 34,
+                    255, 255, 255
+                ) // danger 默认透明底；非 danger 保留原 13% 白膜
+                val defaultTextColor = if (danger) Color.WHITE else textPrimary
                 val (bgFill, strokeW, strokeColor, textColor) = when {
                     pressed -> Quad(
                         Color.argb(51, Color.red(crayonOrange), Color.green(crayonOrange), Color.blue(crayonOrange)),
@@ -289,11 +314,7 @@ class CartoonManagementDialog(
                             2, a, a
                         )
                     }
-                    else -> Quad(
-                        Color.argb(34, 255, 255, 255),
-                        1, normalStrokeColor,
-                        if (danger) dangerColor else textPrimary
-                    )
+                    else -> Quad(defaultFillColor, 1, defaultStrokeColor, defaultTextColor)
                 }
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.RECTANGLE
@@ -325,7 +346,7 @@ class CartoonManagementDialog(
 
     // ================= §二 bg_dialog_focus_item 语义行：默认白虚线/焦点暖黄/按下橙色（圆角 18dp） =================
 
-    private fun buildRow(index: Int, cartoon: GiteeShareStore.SharedCartoon): View {
+    private fun buildRow(index: Int, cartoon: GiteeShareStore.SharedCartoon, registerRefresher: (() -> Unit) -> Unit): View {
         val row = FrameLayout(context).apply {
             isFocusable = true
             isFocusableInTouchMode = false
@@ -429,6 +450,8 @@ class CartoonManagementDialog(
         fun refreshAll(has: Boolean) {
             refreshBg(has); refreshSelection()
         }
+        // 对外暴露勾选刷新句柄（给「再想想 → 清空勾选」批量用）
+        registerRefresher { refreshSelection() }
         refreshAll(false)
 
         row.setOnFocusChangeListener { _, has ->
@@ -449,7 +472,9 @@ class CartoonManagementDialog(
             } else false
         }
         row.setOnClickListener { toggle(cartoon.cartoonId, ::refreshSelection) }
-        FocusFxHelper.disableClippingUp(row, 3)
+        // maxDepth=1：只对直接父容器（行父 FrameLayout/横向 LinearLayout list 内部）关闭裁剪，
+        // 避免沿父链关掉外层 ScrollView / panel 的 clip → 滑动时内容跑出 340dp 容器外。
+        FocusFxHelper.disableClippingUp(row, maxDepth = 1)
         FocusFxHelper.applyFocusFxState(row, false, cornerRadiusDp = 18)
         return row
     }
@@ -584,149 +609,183 @@ class CartoonManagementDialog(
         return Preview(d, k)
     }
 
-    // ================= 删除二次确认（DIALOG_SPEC §六 紧凑型 460dp） =================
+    // ================= 删除二次确认（参考 FavoritesPage.crayonConfirmDialog） =================
+
+    // 与 Favorites 删除视频卡片确认弹窗风格 1:1 对齐
+    private val CRAYON_PANEL_BG = Color.parseColor("#4169E1")  // 皇家蓝蜡笔面板
+    private val CRAYON_CARD_BG = Color.argb(18, 255, 255, 255) // 卡片/按钮暗底
+    private val CRAYON_WARM = Color.rgb(245, 196, 81)           // 焦点/强调暖色（与 Favorites. crayonDialogButton 同色）
+    private val CRAYON_BTN_BORDER = Color.argb(170, 210, 214, 222) // 默认态浅灰白描边
 
     private fun showConfirmDialog(count: Int, preview: Preview) {
         val parent = dialog ?: return
 
-        // §六 紧凑型：460dp × wrap_content；§七 四周 26dp
+        // —— 面板层（与 FavoritesPage.showCrayonConfirmDialog 同构：18dp 圆角 + 皇家蓝面板 + 16dp 外边距）
         val panel = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            // 根面板：ThemeManager.dialogPanelBg（主题）+ 额外 2dp 危险描边（呼应危险操作）
-            background = buildDangerPanelBg()
-            setPadding(dp(26), dp(26), dp(26), dp(26))
+            setPadding(dp(16), dp(16), dp(16), dp(16))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(18).toFloat()
+                setColor(CRAYON_PANEL_BG)
+            }
             clipChildren = false; clipToPadding = false
             descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
         }
-
-        // §三 标题行（DANGER 语义）：图标 + 标题牌 + 副标题说明
+        // —— 内容层（4dp 内垫 + clipChildren=false）
+        val content = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+            clipChildren = false; clipToPadding = false
+        }
+        // —— 标题（与 Favorites.crayonDialogTitle 一致：44dp 贴纸 + 20sp WARM 字 + 阴影）
         val header = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             clipChildren = false; clipToPadding = false
         }
-        header.addView(ImageView(context).apply {
-            setImageResource(R.drawable.ic_parse_fail)
-            imageTintList = android.content.res.ColorStateList.valueOf(dangerColor)
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-            setPadding(dp(2), 0, 0, 0)
-        }, LinearLayout.LayoutParams(dp(40), dp(40)).apply { marginEnd = dp(12) })
-        val titleBlock = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL; isFocusable = false
-        }
-        // 标题牌（bg_dialog_crayon_header 语义，但危险操作改用 danger 渐变保持语义一致）
-        titleBlock.addView(object : TextView(context) {
-            init {
-                text = "确定删除选中的 $count 部动画吗？"
-                textSize = 19f
-                typeface = Typeface.DEFAULT_BOLD
-                gravity = Gravity.CENTER_VERTICAL
-                maxLines = 2
-                setPadding(dp(16), dp(8), dp(16), dp(8))
-                background = buildDangerHeaderDrawable()
-                setTextColor(Color.WHITE)
-            }
-            override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-                super.onSizeChanged(w, h, oldw, oldh)
-                if (w <= 0 || h <= 0) return
-                // 危险标题渐变：danger → crayonOrange
-                paint.shader = LinearGradient(
-                    0f, h * 0.5f, w.toFloat(), h * 0.5f,
-                    intArrayOf(Color.WHITE, Color.rgb(0xFF, 0xDD, 0xAA)), null, Shader.TileMode.CLAMP
-                )
-            }
-        })
-        titleBlock.addView(TextView(context).apply {
-            text = "此操作将同步修改 Gitee 云端数据，无法撤销"
-            textSize = 13f
-            setTextColor(textSecondary)
-            setPadding(0, dp(6), 0, 0)
-        })
-        header.addView(titleBlock, LinearLayout.LayoutParams(
-            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
-        ))
-        panel.addView(header, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        ))
-
-        // 分隔线：danger 水平渐变
-        panel.addView(View(context).apply {
-            background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(
-                Color.argb(0, Color.red(dangerColor), Color.green(dangerColor), Color.blue(dangerColor)),
-                Color.argb(180, Color.red(dangerColor), Color.green(dangerColor), Color.blue(dangerColor)),
-                Color.argb(0, Color.red(dangerColor), Color.green(dangerColor), Color.blue(dangerColor))
-            ))
-        }, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, dp(1)
-        ).apply { topMargin = dp(16); bottomMargin = dp(16) })
-
-        // §五 摘要行（紧凑排布）
-        if (preview.adapterDrops > 0) {
-            panel.addView(summaryLine("清理", "将删除 ${preview.adapterDrops} 个无人引用的自定义解析规则", successColor),
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = dp(8) })
-        }
-        if (preview.adapterKept > 0) {
-            panel.addView(summaryLine("保留", "${preview.adapterKept} 个解析规则仍被其他条目引用，不会删除", accent),
-                LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = dp(8) })
-        }
-        panel.addView(summaryLine("云端", "将写入 Gitee 仓库 bdCasttv/video-source · 不可逆", dangerColor),
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ))
-
-        // §五 提示文字
-        panel.addView(TextView(context).apply {
-            text = "按返回键自动取消 · 默认焦点在「再想想」"
-            textSize = 12f
+        header.addView(ClippedImageView(context).apply {
+            setCircle(true)
+            setImageResource(R.drawable.sticker_shinchan)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            foreground = ResourcesCompat.getDrawable(context.resources, R.drawable.fg_sticker_circle_border, null)
+            contentDescription = null
+        }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { rightMargin = dp(12) })
+        header.addView(TextView(context).apply {
+            text = "删除动画"
+            textSize = 20f
             typeface = Typeface.DEFAULT_BOLD
-            setTextColor(dangerColor)
-            setPadding(dp(2), dp(10), 0, 0)
-        }, LinearLayout.LayoutParams(
+            setTextColor(CRAYON_WARM)
+            gravity = Gravity.CENTER_VERTICAL
+            setShadowLayer(2f, 0f, 1f, Color.argb(130, 0, 0, 0))
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        content.addView(header, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
         ))
 
-        // §四 底部操作按钮（确认型 TvButton 语义：右对齐，间距 14dp）
+        // —— 主提示文案（与 Favorites confirm message 一致：15sp 白色，top=16dp）
+        content.addView(TextView(context).apply {
+            text = "确定删除选中的 $count 部动画吗？\n此操作将同步修改 Gitee 云端数据，无法撤销。"
+            textSize = 15f
+            setLineSpacing(dp(4).toFloat(), 1f)
+            setTextColor(Color.argb(238, 255, 255, 255))
+            gravity = Gravity.START
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(16) })
+
+        // —— 摘要行（仅当预览有实质信息时追加，保持视觉紧凑）
+        val hasPreviewInfo = preview.adapterDrops > 0 || preview.adapterKept > 0
+        if (hasPreviewInfo) {
+            content.addView(View(context).apply {
+                background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(
+                    Color.argb(0, 255, 255, 255),
+                    Color.argb(120, 210, 214, 222),
+                    Color.argb(0, 255, 255, 255)
+                ))
+            }, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(1)
+            ).apply { topMargin = dp(14); bottomMargin = dp(10) })
+            if (preview.adapterDrops > 0) {
+                content.addView(summaryLine("清理", "将删除 ${preview.adapterDrops} 个无人引用的自定义解析规则", successColor),
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply { bottomMargin = dp(6) })
+            }
+            if (preview.adapterKept > 0) {
+                content.addView(summaryLine("保留", "${preview.adapterKept} 个解析规则仍被其他条目引用，不会删除", CRAYON_WARM),
+                    LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                    ).apply { bottomMargin = dp(6) })
+            }
+            content.addView(summaryLine("云端", "将写入 Gitee 仓库 bdCasttv/video-source · 不可逆", dangerColor),
+                LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                ))
+        }
+
+        // —— 底部按钮（右对齐，间距 14dp，默认焦点在「再想想」，与 Favorites showCrayonConfirmDialog 一致）
         val btns = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
-            clipChildren = false; clipToPadding = false
         }
-        val abort = dialogButton("再想想") { /* dismiss */ }
-        val confirm = dialogButton("确认删除", danger = true) { /* confirm */ }
-        btns.addView(abort)
+        val cancel = crayonConfirmButton("再想想")
+        val confirm = crayonConfirmButton("确认删除")
+        btns.addView(cancel, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
         btns.addView(confirm, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply { marginStart = dp(14) })
-        panel.addView(btns, LinearLayout.LayoutParams(
+        content.addView(btns, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply { topMargin = dp(22) })
 
+        panel.addView(content, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
+
         val dlg = AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog).setView(panel).create()
-        abort.setOnClickListener { dlg.dismiss() }
+        cancel.setOnClickListener {
+            // Bug fix：用户点「再想想」应视为放弃本次批量删除意图，
+            // 清空已勾选并把管理弹窗底部「删除选中」置灰不可点击（alpha=0.4）
+            selected.clear()
+            deleteBtn.isEnabled = false
+            deleteBtn.alpha = 0.4f
+            // 计数与行样式同步，避免 UI 残留"已选 N"或勾选标记
+            updateCounts()
+            refreshAllRowChecks()
+            dlg.dismiss()
+        }
         confirm.setOnClickListener { dlg.dismiss(); doDelete() }
-        dlg.setOnShowListener { abort.requestFocus() }
         dlg.window?.takeIf { parent.isShowing }?.let { win ->
+            // —— 与 applyCrayonDialogWindow 同：居中 + 透明 + 宽度 380dp（与 Favorites 删除视频卡片弹窗一致）
             dlg.show()
             win.apply {
                 setGravity(Gravity.CENTER)
                 setBackgroundDrawableResource(android.R.color.transparent)
-                setLayout(dp(460), WindowManager.LayoutParams.WRAP_CONTENT) // §六 紧凑型 460dp
+                decorView.setBackgroundColor(Color.TRANSPARENT)
+                setLayout(dp(380), WindowManager.LayoutParams.WRAP_CONTENT)
                 val attrs = attributes
-                attrs.dimAmount = 0.40f
+                attrs.dimAmount = 0.32f
                 attributes = attrs
                 addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
             }
             win.decorView.isFocusable = true
             win.decorView.setOnKeyListener { _, keyCode, ev ->
                 if (keyCode == KeyEvent.KEYCODE_BACK) {
-                    if (ev.action == KeyEvent.ACTION_DOWN) dlg.dismiss()
+                    if (ev.action == KeyEvent.ACTION_DOWN) cancel.performClick()
                     true
                 } else false
             }
+            bindDialogBoundaryFocus(panel, listOf(cancel, confirm))
+            win.decorView.post { cancel.requestFocus() }
+        }
+    }
+
+    // 与 FavoritesPage.crayonDialogButton 同构：
+    //  默认：浅灰白描边 1dp + 暗卡片底 + 冷白字；焦点：暖黄 WARM 3dp 描边 + 同色字；圆角 10dp + FocusFx
+    private fun crayonConfirmButton(label: String): TextView = TextView(context).apply {
+        text = label
+        textSize = 15f
+        typeface = Typeface.DEFAULT_BOLD
+        gravity = Gravity.CENTER
+        isFocusable = true; isFocusableInTouchMode = false; isClickable = true
+        minWidth = dp(92)
+        setPadding(dp(18), dp(10), dp(18), dp(10))
+        fun refresh(focused: Boolean) {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(10).toFloat()
+                setColor(CRAYON_CARD_BG)
+                setStroke(dp(if (focused) 3 else 1), if (focused) CRAYON_WARM else CRAYON_BTN_BORDER)
+            }
+            setTextColor(if (focused) CRAYON_WARM else Color.argb(235, 245, 245, 245))
+        }
+        refresh(false)
+        setOnFocusChangeListener { v, has ->
+            refresh(has)
+            FocusFxHelper.applyFocusFxState(v, has, cornerRadiusDp = 10)
         }
     }
 
@@ -871,6 +930,14 @@ class CartoonManagementDialog(
         var cur: View? = view
         while (cur != null) { if (cur === root) return true; cur = cur.parent as? View }
         return false
+    }
+
+    /** 按「管理弹窗 → 确认弹窗」层级分别绑定的边界焦点（与 FavoritesPage.bindDialogBoundaryFocus 同构，防止焦点逃出确认弹窗进入管理弹窗）。 */
+    private fun bindDialogBoundaryFocus(root: ViewGroup, focusables: List<View>) = bindBoundary(root, focusables)
+
+    /** 批量刷新所有行的勾选/选中指示（复选框字符、左侧 accent 条、标题颜色）。 */
+    private fun refreshAllRowChecks() {
+        rowRefreshers.forEach { it.invoke() }
     }
 
     private fun toast(s: String) = Toast.makeText(context, s, Toast.LENGTH_SHORT).show()

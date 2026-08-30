@@ -26,8 +26,8 @@ import com.bd.casttv.ui.preview.PreviewPlayerHolder
  * 新框架下的自定义 Tab 页面：
  *  - 复用旧版 `CustomDockTabPage` 承载真实业务（频道列表、预览、源管理）；
  *  - 去掉最外层 crayon 面板边框与外边距，让页面直接铺满页容器；
- *  - 顶部为 `GlobalTopStatusBar` 预留 40dp 高度；
- *  - 页面标题上方新增操作提示：「遥控器按 OK 键进入页面 或 方向键↓ 移动」；
+ *  - 顶部为 `GlobalTopStatusBar` 预留 35dp 高度（由 BasePage wrapperTopPaddingDp 统一承担）；
+ *  - 页面标题已收敛进 GlobalTopStatusBar 左侧，本页不再绘制独立 PageHeader（API 保留，实际渲染强制 GONE）；
  *  - 频道列表左边界 LEFT 键统一回落到 pageRootFocus，触发 Dock 页切换（LEFT/RIGHT）。
  */
 class CustomTabPage(context: Context, private val tab: CustomDockTab) : BasePage(context) {
@@ -36,7 +36,7 @@ class CustomTabPage(context: Context, private val tab: CustomDockTab) : BasePage
     override val pageIconRes: Int = CustomDockIconPresets.iconFor(tab.iconKey).drawableRes
     override val enablePageScroll: Boolean = false
     override val useContentPanel: Boolean get() = true
-    override val showPageHeader: Boolean get() = true
+    override val showPageHeader: Boolean get() = true // 保留 API；BasePage init 强制 GONE
     override val pageStickerRes: Int get() = CustomDockIconPresets.iconFor(tab.iconKey).drawableRes
 
     private val legacyPage = com.bd.casttv.ui.CustomDockTabPage(
@@ -69,8 +69,8 @@ class CustomTabPage(context: Context, private val tab: CustomDockTab) : BasePage
         },
     )
 
-    /** 顶部 GlobalTopStatusBar 高度补偿（与 NewMainActivity 一致）。 */
-    private val topStatusBarInset = dp(40)
+    /** 顶部 GlobalTopStatusBar 高度补偿（与 NewMainActivity.TOP_STATUS_BAR_HEIGHT_DP 同步；占位对齐参考，不再叠加 padding）。 */
+    private val topStatusBarInset = dp(35)
     private val pageHandler = Handler(Looper.getMainLooper())
     private var previewResumeQualified = false
     private var pageVisible = false

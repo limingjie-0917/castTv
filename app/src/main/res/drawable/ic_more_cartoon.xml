@@ -4,141 +4,137 @@
     android:viewportWidth="24"
     android:viewportHeight="24">
 
-    <!-- 外圈白描边 -->
-    <path
-        android:pathData="M12,1.6m-10.4,0a10.4,10.4 0,1 1,20.8 0a10.4,10.4 0,1 1,-20.8 0"
-        android:fillColor="#FFFFFF" />
+    <!--
+      动画城图标：按参考太阳笑脸 1:1 复刻（全彩色）。
+      - ⚠ 本图标设计为「保持彩色」，在 MoreFunctionsPage 中动画城卡片需要移除
+        logoIcon.imageTint 才能正常显示蓝/橙/黄/红；CartoonCityPage/CartoonDetailPage
+        的 pageIcon 也会继承全彩。
+      - Android VectorDrawable 不支持原生径向渐变（需 AGP 7.4+ + AVD gradient 扩展），
+        这里采用 3 层椭圆叠加的方式模拟参考图的「上黄 → 下橙」脸径向渐变，
+        在 API 21+ 下都稳定。
+    -->
 
-    <!-- 蓝色圆盘背景 -->
+    <!-- 蓝色圆盘背景（参考：深蓝天空盘） -->
     <path
-        android:pathData="M12,2.2m-9.8,0a9.8,9.8 0,1 1,19.6 0a9.8,9.8 0,1 1,-19.6 0"
-        android:fillColor="#1890D0" />
+        android:pathData="M12,2a10,10 0,1 0,0 20a10,10 0,1 0,0 -20z"
+        android:fillColor="#1C9BDB" />
 
-    <!-- 背景小星星（点缀） -->
+    <!-- 深蓝内描边环：增加参考图里的"盘子层次" -->
     <path
-        android:pathData="M4.8,4.5L5.05,5.2L5.8,5.4L5.05,5.6L4.8,6.3L4.55,5.6L3.8,5.4L4.55,5.2Z"
-        android:fillColor="#E6F48C" />
+        android:pathData="M12,2.8a9.2,9.2 0,1 0,0 18.4a9.2,9.2 0,1 0,0 -18.4z"
+        android:fillColor="#1078B2"
+        android:fillAlpha="0.08" />
     <path
-        android:pathData="M18.2,5.0L18.45,5.7L19.2,5.9L18.45,6.1L18.2,6.8L17.95,6.1L17.2,5.9L17.95,5.7Z"
-        android:fillColor="#E6F48C" />
+        android:pathData="M12,2.8a9.2,9.2 0,1 0,0 18.4a9.2,9.2 0,1 0,0 -18.4z"
+        android:strokeColor="#1078B2"
+        android:strokeWidth="0.42"
+        android:fillColor="@android:color/transparent" />
+
+    <!-- 5 颗小星星点缀（参考位置） -->
     <path
-        android:pathData="M5.2,19.0L5.45,19.7L6.2,19.9L5.45,20.1L5.2,20.8L4.95,20.1L4.2,19.9L4.95,19.7Z"
+        android:pathData="m4.8,4.5 l0.25,0.7 l0.75,0.2 l-0.75,0.2 l-0.25,0.7 l-0.25,-0.7 l-0.75,-0.2 l0.75,-0.2z"
         android:fillColor="#FFE98A" />
     <path
-        android:pathData="M18.8,18.4L19.05,19.1L19.8,19.3L19.05,19.5L18.8,20.2L18.55,19.5L17.8,19.3L18.55,19.1Z"
+        android:pathData="m18.2,5 l0.25,0.7 l0.75,0.2 l-0.75,0.2 l-0.25,0.7 l-0.25,-0.7 l-0.75,-0.2 l0.75,-0.2z"
         android:fillColor="#FFE98A" />
     <path
-        android:pathData="M12,20.3L12.2,21.0L12.9,21.2L12.2,21.4L12,22.1L11.8,21.4L11.1,21.2L11.8,21.0Z"
+        android:pathData="m5.2,19 l0.25,0.7 l0.75,0.2 l-0.75,0.2 l-0.25,0.7 l-0.25,-0.7 l-0.75,-0.2 l0.75,-0.2z"
+        android:fillColor="#FFE98A" />
+    <path
+        android:pathData="m18.8,18.4 l0.25,0.7 l0.75,0.2 l-0.75,0.2 l-0.25,0.7 l-0.25,-0.7 l-0.75,-0.2 l0.75,-0.2z"
+        android:fillColor="#FFE98A" />
+    <path
+        android:pathData="M12,20.3 l0.2,0.7 l0.7,0.2 l-0.7,0.2 l-0.2,0.7 l-0.2,-0.7 l-0.7,-0.2 l0.7,-0.2z"
         android:fillColor="#FFE98A" />
 
-    <!-- 太阳光芒（10 道，先画后面的 5 道短射线，再画脸外的 5 道长射线） -->
-    <!-- 上偏右光芒 -->
-    <path
-        android:pathData="M12,4.3 L11.2,8.6 L12.8,8.6 Z"
-        android:fillColor="#FF8A2A" />
-    <!-- 右上光芒 -->
-    <path
-        android:pathData="M17.4,7.0 L14.4,9.6 L15.3,11.2 Z"
-        android:fillColor="#FFB23C" />
-    <!-- 右下光芒 -->
-    <path
-        android:pathData="M19.8,14.0 L15.5,13.2 L15.8,15.0 Z"
-        android:fillColor="#FF6A1F" />
-    <!-- 右下偏光芒 -->
-    <path
-        android:pathData="M16.0,19.2 L13.7,16.2 L15.2,15.2 Z"
-        android:fillColor="#FF8A2A" />
-    <!-- 左下光芒 -->
-    <path
-        android:pathData="M4.2,14.0 L8.5,13.2 L8.2,15.0 Z"
-        android:fillColor="#FF6A1F" />
-    <!-- 左下偏光芒 -->
-    <path
-        android:pathData="M8.0,19.2 L10.3,16.2 L8.8,15.2 Z"
-        android:fillColor="#FFB23C" />
-    <!-- 左上光芒 -->
-    <path
-        android:pathData="M6.6,7.0 L9.6,9.6 L8.7,11.2 Z"
-        android:fillColor="#FFB23C" />
+    <!-- 10 道光芒（按原图角度/颜色排布） -->
     <!-- 上光芒 -->
-    <path
-        android:pathData="M12,3.6 L10.8,8.3 L13.2,8.3 Z"
-        android:fillColor="#FF9A26" />
-    <!-- 左光芒 -->
-    <path
-        android:pathData="M3.2,11.9 L8.1,10.8 L8.1,12.8 Z"
-        android:fillColor="#FF9A26" />
+    <path android:pathData="M12,4 L11,8.6 L13,8.6 Z" android:fillColor="#FF8A2A" />
+    <!-- 右上光芒 -->
+    <path android:pathData="m17.4,6.6 l-2.8,2.6 l0.8,1.6 Z" android:fillColor="#FFB23C" />
     <!-- 右光芒 -->
-    <path
-        android:pathData="M20.8,11.9 L15.9,10.8 L15.9,12.8 Z"
-        android:fillColor="#FF9A26" />
+    <path android:pathData="M21,11.9 L15.8,10.8 v2 Z" android:fillColor="#FF9A26" />
+    <!-- 右下光芒 -->
+    <path android:pathData="M19.8,14 L15.5,13 L15.8,15 Z" android:fillColor="#FF6A1F" />
+    <!-- 右下偏光芒 -->
+    <path android:pathData="m16,19.2 l-2.2,-3.2 l1.5,-0.8 Z" android:fillColor="#FF8A2A" />
+    <!-- 下光芒 -->
+    <path android:pathData="M12,20 L11,15.4 L13,15.4 Z" android:fillColor="#FF9A26" />
+    <!-- 左下偏光芒 -->
+    <path android:pathData="m8,19.2 l2.2,-3.2 l-1.5,-0.8 Z" android:fillColor="#FFB23C" />
+    <!-- 左下光芒 -->
+    <path android:pathData="M4.2,14 L8.5,13 L8.2,15 Z" android:fillColor="#FF6A1F" />
+    <!-- 左光芒 -->
+    <path android:pathData="M3,11.9 L8.2,10.8 v2 Z" android:fillColor="#FF9A26" />
+    <!-- 左上光芒 -->
+    <path android:pathData="m6.6,6.6 l2.8,2.6 l-0.8,1.6 Z" android:fillColor="#FFB23C" />
 
-    <!-- 太阳圆盘脸（橙黄渐变替代：主色） -->
+    <!-- 太阳脸：叠 3 层椭圆模拟参考图的径向渐变（上亮黄 → 中深黄 → 下橙） -->
+    <!-- 顶层：亮黄（覆盖上半 90% 脸） -->
     <path
-        android:pathData="M12,7.8m-4.3,0a4.3,4.3 0,1 1,8.6 0a4.3,4.3 0,1 1,-8.6 0"
-        android:fillColor="#FFC63C" />
-    <!-- 脸下部橙红色晕 -->
+        android:pathData="M12,7.8m-4.3,0a4.3,4.3 0,1 0,8.6 0a4.3,4.3 0,1 0,-8.6 0"
+        android:fillColor="#FFD75C" />
+    <!-- 中层：中黄（覆盖脸中部 72% 区域） -->
     <path
-        android:pathData="M12,9.0m-3.7,0a3.7,3.0 0,1 0,7.4 0a3.7,3.0 0,1 0,-7.4 0"
-        android:fillColor="#FF9A2A"
-        android:fillAlpha="0.25" />
-
-    <!-- 左腮红 -->
+        android:pathData="M12,9.0m-3.85,0a3.85,3.1 0,1 0,7.7 0a3.85,3.1 0,1 0,-7.7 0"
+        android:fillColor="#FFBE3A"
+        android:fillAlpha="0.75" />
+    <!-- 底层：橘红晕（覆盖脸底部，近似 radial gradient 的下端深色落点） -->
     <path
-        android:pathData="M8.2,10.9m-0.8,0a0.8,0.55 0,1 1,1.6 0a0.8,0.55 0,1 1,-1.6 0"
-        android:fillColor="#FF7A3A"
+        android:pathData="M12,10.4m-3.15,0a3.15,2.2 0,1 0,6.3 0a3.15,2.2 0,1 0,-6.3 0"
+        android:fillColor="#FF8A2E"
         android:fillAlpha="0.55" />
-    <!-- 右腮红 -->
-    <path
-        android:pathData="M15.8,10.9m-0.8,0a0.8,0.55 0,1 1,1.6 0a0.8,0.55 0,1 1,-1.6 0"
-        android:fillColor="#FF7A3A"
-        android:fillAlpha="0.55" />
 
-    <!-- 左眼白 -->
+    <!-- 两腮红晕 -->
     <path
-        android:pathData="M9.3,8.4m-1.25,0a1.25,1.55 0,1 1,2.5 0a1.25,1.55 0,1 1,-2.5 0"
+        android:pathData="M8.2,10.9m-0.8,0a0.8,0.55 0,1 0,1.6 0a0.8,0.55 0,1 0,-1.6 0"
+        android:fillColor="#FF6A6A"
+        android:fillAlpha="0.45" />
+    <path
+        android:pathData="M15.8,10.9m-0.8,0a0.8,0.55 0,1 0,1.6 0a0.8,0.55 0,1 0,-1.6 0"
+        android:fillColor="#FF6A6A"
+        android:fillAlpha="0.45" />
+
+    <!-- 眼白（椭圆） -->
+    <path
+        android:pathData="M9.3,8.4m-1.25,0a1.25,1.55 0,1 0,2.5 0a1.25,1.55 0,1 0,-2.5 0"
         android:fillColor="#FFFFFF" />
-    <!-- 右眼白 -->
     <path
-        android:pathData="M14.7,8.4m-1.25,0a1.25,1.55 0,1 1,2.5 0a1.25,1.55 0,1 1,-2.5 0"
-        android:fillColor="#FFFFFF" />
-    <!-- 左眼珠（斜向右看，靠近内眼角） -->
-    <path
-        android:pathData="M10.25,8.8m-0.5,0a0.5,0.65 0,1 1,1.0 0a0.5,0.65 0,1 1,-1.0 0"
-        android:fillColor="#1A1A1A" />
-    <!-- 右眼珠 -->
-    <path
-        android:pathData="M15.15,8.8m-0.5,0a0.5,0.65 0,1 1,1.0 0a0.5,0.65 0,1 1,-1.0 0"
-        android:fillColor="#1A1A1A" />
-    <!-- 左眼高光 -->
-    <path
-        android:pathData="M10.55,8.55 L10.75,8.35 L10.95,8.55 L10.75,8.75 Z"
-        android:fillColor="#FFFFFF" />
-    <!-- 右眼高光 -->
-    <path
-        android:pathData="M15.45,8.55 L15.65,8.35 L15.85,8.55 L15.65,8.75 Z"
+        android:pathData="M14.7,8.4m-1.25,0a1.25,1.55 0,1 0,2.5 0a1.25,1.55 0,1 0,-2.5 0"
         android:fillColor="#FFFFFF" />
 
-    <!-- 鼻子（小圆弧突起） -->
+    <!-- 眼珠（靠近内眼角，斜向右看） -->
+    <path
+        android:pathData="M10.25,8.8m-0.5,0a0.5,0.65 0,1 0,1.0 0a0.5,0.65 0,1 0,-1.0 0"
+        android:fillColor="#101118" />
+    <path
+        android:pathData="M15.15,8.8m-0.5,0a0.5,0.65 0,1 0,1.0 0a0.5,0.65 0,1 0,-1.0 0"
+        android:fillColor="#101118" />
+
+    <!-- 眼睛高光（小方菱形） -->
+    <path android:pathData="m10.55,8.55 l0.2,-0.2 l0.2,0.2 l-0.2,0.2 z" android:fillColor="#FFFFFF" />
+    <path android:pathData="m15.45,8.55 l0.2,-0.2 l0.2,0.2 l-0.2,0.2 z" android:fillColor="#FFFFFF" />
+
+    <!-- 鼻子（小弧隆起） -->
     <path
         android:pathData="M12,9.95 Q12.5,10.25 12.0,10.65 Q11.5,10.25 12,9.95 Z"
-        android:fillColor="#FFA33A" />
+        android:fillColor="#FF8A2A"
+        android:fillAlpha="0.62" />
 
-    <!-- 红眉毛（左：闪电形 / 右：火苗形 —— 参考《小糊涂神》太阳形象） -->
+    <!-- 红眉（参考闪电/火苗形） -->
     <path
-        android:pathData="M8.3,7.25 L9.1,6.9 L9.6,7.5 L10.4,6.75 L10.2,7.55 L9.3,7.95 Z"
-        android:fillColor="#E52020" />
+        android:pathData="m8.3,7.25 l0.8,-0.35 l0.5,0.6 l0.8,-0.75 l-0.2,0.8 l-0.9,0.4 z"
+        android:fillColor="#E01F26" />
     <path
-        android:pathData="M13.95,6.75 L15.05,7.15 L14.5,7.95 L15.7,7.5 L14.9,8.25 L13.75,7.85 Z"
-        android:fillColor="#E52020" />
+        android:pathData="m13.95,6.75 l1.1,0.4 l-0.55,0.8 l1.2,-0.45 l-0.8,0.75 l-1.15,-0.4 z"
+        android:fillColor="#E01F26" />
 
-    <!-- 微笑嘴巴（向上弯的弧形） -->
+    <!-- 大笑嘴：深赤上唇弧 + 下唇亮橘色高光 -->
     <path
         android:pathData="M9.2,11.15 Q12.0,13.35 14.8,11.15 Q13.6,12.25 12.0,12.25 Q10.4,12.25 9.2,11.15 Z"
-        android:fillColor="#C93A1A" />
-    <!-- 嘴内亮色（下唇高光） -->
+        android:fillColor="#C11A12" />
     <path
         android:pathData="M10.5,11.75 Q12.0,12.45 13.5,11.75 L13.2,11.95 Q12.0,12.25 10.8,11.95 Z"
-        android:fillColor="#FF7A66"
-        android:fillAlpha="0.85" />
+        android:fillColor="#FF8872"
+        android:fillAlpha="0.82" />
 </vector>

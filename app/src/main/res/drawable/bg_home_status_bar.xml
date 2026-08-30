@@ -1,4 +1,79 @@
-<shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="#CC101725" />
-    <corners android:radius="18dp" />
-</shape>
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  默认磨砂玻璃状态栏（兜底用）。
+  静态 XML 只保证「inflate 瞬间不出现纯色大条」；
+  运行时 MainActivity.onCreate / onSettingsChanged 会用
+    ThemeManager.frostedStatusBarBackground()
+  按当前主题的 dyeColor 动态重绘 6 层 LayerDrawable（base/veil/内折射边/顶高光/底阴影/分割线），
+  与 GlobalTopStatusBar（新框架首页 Activity）视觉严格 1:1。
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 0 · base：深灰染色膜高透渐变（默认 DarkGray 预设） -->
+    <item>
+        <shape android:shape="rectangle">
+            <gradient
+                android:angle="270"
+                android:startColor="#551A1E28"
+                android:endColor="#632C3140" />
+            <corners android:radius="0dp" />
+        </shape>
+    </item>
+
+    <!-- 1 · veil 散射膜（斜向 135°，4 色微粒，alpha 不高避免条纹感） -->
+    <item>
+        <rotate android:fromDegrees="0" android:toDegrees="0">
+            <shape android:shape="rectangle">
+                <gradient
+                    android:angle="135"
+                    android:startColor="#0EFFFFFF"
+                    android:centerColor="#06FFFFFF"
+                    android:endColor="#08FFFFFF" />
+            </shape>
+        </rotate>
+    </item>
+
+    <!-- 2 · 内折射描边（向内 1px，软白边；用 inset+stroke 合成） -->
+    <item android:left="1px" android:top="1px" android:right="1px" android:bottom="1px">
+        <shape android:shape="rectangle">
+            <solid android:color="@android:color/transparent" />
+            <stroke
+                android:width="1px"
+                android:color="#6AFFFFFF" />
+            <corners android:radius="0dp" />
+        </shape>
+    </item>
+
+    <!-- 3 · 顶部高光（12dp 厚，白色 36% alpha → 透） -->
+    <item android:gravity="top" android:left="2dp" android:top="2dp" android:right="2dp">
+        <shape android:shape="rectangle">
+            <size android:height="12dp" />
+            <gradient
+                android:angle="270"
+                android:startColor="#38FFFFFF"
+                android:endColor="#00FFFFFF" />
+        </shape>
+    </item>
+
+    <!-- 4 · 底部内阴影（18dp 厚，黑色 32% alpha → 透） -->
+    <item android:gravity="bottom" android:left="2dp" android:right="2dp" android:bottom="2dp">
+        <shape android:shape="rectangle">
+            <size android:height="18dp" />
+            <gradient
+                android:angle="90"
+                android:startColor="#50000000"
+                android:endColor="#00000000" />
+        </shape>
+    </item>
+
+    <!-- 5 · 底部 1dp 软分割线（与页面内容自然交界） -->
+    <item android:gravity="bottom">
+        <shape android:shape="rectangle">
+            <size android:height="1dp" />
+            <gradient
+                android:angle="270"
+                android:startColor="#00000000"
+                android:endColor="#1AFFFFFF" />
+        </shape>
+    </item>
+</layer-list>

@@ -20,7 +20,7 @@ on:
       - 'LICENSE'
       - '.gitignore'
 
-  # —— 手动触发：仓库 Actions 页面可以点 "Run workflow" 选分支构建（push 失败时手动重试）
+  # —— 手动触发：仓库 Actions 页面可以点 "Run workflow" 选分支构建
   workflow_dispatch:
     inputs:
       variant:
@@ -30,24 +30,27 @@ on:
         type: choice
         options: [ debug, release, both ]
 
-  # —— 其他触发方式（以后可按需开启）：
-  # pull_request:  branches: [main]    # 有人发 PR 时先跑一遍 assembleDebug 守门
-  # schedule:      - cron: '0 2 * * *' # 每天凌晨 2:00 UTC 跑一次 Release build 做健康检查
-
 env:
-  GRADLE_WRAPPER_VALIDATE: true
   JAVA_VERSION: 17
   JAVA_DISTRO: 'temurin'
+  ANDROID_COMPILE_SDK: '34'
+  ANDROID_BUILD_TOOLS: '34.0.0'
+  # Gradle 在 CI 里不要因为 daemon 被杀而挂
+  GRADLE_OPTS: '-Dorg.gradle.jvmargs="-Xmx4608m -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8" -Dorg.gradle.daemon=false'
 
-# ——— 权限控制：读源码 + 写 artifacts + 写 Release（tag 发布）———
 permissions:
   contents: write          # tag 发布时写 Release
   actions: read
   packages: write
 
+# 失败的 run 不用等超时，新 push 进来立刻取消上个同名 run
+concurrency:
+  group: build-casttv-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # ===========================================================
-  # JOB 1 / 2 · assembleDebug：所有分支都跑，保证改完即编
+  # JOB 1 / 2 · assembleDebug：所有非 tag 推送都跑
   # ===========================================================
   assemble-debug:
     name: Build Debug APK
@@ -59,114 +62,155 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v5
         with:
-          fetch-depth: 0           # bumpVersion 读 git log 需要历史
+          fetch-depth: 0
           submodules: recursive
 
+      # ===== 一次性搞定 JDK + Gradle wrapper + 缓存（官方组合，比手写稳）=====
       - name: Setup JDK 17 (Temurin)
         uses: actions/setup-java@v5
         with:
           distribution: ${{ env.JAVA_DISTRO }}
           java-version: ${{ env.JAVA_VERSION }}
-          cache: 'gradle'           # 自动缓存 ~/.gradle/caches, wrapper
+
+      - name: Setup Gradle wrapper cache (gradle-actions v5)
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-write-only: ${{ github.ref == 'refs/heads/main' }}
+          validate-wrappers: true
+          add-job-summary: always
 
       - name: Setup Android SDK (API 34 + BuildTools 34)
         uses: android-actions/setup-android@v3
         with:
-          packages: 'platform-tools build-tools;34.0.0 platforms;android-34'
+          packages: "platform-tools build-tools;${{ env.ANDROID_BUILD_TOOLS }} platforms;android-${{ env.ANDROID_COMPILE_SDK }}"
 
-      - name: Validate Gradle wrapper
-        uses: gradle/actions/wrapper-validation@v5
-        continue-on-error: true
-
-      - name: Ensure Gradle wrapper exists + grant execute permission
+      # 兜底：gradlew 执行位 + wrapper.jar 存在（setup-gradle 已包含但幂等安全）
+      - name: Ensure Gradle wrapper ready
         shell: bash
         run: |
           set -e
           if [ ! -x ./gradlew ]; then
-            # ponytail: git 没保留执行位或文件缺失时兜底：chmod 不幂等问题兼容
-            if [ -f ./gradlew ]; then
-              chmod +x ./gradlew
+            if [ -f ./gradlew ]; then chmod +x ./gradlew
             elif command -v gradle >/dev/null 2>&1; then
               gradle wrapper --gradle-version 8.9 --distribution-type all
               chmod +x ./gradlew
             else
               echo "ERROR: gradlew 不存在且系统中没有 gradle，无法生成 wrapper" >&2
-              ls -la
-              exit 1
+              ls -la; exit 1
             fi
           fi
           [ -f gradle/wrapper/gradle-wrapper.jar ] || { echo "ERROR: gradle/wrapper/gradle-wrapper.jar 缺失" >&2; exit 1; }
-          echo "Gradle wrapper ready:"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          echo "JAVA_HOME=$JAVA_HOME"
+          java -version
+          echo "===gradlew sanitize==="
+          chmod +x ./gradlew
           ls -la gradlew gradle/wrapper/
 
-      - name: Create local.properties + accept SDK licenses
+      - name: Write local.properties + accept SDK licenses
         shell: bash
         run: |
           set -e
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          sdk_root="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          echo "sdk.dir=$sdk_root" > local.properties
+          echo "cmake.dir=/opt/android-sdk/cmake" >> local.properties || true
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          echo "ANDROID_HOME=$ANDROID_HOME"
           echo "--- local.properties ---"
           cat local.properties
+          echo "--- sdk dir ---"
+          ls "$sdk_root/platforms/android-${{ env.ANDROID_COMPILE_SDK }}/" 2>&1 | head -n 5 || true
+          ls "$sdk_root/build-tools/${{ env.ANDROID_BUILD_TOOLS }}/" 2>&1 | head -n 5 || true
 
-      - name: Gradle assembleDebug
+      - name: Gradle Diagnose (wrapper download + tasks)
         shell: bash
-        run: ./gradlew assembleDebug -x lint --no-daemon --stacktrace
+        run: |
+          set -o pipefail
+          rm -rf build-diagnostics; mkdir -p build-diagnostics
+          ./gradlew --version 2>&1 | tee build-diagnostics/00-gradle-version.txt
+          ./gradlew help --no-daemon 2>&1 | tail -n 200 | tee build-diagnostics/01-gradle-help.txt
+
+      - name: Gradle assembleDebug (INFO 级日志 → 保存为 Artifact)
+        id: gradleBuild
+        shell: bash
+        continue-on-error: true    # 失败也往下跑，把日志上传 Artifacts
         env:
-          JAVA_TOOL_OPTIONS: '-Xmx4096m -Dfile.encoding=UTF-8'
-          GRADLE_OPTS: '-Dorg.gradle.jvmargs="-Xmx4096m -XX:+HeapDumpOnOutOfMemoryError"'
-          # CI 环境：bumpVersion 跳过写回 build.gradle.kts 字面量（避免污染工作树）
           CI: true
           GITHUB_ACTIONS: true
+        run: |
+          set -o pipefail
+          rm -rf build-logs; mkdir -p build-logs
+          ./gradlew assembleDebug -x lint --no-daemon --stacktrace --info \
+            2> >(tee build-logs/gradle-stderr.log >&2) \
+            1> >(tee build-logs/gradle-stdout.log)
+          rc=${PIPESTATUS[0]}
+          # 也把 tail 留在 step 日志里，便于缩略查看
+          echo "====== STDERR LAST 200 ======"
+          tail -n 200 build-logs/gradle-stderr.log || true
+          echo "====== STDOUT LAST 200 ======"
+          tail -n 200 build-logs/gradle-stdout.log || true
+          echo "EXIT_CODE=$rc" >> "$GITHUB_OUTPUT"
+          exit $rc
+
+      - name: Upload Gradle build logs as artifact (失败也上传)
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: build-logs-debug-run-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            build-logs/
+            build-diagnostics/
+          retention-days: 14
+          compression-level: 6
+          if-no-files-found: ignore
 
       - name: Read APK path & version
         id: apk
-        if: success()
+        if: steps.gradleBuild.outcome == 'success'
         shell: bash
         run: |
           set -e
-          APK=$(find app/build/outputs/apk/debug builds -maxdepth 4 -name "casttv-receiver-v*-debug.apk" 2>/dev/null | head -1)
-          [ -z "$APK" ] && { echo "APK not found in app/build/outputs/apk/debug or builds/" >&2; ls -la app/build/outputs/apk/debug/ 2>/dev/null || true; ls -la builds/*/ 2>/dev/null || true; exit 1; }
+          APK=$(find app/build/outputs/apk/debug builds -maxdepth 4 -type f -name "casttv-receiver-v*-debug.apk" 2>/dev/null | head -1)
+          if [ -z "$APK" ]; then
+            echo "APK not found" >&2
+            echo "--- candidate dirs ---" >&2
+            ls -la app/build/outputs/apk/debug/ 2>&1 || true
+            ls -la builds 2>&1 || true
+            exit 1
+          fi
           NAME=$(basename "$APK")
           SIZE=$(du -h "$APK" | cut -f1)
           VERSION=$(echo "$NAME" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
           [ -z "$VERSION" ] && VERSION=$(grep -oE 'versionName\s*=\s*"[^"]+"' app/build.gradle.kts | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
           SHA=$(git rev-parse --short HEAD)
-          echo "apk=$APK" >> $GITHUB_OUTPUT
-          echo "name=$NAME" >> $GITHUB_OUTPUT
-          echo "size=$SIZE" >> $GITHUB_OUTPUT
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "sha=$SHA"  >> $GITHUB_OUTPUT
+          {
+            echo "apk=$APK"; echo "name=$NAME"; echo "size=$SIZE"
+            echo "version=$VERSION"; echo "sha=$SHA"
+          } >> "$GITHUB_OUTPUT"
           echo "VERSION: $VERSION  SHA: $SHA  FILE: $NAME($SIZE)  PATH: $APK"
 
       - name: Upload Debug APK artifact
-        if: success()
+        if: steps.gradleBuild.outcome == 'success'
         uses: actions/upload-artifact@v5
         with:
           name: debug-apk-v${{ steps.apk.outputs.version }}-${{ steps.apk.outputs.sha }}
           path: ${{ steps.apk.outputs.apk }}
-          retention-days: 30          # 调试包保留 30 天
+          retention-days: 30
           compression-level: 6
 
-      - name: Job summary
-        if: success()
+      - name: Final status gate (把 continue-on-error 再收敛成 job 失败，避免绿灯错觉)
+        if: always()
         shell: bash
         run: |
-          cat >> $GITHUB_STEP_SUMMARY <<-EOF
-          ## 构建成功 · Debug APK
-          | 项 | 值 |
-          |---|---|
-          | 版本 | ${{ steps.apk.outputs.version }} |
-          | 提交 | \`${{ steps.apk.outputs.sha }}\` |
-          | APK 名 | ${{ steps.apk.outputs.name }} |
-          | 体积 | ${{ steps.apk.outputs.size }} |
-          | 触发 | ${{ github.event_name }}  · ${{ github.event.head_commit.message }} |
-
-          👉 在 Actions 页顶部 Artifacts 卡片下载安装（同签名，可直接覆盖安装）。
-          EOF
+          if [ "${{ steps.gradleBuild.outcome }}" != "success" ]; then
+            echo "Gradle assembleDebug 失败：steps.gradleBuild.outcome=${{ steps.gradleBuild.outcome }}" >&2
+            echo "👉 下载 Artifacts 卡片的 build-logs-debug-run-${{ github.run_id }}-${{ github.run_attempt }}.zip 查看 --info 级日志定位" >&2
+            exit 1
+          fi
+          echo "构建成功，Artifacts 卡片里已有 debug APK + logs（后者方便快速回溯）"
 
   # ===========================================================
-  # JOB 2 / 2 · assembleRelease + GitHub Release：tag 推送时跑
+  # JOB 2 / 2 · assembleRelease + GitHub Release：tag 推送或手动 release 模式
   # ===========================================================
   release-apk:
     name: Build Release APK & Draft GitHub Release
@@ -186,92 +230,113 @@ jobs:
         with:
           distribution: ${{ env.JAVA_DISTRO }}
           java-version: ${{ env.JAVA_VERSION }}
-          cache: 'gradle'
 
-      - name: Setup Android SDK (API 34 + BuildTools 34)
+      - name: Setup Gradle wrapper cache (gradle-actions v5)
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-write-only: ${{ github.ref == 'refs/heads/main' }}
+          validate-wrappers: true
+
+      - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: 'platform-tools build-tools;34.0.0 platforms;android-34'
+          packages: "platform-tools build-tools;${{ env.ANDROID_BUILD_TOOLS }} platforms;android-${{ env.ANDROID_COMPILE_SDK }}"
 
-      - name: Validate Gradle wrapper
-        uses: gradle/actions/wrapper-validation@v5
-        continue-on-error: true
-
-      - name: Ensure Gradle wrapper exists + grant execute permission
+      - name: Ensure Gradle wrapper ready
         shell: bash
         run: |
           set -e
           if [ ! -x ./gradlew ]; then
-            if [ -f ./gradlew ]; then
-              chmod +x ./gradlew
+            if [ -f ./gradlew ]; then chmod +x ./gradlew
             elif command -v gradle >/dev/null 2>&1; then
-              gradle wrapper --gradle-version 8.9 --distribution-type all
-              chmod +x ./gradlew
-            else
-              echo "ERROR: gradlew 不存在且系统中没有 gradle，无法生成 wrapper" >&2
-              ls -la
-              exit 1
-            fi
+              gradle wrapper --gradle-version 8.9 --distribution-type all; chmod +x ./gradlew
+            else echo "ERROR: gradlew 不存在且系统中没有 gradle，无法生成 wrapper" >&2; ls -la; exit 1; fi
           fi
           [ -f gradle/wrapper/gradle-wrapper.jar ] || { echo "ERROR: gradle/wrapper/gradle-wrapper.jar 缺失" >&2; exit 1; }
-          echo "Gradle wrapper ready:"
+          chmod +x ./gradlew
+          echo "ANDROID_HOME=$ANDROID_HOME  JAVA_HOME=$JAVA_HOME"
           ls -la gradlew gradle/wrapper/
 
-      - name: Create local.properties + accept SDK licenses
+      - name: Write local.properties + accept SDK licenses
         shell: bash
         run: |
           set -e
-          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          sdk_root="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          echo "sdk.dir=$sdk_root" > local.properties
           yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          cat local.properties
+          echo "--- local.properties ---"; cat local.properties
 
       - name: Gradle assembleRelease
+        id: gradleBuild
         shell: bash
-        run: ./gradlew assembleRelease -x lint --no-daemon --stacktrace
+        continue-on-error: true
         env:
-          JAVA_TOOL_OPTIONS: '-Xmx4096m -Dfile.encoding=UTF-8'
-          GRADLE_OPTS: '-Dorg.gradle.jvmargs="-Xmx4096m -XX:+HeapDumpOnOutOfMemoryError"'
-          # 明确标记 CI 环境，bumpVersion 不写回 build.gradle.kts 字面量
           CI: true
           GITHUB_ACTIONS: true
+        run: |
+          set -o pipefail
+          rm -rf build-logs; mkdir -p build-logs
+          ./gradlew assembleRelease -x lint --no-daemon --stacktrace --info \
+            2> >(tee build-logs/gradle-stderr.log >&2) \
+            1> >(tee build-logs/gradle-stdout.log)
+          rc=${PIPESTATUS[0]}
+          echo "====== STDERR LAST 200 ======"; tail -n 200 build-logs/gradle-stderr.log || true
+          echo "====== STDOUT LAST 200 ======"; tail -n 200 build-logs/gradle-stdout.log || true
+          exit $rc
+
+      - name: Upload Release build logs as artifact
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: build-logs-release-run-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build-logs/
+          retention-days: 14
+          if-no-files-found: ignore
 
       - name: Read release APK & version
         id: apk
-        if: success()
+        if: steps.gradleBuild.outcome == 'success'
         shell: bash
         run: |
           set -e
-          APK=$(find app/build/outputs/apk/release builds -maxdepth 4 -name "casttv-receiver-v*-release.apk" 2>/dev/null | head -1)
-          APK=${APK:-$(find . -maxdepth 3 -name "casttv-receiver-v*.apk" ! -name "*-debug.apk" ! -name "*-gitee-sync.apk" 2>/dev/null | head -1)}
-          [ -z "$APK" ] && { echo "No release APK found" >&2; ls -la app/build/outputs/apk/release/ 2>/dev/null || true; ls -la builds/*/ 2>/dev/null || true; exit 1; }
-          NAME=$(basename "$APK")
-          SIZE=$(du -h "$APK" | cut -f1)
+          APK=$(find app/build/outputs/apk/release builds -maxdepth 4 -type f -name "casttv-receiver-v*-release.apk" 2>/dev/null | head -1)
+          APK=${APK:-$(find . -maxdepth 3 -type f -name "casttv-receiver-v*.apk" ! -name "*-debug.apk" ! -name "*-gitee-sync.apk" 2>/dev/null | head -1)}
+          if [ -z "$APK" ]; then
+            echo "No release APK found" >&2
+            ls -la app/build/outputs/apk/release/ 2>&1 || true; ls -la builds/*/ 2>&1 || true; exit 1
+          fi
+          NAME=$(basename "$APK"); SIZE=$(du -h "$APK" | cut -f1)
           VERSION=$(echo "$NAME" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
           [ -z "$VERSION" ] && VERSION=$(grep -oE 'versionName\s*=\s*"[^"]+"' app/build.gradle.kts | head -1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
           SHA=$(git rev-parse --short HEAD)
-          echo "apk=$APK" >> $GITHUB_OUTPUT
-          echo "name=$NAME" >> $GITHUB_OUTPUT
-          echo "size=$SIZE" >> $GITHUB_OUTPUT
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "sha=$SHA"  >> $GITHUB_OUTPUT
+          { echo "apk=$APK"; echo "name=$NAME"; echo "size=$SIZE"
+            echo "version=$VERSION"; echo "sha=$SHA" } >> "$GITHUB_OUTPUT"
           echo "VERSION: $VERSION  SHA: $SHA  FILE: $NAME($SIZE)  PATH: $APK"
 
       - name: Upload Release APK artifact
-        if: success()
+        if: steps.gradleBuild.outcome == 'success'
         uses: actions/upload-artifact@v5
         with:
-          name: release-apk-v${{ steps.apk.outputs.version }}
+          name: release-apk-v${{ steps.apk.outputs.version }}-${{ steps.apk.outputs.sha }}
           path: ${{ steps.apk.outputs.apk }}
           retention-days: 90
 
+      - name: Upload APK to Gitee Releases + update version.json
+        if: steps.gradleBuild.outcome == 'success' && env.GITEE_TOKEN != ''
+        continue-on-error: true
+        id: giteeSync
+        shell: bash
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: ./gradlew syncReleaseToGitee --no-daemon --stacktrace
+
       - name: Publish GitHub Release (仅 tag 推送时)
-        if: startsWith(github.ref, 'refs/tags/v') && success()
+        if: startsWith(github.ref, 'refs/tags/v') && steps.gradleBuild.outcome == 'success'
         uses: softprops/action-gh-release@v2
         with:
           name: Release v${{ steps.apk.outputs.version }}
           tag_name: ${{ github.ref_name }}
-          draft: true                      # 先设成草稿，你到 Release 页改文案再发布
+          draft: true
           prerelease: false
           fail_on_unmatched_files: true
           files: ${{ steps.apk.outputs.apk }}
@@ -297,18 +362,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Release job summary
-        if: success()
+      - name: Final status gate
+        if: always()
         shell: bash
         run: |
-          cat >> $GITHUB_STEP_SUMMARY <<-EOF
-          ## Release 构建完成
-          | 项 | 值 |
-          |---|---|
-          | 版本 | ${{ steps.apk.outputs.version }} |
-          | 提交 | \`${{ steps.apk.outputs.sha }}\` |
-          | APK | ${{ steps.apk.outputs.name }}（${{ steps.apk.outputs.size }}）|
-
-          - 若本次由 tag 触发：Release 草稿已创建，请到 [Releases 页面](/${{ github.repository }}/releases) 编辑后点击 Publish。
-          - 若由 workflow_dispatch 触发：产物只在 Actions Artifacts。
-          EOF
+          if [ "${{ steps.gradleBuild.outcome }}" != "success" ]; then
+            echo "Gradle assembleRelease 失败（steps.gradleBuild.outcome=${{ steps.gradleBuild.outcome }}）" >&2
+            echo "👉 下载 Artifacts 卡片的 build-logs-release-run-${{ github.run_id }}-${{ github.run_attempt }}.zip" >&2
+            exit 1
+          fi
+          echo "Release 构建完成 ✅"

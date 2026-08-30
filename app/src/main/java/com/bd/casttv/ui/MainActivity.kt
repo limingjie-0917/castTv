@@ -98,7 +98,8 @@ import kotlin.math.min
  * rotates cast tutorials, and reacts to incoming cast requests by launching
  * [PlayerActivity] (optionally behind a confirm/password dialog).
  */
-class MainActivity : AppCompatActivity(), PlaybackController.StateObserver {
+class MainActivity : AppCompatActivity(), PlaybackController.StateObserver,
+    com.bd.casttv.ui.framework.SettingsChangeBus.Listener {
 
     companion object {
         private const val TAG = "MainActivity"
@@ -421,6 +422,10 @@ class MainActivity : AppCompatActivity(), PlaybackController.StateObserver {
         favoritesStore = FavoritesStore(this)
         prewarmFavoritesDataAsync()
 
+        // —— 顶部 HomeStatusBar：运行时按主题替换成「透明磨砂毛玻璃」背景，与 GlobalTopStatusBar 视觉 1:1。
+        // XML 中 `@drawable/bg_home_status_bar` 仍保留为默认深灰磨砂兜底（避免 inflate 瞬间白闪）。
+        applyHomeStatusBarTheme()
+
         requestNotificationPermission()
         if (isPhoneHubEnabled()) startPhoneHubServer()
         scheduleRendererStartupWarmup()
@@ -437,6 +442,10 @@ class MainActivity : AppCompatActivity(), PlaybackController.StateObserver {
         // post 到首帧布局完成后再抢焦点，避免 onCreate 阶段焦点尚未就绪导致失效。
         selectTab(DockTab.HOME)
         binding.dockHome.post { binding.dockHome.requestFocus() }
+
+        // 订阅 SettingsChangeBus：主题 / 设备名 / 自定义透明度等变更后即时重绘 HomeStatusBar。
+        // （Dock 内部的主题切换走 recreate()，这里只负责「非 recreate 场景」的实时刷新。）
+        com.bd.casttv.ui.framework.SettingsChangeBus.addListener(this)
 
         // Launched by the renderer service's full-screen intent for a cast that
         // arrived while backgrounded. 冷启动时延后放行，避免服务/页面未就绪就拉起播放器。
@@ -537,8 +546,44 @@ class MainActivity : AppCompatActivity(), PlaybackController.StateObserver {
         cancelIdleTimer()
         ui.removeCallbacks(castLaunchTask)
         pendingCastLaunch = null
+        com.bd.casttv.ui.framework.SettingsChangeBus.removeListener(this)
         ui.removeCallbacksAndMessages(null)
         super.onDestroy()
+    }
+
+    override fun onSettingsChanged() {
+        // 非 recreate 的设置变更（设备名、内容面板自定义、状态栏染色膜透明度）：
+        // 立即把 HomeStatusBar 的磨砂背景 / 文字色 / 设备名同步到最新主题。
+        runOnUiThread {
+            applyHomeStatusBarTheme()
+            binding.textDeviceName.text = settings.deviceName
+            renderServiceStatus()
+        }
+    }
+
+    /**
+     * Home 页顶部状态栏：用 [ThemeManager.frostedStatusBarBackground] 替换 XML 默认背景，
+     * 并同步刷新所有文本 / 图标色 token，保证老 Home 与 NewMainActivity.GlobalTopStatusBar 视觉一致。
+     * 左侧结构与新框架同构：<页面标题>｜<竖分隔线>｜设备名称：<设备名>。
+     */
+    private fun applyHomeStatusBarTheme() {
+        val palette = ThemeManager.currentPalette(this@MainActivity)
+        binding.homeStatusBar.background = ThemeManager.frostedStatusBarBackground(
+            this@MainActivity, palette, withDivider = true
+        )
+        val tokens = ThemeManager.statusBarTextTokens(this@MainActivity)
+        // 页面标题（老框架首页固定显示「投屏大厅」，与新框架的"首页空标题"差异化，但结构一致）
+        binding.textStatusBarPageTitle.setTextColor(tokens.textPrimary)
+        binding.textStatusBarPageTitle.text = "投屏大厅"
+        // 标题与设备名之间的竖分隔线：按 textSecondary 半透明（与 GlobalTopStatusBar 同步）
+        val sc = tokens.textSecondary
+        val dividerColor = android.graphics.Color.argb(160, android.graphics.Color.red(sc), android.graphics.Color.green(sc), android.graphics.Color.blue(sc))
+        binding.statusBarTitleDivider.setBackgroundColor(dividerColor)
+        // 设备名
+        binding.labelDeviceName.setTextColor(tokens.textSecondary)
+        binding.textDeviceName.setTextColor(tokens.textPrimary)
+        // 时间用主信息色；在线 DLNA/AirPlay 图标色在 renderServiceStatus() 内已经按 tokens.iconOn/iconOff 走。
+        binding.textStatusTime.setTextColor(tokens.textPrimary)
     }
 
     /**
@@ -714,13 +759,19 @@ class MainActivity : AppCompatActivity(), PlaybackController.StateObserver {
     }
 
     private fun tintSignal(icon: ImageView, running: Boolean, starting: Boolean) {
+        val tokens = ThemeManager.statusBarTextTokens(this@MainActivity)
         val color = when {
-            running -> android.graphics.Color.parseColor("#FFFFFFFF")
-            starting -> android.graphics.Color.parseColor("#80FFFFFF")
-            else -> android.graphics.Color.parseColor("#66FFFFFF")
+            running -> tokens.iconOn
+            starting -> withAlphaCompat(tokens.iconOn, 140)
+            else -> tokens.iconOff
         }
-        icon.setColorFilter(color)
-        icon.alpha = if (running) 1f else if (starting) 0.5f else 0.42f
+        icon.setColorFilter(color, android.graphics.PorterDuff.Mode.SRC_IN)
+        icon.alpha = if (running) 1f else if (starting) 0.55f else 0.46f
+    }
+
+    private fun withAlphaCompat(color: Int, alpha: Int): Int {
+        val a = alpha.coerceIn(0, 255) and 0xFF
+        return (0x00FFFFFF and color) or (a shl 24)
     }
 
     /** 兜底：异常路径下也要给出稳定的双协议展示（均按「未开启」渲染，避免误导）。 */

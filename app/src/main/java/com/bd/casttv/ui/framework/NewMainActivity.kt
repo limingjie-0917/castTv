@@ -73,6 +73,8 @@ class NewMainActivity : AppCompatActivity(), SettingsChangeBus.Listener, PageCon
         private const val SIDE_PAGE_BUTTON_SIZE_DP = 62
         private const val SIDE_PAGE_BUTTON_MARGIN_DP = 8
         private const val SIDE_EDGE_GLOW_WIDTH_DP = 84
+        /** 全局顶部状态栏高度（原 40dp，按 UI 优化要求收窄 5dp → 35dp）。 */
+        const val TOP_STATUS_BAR_HEIGHT_DP = 35
     }
 
     private lateinit var pageContainer: PageContainer
@@ -140,6 +142,7 @@ class NewMainActivity : AppCompatActivity(), SettingsChangeBus.Listener, PageCon
         pageContainer.pageChangeListener = object : PageContainer.PageChangeListener {
             override fun onPageChanged(page: BasePage, index: Int) {
                 updateSidePageButtons()
+                syncStatusBarPageTitle()
             }
         }
         root.addView(pageContainer, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
@@ -151,7 +154,7 @@ class NewMainActivity : AppCompatActivity(), SettingsChangeBus.Listener, PageCon
         root.addView(rightEdgeGlow, FrameLayout.LayoutParams(dp(SIDE_EDGE_GLOW_WIDTH_DP), FrameLayout.LayoutParams.MATCH_PARENT, Gravity.END))
 
         topStatusBar = GlobalTopStatusBar(this).apply { setDeviceName(settings.dlnaDeviceName.ifBlank { Settings.DEFAULT_DEVICE_NAME }) }
-        root.addView(topStatusBar, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(40), Gravity.TOP))
+        root.addView(topStatusBar, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(TOP_STATUS_BAR_HEIGHT_DP), Gravity.TOP))
 
         indicator = BottomIndicatorBar(this).apply { setBackgroundColor(android.graphics.Color.TRANSPARENT) }
         root.addView(indicator, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, dp(66), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(6) })
@@ -170,6 +173,7 @@ class NewMainActivity : AppCompatActivity(), SettingsChangeBus.Listener, PageCon
         pageContainer.bindLazyPages(buildPageSpecs(settings))
         if (isLauncherLayoutMode()) indicator.visibility = View.GONE
         updateSidePageButtons()
+        syncStatusBarPageTitle()
 
         handlePlayerReturnIntent(intent)
         handleCastPendingIntent(intent)
@@ -907,11 +911,27 @@ class NewMainActivity : AppCompatActivity(), SettingsChangeBus.Listener, PageCon
         if (::topStatusBar.isInitialized) {
             topStatusBar.setDeviceName(settings.dlnaDeviceName.ifBlank { Settings.DEFAULT_DEVICE_NAME })
             topStatusBar.refreshTheme()
+            syncStatusBarPageTitle()
         }
         indicator.setScale(settings.indicatorScale)
         indicator.visibility = if (isLauncherLayoutMode()) View.GONE else View.VISIBLE
         WallpaperManager.notifyChanged(this)
         updateSidePageButtons()
+    }
+
+    /**
+     * 把当前最顶层可见页面（overlay 栈优先，否则 pageContainer.currentPage）的标题同步到全局状态栏。
+     * 「首页」pageId=home / more_functions 默认不显示标题（Home 大字/更多功能网格本身已经表达当前位置）。
+     */
+    private fun syncStatusBarPageTitle() {
+        if (!::topStatusBar.isInitialized) return
+        val top = overlayPages.lastOrNull() ?: currentPage()
+        val title = when {
+            top == null -> ""
+            top.pageId == "home" || top.pageId == "more_functions" -> ""
+            else -> top.pageTitle.orEmpty()
+        }
+        topStatusBar.setPageTitle(title)
     }
 
     private fun refreshCurrentPageAfterPlayerReturn() {
@@ -968,6 +988,7 @@ class NewMainActivity : AppCompatActivity(), SettingsChangeBus.Listener, PageCon
         pageContainer.instantiatedPages().forEach { it.refreshTheme() }
         WallpaperManager.notifyChanged(this)
         updateSidePageButtons()
+        syncStatusBarPageTitle()
     }
 
     override fun onRootFocusStateChanged(active: Boolean) {
@@ -1238,17 +1259,23 @@ class NewMainActivity : AppCompatActivity(), SettingsChangeBus.Listener, PageCon
         page.translationY = 0f
         page.x = 0f
         page.y = 0f
+        // 更多功能页：启动台模式下从底部滑入，此时仍覆盖主页面内容，但详情页（功能卡片点击打开）
+        // 必须保持顶部 GlobalTopStatusBar 可见，因此 overlay 区域从状态栏下方开始（topMargin = bar 高度）。
+        val statusBarTop = dp(TOP_STATUS_BAR_HEIGHT_DP)
         val overlayLp = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
         ).apply {
             leftMargin = 0
-            topMargin = 0
+            topMargin = statusBarTop
             rightMargin = 0
             bottomMargin = 0
             gravity = Gravity.FILL
         }
         page.layoutParams = overlayLp
+        // overlay 的 layoutParams 已经把整个页面容器推到状态栏下方，
+        // wrapper 内部无需再次补偿 35dp bar 高度，仅留 8dp 呼吸间距，避免双重留白。
+        page.overrideWrapperTopPaddingPx(dp(8))
         page.isFocusable = true
         page.isFocusableInTouchMode = true
         page.isClickable = true
@@ -1276,6 +1303,7 @@ class NewMainActivity : AppCompatActivity(), SettingsChangeBus.Listener, PageCon
         if (requestFocusAfterAttach) {
             page.post { page.focusToFirstContent() }
         }
+        syncStatusBarPageTitle()
     }
 
     /**
@@ -1306,6 +1334,7 @@ class NewMainActivity : AppCompatActivity(), SettingsChangeBus.Listener, PageCon
                 top.post { top.refreshCards() }
             }
         }
+        syncStatusBarPageTitle()
     }
 
     private class SideEdgeGlowView(context: Context, private val isLeft: Boolean) : View(context) {

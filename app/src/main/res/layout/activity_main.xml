@@ -218,7 +218,7 @@
             <LinearLayout
                 android:id="@+id/homeStatusBar"
                 android:layout_width="match_parent"
-                android:layout_height="40dp"
+                android:layout_height="35dp"
                 android:background="@drawable/bg_home_status_bar"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
@@ -231,6 +231,27 @@
                     android:layout_weight="1"
                     android:gravity="center_vertical"
                     android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/textStatusBarPageTitle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:text="投屏大厅"
+                        android:textColor="@color/text_primary"
+                        android:textSize="13sp"
+                        android:textStyle="bold" />
+
+                    <View
+                        android:id="@+id/statusBarTitleDivider"
+                        android:layout_width="1dp"
+                        android:layout_height="18dp"
+                        android:layout_marginStart="12dp"
+                        android:layout_marginEnd="12dp"
+                        android:background="@color/text_secondary" />
+
                     <TextView
                         android:id="@+id/labelDeviceName"
                         android:layout_width="wrap_content"
@@ -243,7 +264,7 @@
                         android:id="@+id/textDeviceName"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
+                        android:layout_marginStart="4dp"
                         android:ellipsize="end"
                         android:maxLines="1"
                         android:text="客厅电视"

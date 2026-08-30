@@ -511,6 +511,16 @@ class MoreFunctionsPage(
 
                 // 图标 chip 按卡品牌色渐变填充，每卡获得色彩身份（复活死代码 colors）。
                 logoIcon.setImageResource(item.iconRes)
+                // 2026-08：动画城按参考太阳笑脸画成了全彩色图标，必须移除 imageTint 才能显示蓝/橙/黄/红；
+                // 其他功能卡片（设置/帮助/收藏…）仍是浅色线稿，继续走统一浅灰 Tint，不互相污染。
+                // RecyclerView 复用：非动画城卡必须把 tint 重新写回去。
+                val cartoonTint = item.pageId == "cartoon_city"
+                logoIcon.imageTintList = if (cartoonTint) {
+                    null
+                } else {
+                    ColorStateList.valueOf(Color.rgb(232, 234, 240))
+                }
+                // logoIcon 本身还是浅灰的半透描边盘（保持玻璃盘质感），彩色太阳落在盘心。
                 if (item.colors.isNotEmpty()) {
                     logoBgDrawable.colors = item.colors
                     logoBgDrawable.orientation = GradientDrawable.Orientation.TL_BR

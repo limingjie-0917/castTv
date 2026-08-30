@@ -32,10 +32,30 @@ abstract class BasePage @JvmOverloads constructor(context: Context, attrs: Attri
     open val contentPanelTopPaddingDp: Int get() = 8
 
     /**
-     * 是否展示统一的顶部标题栏（贴纸 + [pageTitle] + 焦点感知渐变分隔线）。
-     * 主页 HomePage / 自定义 Tab 页 CustomTabPage 保持关闭，其他 6 个非主页开启。
-     * 用 `get()` 写法可安全绕过 Kotlin 父类 init 读取子类字段时机的问题。
+     * 内容区域左右外边距（dp）。
+     *  - 首页 / 更多功能这类整页大卡栅格：默认 0，左右顶满安全区外框。
+     *  - 其他页面：页面标题栏移除后内容直接贴在 GlobalTopStatusBar 下方，
+     *    左右从 56dp 收紧到 24dp，更合理利用「去掉页面标题栏后」释放出来的横向空间；
+     *    顶部由全局 [wrapperTopPaddingDp] 统一预留（35dp bar + 8dp 呼吸 = 43dp）。
      */
+    open val contentHorizontalMarginDp: Int
+        get() = if (pageId == "home" || pageId == "more_functions") 0 else 24
+
+    /**
+     * wrapper 顶部内边距（dp）：为 GlobalTopStatusBar（35dp）预留 + 8dp 呼吸间距，
+     * 避免内容贴住/叠加到全局状态栏。首页与其他页面统一。
+     */
+    open val wrapperTopPaddingDp: Int
+        get() = 43 // 35 (bar) + 8 (gap)
+
+    /**
+     * 是否展示统一的顶部标题栏（贴纸 + [pageTitle] + 焦点感知渐变分隔线）。
+     *
+     * ⚠️ 2026-08 v1.2.x 起，页面标题已统一收敛进 [GlobalTopStatusBar] 的左侧（页标题｜设备名），
+     * 各页面不再单独绘制顶部标题栏与分隔线。本属性保留为可覆盖 API，仅作为未来二开/特殊页面的兜底开关；
+     * 当前框架会在 [BasePage] 初始化时强制不显示（即使子类覆写为 true 也忽略）。
+     */
+    @Suppress("MemberVisibilityCanBePrivate")
     open val showPageHeader: Boolean get() = false
 
     /**
@@ -56,23 +76,45 @@ abstract class BasePage @JvmOverloads constructor(context: Context, attrs: Attri
     /** 页头视图：由 BasePage 统一插入，pages 无需再自行绘制标题；可通过 [showPageHeader] 关闭。 */
     val pageHeader: PageHeaderView = PageHeaderView(context).apply { visibility = View.GONE }
 
+    /** 内部 wrapper（content 的竖向父容器）引用，供 [pushOverlayPage] 等场景按需覆写顶部留白。 */
+    private var wrapperView: LinearLayout? = null
+
+    /**
+     * 覆写 wrapper 的顶部留白（像素）。
+     *
+     * 典型场景：Overlay 浮层（更多功能详情页等）在 [NewMainActivity] 已经通过 FrameLayout topMargin
+     * 把整个浮层推到了 GlobalTopStatusBar 下方，因此 wrapper 内部不再需要再次补偿 35dp bar 高度，
+     * 只保留 8dp 呼吸间距即可，避免出现 43dp 的大片空挡。
+     *
+     * @param paddingPx 新的顶部内边距（像素）。传 null 恢复根据 [wrapperTopPaddingDp] 计算的默认值。
+     */
+    fun overrideWrapperTopPaddingPx(paddingPx: Int?) {
+        val w = wrapperView ?: return
+        val target = paddingPx ?: dp(wrapperTopPaddingDp)
+        w.setPadding(w.paddingLeft, target, w.paddingRight, w.paddingBottom)
+    }
+
     private var isRootFocusState = false
 
     init {
-        // 纵向包一层：[pageHeader (顶部, 反白状态栏预留)] + [ScrollView(contentContainer) 或 contentContainer 直接铺满]
+        // 纵向包一层：[pageHeader (当前已统一收敛进 GlobalTopStatusBar，默认 GONE，保留占位结构/API 以便二开)]
+        //           + [ScrollView(contentContainer) 或 contentContainer 直接铺满]
+        // 顶部留白：由 [wrapperTopPaddingDp] 统一承担（35dp bar + 8dp 呼吸间距），避免内容贴住状态栏。
         val wrapper = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             clipChildren = false
             clipToPadding = false
+            setPadding(0, dp(wrapperTopPaddingDp), 0, 0)
         }
-        // 页头在最顶，为顶部 40dp GlobalTopStatusBar 预留空间，并额外留 8dp 小间距，避免标题栏贴住全局状态栏。
+        wrapperView = wrapper
+        // pageHeader 自身 margins：与内容区域左右边距保持对齐（contentHorizontalMarginDp），
+        // 顶部间距已由 wrapper 级 padding 统一承担，这里不再叠加。
+        val horizontalInset = dp(contentHorizontalMarginDp)
         wrapper.addView(
             pageHeader,
             LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = dp(48)
-                bottomMargin = dp(0)
-                leftMargin = dp(56)
-                rightMargin = dp(56)
+                leftMargin = horizontalInset
+                rightMargin = horizontalInset
             }
         )
 
@@ -111,16 +153,16 @@ abstract class BasePage @JvmOverloads constructor(context: Context, attrs: Attri
                 )
             )
             wrapper.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f).apply {
-                leftMargin = if (useContentPanel) dp(56) else 0
-                rightMargin = if (useContentPanel) dp(56) else 0
-                topMargin = if (showPageHeader) dp(1) else 0
+                leftMargin = horizontalInset
+                rightMargin = horizontalInset
+                topMargin = 0
                 bottomMargin = if (useContentPanel) dp(18) else 0
             })
         } else {
             wrapper.addView(contentHost, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f).apply {
-                leftMargin = if (useContentPanel) dp(56) else 0
-                rightMargin = if (useContentPanel) dp(56) else 0
-                topMargin = if (showPageHeader) dp(1) else 0
+                leftMargin = horizontalInset
+                rightMargin = horizontalInset
+                topMargin = 0
                 bottomMargin = if (useContentPanel) dp(18) else 0
             })
         }
@@ -141,15 +183,11 @@ abstract class BasePage @JvmOverloads constructor(context: Context, attrs: Attri
             )
         }
 
-        // 页头初始化：延后到子类 init 完成后执行，避免读到未初始化的 override 字段。
+        // 页头初始化：延后到子类 init 完成后执行。
+        // 注意：自 v1.2.x 起，页面标题统一收敛进 GlobalTopStatusBar，这里强制不显示，
+        // 即便子类覆写 showPageHeader=true 也忽略（遵循用户侧的「去掉各页面顶部标题栏与分隔线」要求）。
         post {
-            if (showPageHeader) {
-                pageHeader.visibility = View.VISIBLE
-                pageHeader.bind(pageStickerRes, pageTitle)
-                pageHeader.setPageFocused(hasFocusAwayFromRoot())
-            } else {
-                pageHeader.visibility = View.GONE
-            }
+            pageHeader.visibility = View.GONE
         }
     }
 

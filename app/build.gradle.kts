@@ -17,8 +17,8 @@ plugins {
 //    - 人工禁止手改 BASE_VERSION_* / defaultConfig.versionCode / defaultConfig.versionName
 // =====================================================================
 // ⚠ 基线：每次构建 bumpVersion 会递增并写回本处这两行
-val BASE_VERSION_CODE: Int = 471
-val BASE_VERSION_NAME: String = "1.2.196"
+val BASE_VERSION_CODE: Int = 476
+val BASE_VERSION_NAME: String = "1.2.201"
 
 val buildGradleFile = layout.projectDirectory.file("build.gradle.kts").asFile
 
@@ -219,12 +219,16 @@ android.applicationVariants.configureEach {
     }
 }
 
-// 保留现有 `exportApk`/`exportReleaseApk` 任务：作为手动二次导出别名，读取 canonical 产物按当前文件字面量版本复制
+// 保留现有 `exportApk`/`exportReleaseApk` 任务：作为 assemble* 的 finalizedBy 二次导出。
+// ⚠️ 注意：必须读取 `versionBump`（配置阶段已计算好的「本次构建版本」），
+// 而不能在 doLast 里再次读文件字面量 — bumpVersion 在 preBuild.doFirst 里已经把文件写回成 +1，
+// 配置期读取的 BASE_VERSION_* 与执行期文件内容会因为配置快照不同步导致
+// 「assembleDebug 已按 197 命名 APK，exportApk 却去找 198」的越位错误。
 val exportApk = tasks.register("exportApk") {
     group = "build"
     description = "Alias: copies debug APK mirror (no-op unless assembleDebug ran)"
     doLast {
-        val (_, vn) = readCurrentVersions() ?: throw GradleException("读取版本号失败")
+        val vn = versionBump.toName
         val fromApk = layout.buildDirectory
             .file("outputs/apk/debug/casttv-receiver-v${vn}-debug.apk").get().asFile
         if (!fromApk.exists()) {
@@ -244,7 +248,7 @@ val exportReleaseApk = tasks.register("exportReleaseApk") {
     group = "build"
     description = "Alias: copies release APK mirror (no-op unless assembleRelease ran)"
     doLast {
-        val (_, vn) = readCurrentVersions() ?: throw GradleException("读取版本号失败")
+        val vn = versionBump.toName
         val fromApk = layout.buildDirectory
             .file("outputs/apk/release/casttv-receiver-v${vn}-release.apk").get().asFile
         if (!fromApk.exists()) {
