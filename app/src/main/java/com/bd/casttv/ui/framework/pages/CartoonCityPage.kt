@@ -823,7 +823,7 @@ class CartoonCityPage(context: Context) : BasePage(context) {
             val rPx = CartoonDesign.dp(ctx, cardR.dp).toFloat()
             val base = GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
-                intArrayOf(Color.parseColor("#1677FF"), Color.parseColor("#5BC0EB"))
+                intArrayOf(Color.parseColor("#1C9BDB"), Color.parseColor("#5BC0EB"))
             ).apply {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = rPx
