@@ -384,6 +384,8 @@ class SettingsPage(context: Context) : BasePage(context) {
         val confirmBtn = dialogButton("确定") {
             settings.deviceName = input.text.toString().trim().ifBlank { Settings.DEFAULT_DEVICE_NAME }
             toast("设备名称已更新")
+            // 重启 DLNA 服务让新名称生效（关闭抖音适配时 dlnaDeviceName 跟随 deviceName）
+            triggerDlnaIdentityRestart()
             SettingsChangeBus.notifyChanged()
             refresh()
             dialog.dismiss()
@@ -2015,15 +2017,16 @@ class SettingsPage(context: Context) : BasePage(context) {
             orientation = LinearLayout.VERTICAL
             clipChildren = false
             clipToPadding = false
+            setPadding(dp(40), dp(8), dp(40), dp(8))
         }
         val scroll = ScrollView(context).apply {
             isFillViewport = false
             clipChildren = true
-            clipToPadding = true
-            setPadding(dp(8), dp(8), dp(8), dp(8))
+            clipToPadding = false
+            setPadding(dp(10), dp(0), dp(10), dp(0))
             addView(listContainer, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         }
-        panel.addView(scroll, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(360)))
+        panel.addView(scroll, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(280)))
 
         val dialog = AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog).setView(panel).create()
         dialog.setOnShowListener {

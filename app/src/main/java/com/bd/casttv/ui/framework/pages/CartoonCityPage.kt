@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
@@ -220,8 +221,11 @@ class CartoonCityPage(context: Context) : BasePage(context) {
 
     init {
         val outer = FrameLayout(context).apply {
-            // 左右 20 / 上 12 / 下 28：保持 clipChildren=true 裁剪溢出
-            setPadding(dp(20), dp(12), dp(20), dp(28))
+            // 顶底 20dp 内边距：卡片与 RV 上下边界的呼吸空间。
+            // clipChildren=true：与 RV 的 clipChildren=false 配合，作为最终裁剪防线。
+            setPadding(0, dp(20), 0, dp(20))
+            clipChildren = true
+            clipToPadding = false
         }
         val rv = RecyclerView(context).apply {
             layoutManager = GridLayoutManager(context, SPAN_COUNT)
@@ -231,11 +235,12 @@ class CartoonCityPage(context: Context) : BasePage(context) {
             isFocusable = false
             isFocusableInTouchMode = false
             descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
-            clipChildren = true
+            // clipChildren=false：不裁剪卡片焦点态溢出，由 outer(pageOuter) 限制。
+            // clipToPadding=false：允许溢出到 RV padding 区。
+            setPadding(0, 0, 0, 0)
+            clipChildren = false
             clipToPadding = false
-            // 内边距主要由 outer 承担，RV 自身只留少量上下边距避免首/末行卡到顶/底边
-            setPadding(0, dp(context, 6), 0, dp(context, 6))
-            addItemDecoration(CartoonItemDecoration(dp(context, 14), dp(context, 18), SPAN_COUNT))
+            addItemDecoration(CartoonItemDecoration(dp(context, 4), dp(context, 38), SPAN_COUNT, dp(context, 10)))
         }
         grid = rv
         outer.addView(rv, FrameLayout.LayoutParams(
@@ -607,7 +612,8 @@ class CartoonCityPage(context: Context) : BasePage(context) {
     private class CartoonItemDecoration(
         private val hGap: Int,
         private val vGap: Int,
-        private val spanCount: Int
+        private val spanCount: Int,
+        private val dp10: Int
     ) : RecyclerView.ItemDecoration() {
         override fun getItemOffsets(
             outRect: android.graphics.Rect,
@@ -620,8 +626,12 @@ class CartoonCityPage(context: Context) : BasePage(context) {
             val each = hGap / spanCount
             outRect.left = hGap - col * each
             outRect.right = (col + 1) * each
-            outRect.top = if (pos < spanCount) 0 else vGap
-            outRect.bottom = 0
+            // 首行上方 +10dp margin
+            outRect.top = if (pos < spanCount) dp10 else vGap
+            // 最后一行下方 +10dp margin
+            val total = parent.adapter?.itemCount ?: 0
+            val lastRowStart = ((total + spanCount - 1) / spanCount - 1) * spanCount
+            outRect.bottom = if (pos >= lastRowStart && pos < total) dp10 else 0
         }
     }
 
@@ -694,6 +704,9 @@ class CartoonCityPage(context: Context) : BasePage(context) {
             val card = object : FrameLayout(parent.context) {
                 private val clipPath = Path()
                 private val clipRect = RectF()
+                private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    style = Paint.Style.STROKE
+                }
                 override fun dispatchDraw(canvas: Canvas) {
                     val w = width.toFloat(); val h = height.toFloat()
                     if (w > 0f && h > 0f && (clipRect.width() != w || clipRect.height() != h)) {
@@ -708,33 +721,46 @@ class CartoonCityPage(context: Context) : BasePage(context) {
                     } finally {
                         if (saveCount != 0) canvas.restoreToCount(saveCount)
                     }
+                    // 焦点态描边：画在子 View 之上，盖住封面边缘
+                    if (isSelected) {
+                        strokePaint.color = CartoonDesign.Palette.ACCENT
+                        strokePaint.strokeWidth = CartoonDesign.dp(parent.context, 4).toFloat()
+                        canvas.drawRoundRect(clipRect, rPx, rPx, strokePaint)
+                    }
                 }
             }.apply {
                 clipChildren = false
                 clipToPadding = false
-                // 1dp 内边距：封面几乎填满卡片，仅留极细玻璃边
-                val pad = CartoonDesign.dp(parent.context, 1)
-                setPadding(pad, pad, pad, pad)
                 outlineProvider = ViewOutlineProvider.BACKGROUND
+                // 透明背景：保留 LayerDrawable 三层结构（base/glow/shadow）以便 liquidGlassToFocused
+                // 焦点态描边仍能工作，但所有填充设为透明——卡片无液态玻璃底色，仅焦点时显示 4px 暖黄描边。
                 background = CartoonDesign.liquidGlassDrawable(
                     parent.context,
                     CARD_R,
                     CartoonDesign.TintMode.BASE,
                     CartoonDesign.Palette.STROKE_SOFT
-                )
+                ).also {
+                    (it.getDrawable(0) as? GradientDrawable)?.colors =
+                        intArrayOf(Color.TRANSPARENT, Color.TRANSPARENT)
+                    (it.getDrawable(1) as? GradientDrawable)?.colors =
+                        intArrayOf(Color.TRANSPARENT, Color.TRANSPARENT)
+                    (it.getDrawable(2) as? GradientDrawable)?.colors =
+                        intArrayOf(Color.TRANSPARENT, Color.TRANSPARENT)
+                }
             }
             outer.addView(card, FrameLayout.LayoutParams(cardW, totalH, Gravity.CENTER_HORIZONTAL))
 
             return if (viewType == TYPE_MGMT) {
                 createManagementHolder(outer, card, parent, CARD_R)
             } else {
-                createCartoonHolder(outer, card, parent, coverH, titleBar, CARD_R)
+                createCartoonHolder(outer, card, card, parent, coverH, titleBar, CARD_R)
             }
         }
 
         private fun createCartoonHolder(
             root: FrameLayout,
             outer: FrameLayout,
+            card: FrameLayout,
             parent: ViewGroup,
             coverH: Int,
             titleBarPx: Int,
@@ -795,20 +821,21 @@ class CartoonCityPage(context: Context) : BasePage(context) {
                 gravity = Gravity.BOTTOM or Gravity.START
             }
             // 结构（全部塞进 card）：封面 → 渐变遮罩 → 标题 → 徽章
-            outer.addView(image, FrameLayout.LayoutParams(
+            // 子 View 加到 card 而非 outer，使 card.dispatchDraw 的焦点描边能画在子 View 之上。
+            card.addView(image, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 Gravity.TOP or Gravity.CENTER_HORIZONTAL
             ))
-            outer.addView(bottomShade, FrameLayout.LayoutParams(
+            card.addView(bottomShade, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 CartoonDesign.dp(ctx, 110),
                 Gravity.BOTTOM
             ))
-            outer.addView(name, FrameLayout.LayoutParams(
+            card.addView(name, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, titleBarPx, Gravity.BOTTOM
             ))
-            outer.addView(badge, FrameLayout.LayoutParams(
+            card.addView(badge, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END
             ).apply { setMargins(0, CartoonDesign.dp(ctx, 10), CartoonDesign.dp(ctx, 10), 0) })
@@ -920,22 +947,18 @@ class CartoonCityPage(context: Context) : BasePage(context) {
             outer.setOnFocusChangeListener { _, has ->
                 if (!has) BoundaryFocusHandler.cancelShake(outer)
                 CartoonDesign.liquidGlassToFocused(itemView.context, card, has)
+                // card.isSelected 驱动 dispatchDraw 中的焦点描边（画在子 View 之上，盖住封面边缘）
+                card.isSelected = has
                 // 2026-08：焦点 fx 必须落到 card 这层（液态玻璃 LayerDrawable 有圆角 background +
                 // ViewOutlineProvider.BACKGROUND 输出实心轮廓），不能落 outer（无背景、轮廓为空）。
-                // 之前写 outer → translationZ 8dp 的暖黄 spotShadow 在 Android TV 上被当成"空投影"几乎
-                // 不可见；同时卡片 warm-yellow 2dp 边框在深海报上又被盖掉，两个机制一起失效。
                 if (has) FocusFxHelper.applyFocusFxState(card, true, cornerRadiusDp = CartoonDesign.Radius.SM.dp)
                 else {
                     FocusFxHelper.applyFocusFxState(card, false, cornerRadiusDp = CartoonDesign.Radius.SM.dp)
                     card.foreground = null
                 }
             }
-            // 2026-08：parent clip 必须在 ViewHolder 初始化时就关闭。
-            // 旧实现放在 hasFocus=true 分支里 → 第一次聚焦瞬间，父 RecyclerView/外层默认 clip=true，
-            // FocusFx 的 scale 1.05 + 4px 双层边框 + spotShadow 在首帧立刻被裁掉，用户看到的就是
-            // "边框不明显/感觉没聚焦"。之后即便 disableClippingUp 生效，首帧视觉已经被用户误判。
-            FocusFxHelper.disableClippingUp(card, maxDepth = 4)
-            FocusFxHelper.disableClippingUp(outer, maxDepth = 4)
+            // 卡片焦点态裁剪方案：RV padding 20dp 缓冲区 + clipChildren=true 防线 + clipToPadding=false。
+            // 不再需要 disableClippingUp 关闭父链 clip——溢出控制在 RV padding 区内。
             outer.setOnClickListener {
                 val item = current ?: return@setOnClickListener
                 openCartoon(item, outer)
@@ -1024,9 +1047,7 @@ class CartoonCityPage(context: Context) : BasePage(context) {
                     outer.foreground = null
                 }
             }
-            // 与 CartoonVH 同步：init 阶段就关闭父链裁剪，避免首帧裁切
-            FocusFxHelper.disableClippingUp(card, maxDepth = 4)
-            FocusFxHelper.disableClippingUp(outer, maxDepth = 4)
+            // 卡片焦点态裁剪方案：RV padding 20dp 缓冲区 + clipChildren=true 防线 + clipToPadding=false。
             outer.setOnClickListener { openManagement(outer) }
             outer.setOnKeyListener { _, keyCode, event ->
                 if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false

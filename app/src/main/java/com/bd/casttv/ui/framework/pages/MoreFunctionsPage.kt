@@ -302,8 +302,8 @@ class MoreFunctionsPage(
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
             val screenW = resources.displayMetrics.widthPixels
-            // scrollContainerPad(16*2=32) + 卡片左右 margin(12*2*4=96) = 128dp
-            val horizontal = dp(32) + dp(12) * 8
+            // scrollContainerPad(16*2=32) + 卡片左右 margin(26*2*4=208) = 240dp
+            val horizontal = dp(32) + dp(26) * 8
             val cardW = ((screenW - horizontal) / 4f).toInt()
             val cardH = (cardW * 9f / 16f).toInt()
 
@@ -315,8 +315,8 @@ class MoreFunctionsPage(
                 clipToPadding = false
                 setPadding(0, 0, 0, 0)
                 layoutParams = RecyclerView.LayoutParams(cardW, cardH + dp(18)).apply {
-                    leftMargin = dp(12)
-                    rightMargin = dp(12)
+                    leftMargin = dp(26)
+                    rightMargin = dp(26)
                     bottomMargin = dp(18)
                 }
             }

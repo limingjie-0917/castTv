@@ -99,7 +99,7 @@ class CartoonManagementDialog(
         rowRefreshers.clear()
         selected.clear()
 
-        // ===== §一 容器：主题磨砂面板 + 分栏四段式骨架（顶栏 / 按键提示 / 滚动列表 / 按钮栏） =====
+        // ===== §一 容器：主题磨砂面板 + 分栏三段式骨架（顶栏 / 滚动列表 / 按钮栏） =====
         val panel = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             // §二 主面板：dialogTitleGradient 渐变背景 + 暖黄描边（对齐 WebParseHistoryDialog 样式）
@@ -186,66 +186,14 @@ class CartoonManagementDialog(
         ).apply { bottomMargin = dp(16) })
 
         // ------------------------------------------------------------------
-        // 2) 按键提示条：暖黄胶囊 icon + 三段说明；行高与标题栏分隔明显
-        // ------------------------------------------------------------------
-        val hintBar = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            // 半透明 SURFACE_2 胶囊底 + 软白内折射边，整体"信息提示"语义
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(14).toFloat()
-                setColor(Color.argb(90, 24, 28, 44))
-                setStroke(Math.max(1, dp(1)), Color.argb(120, 220, 228, 246))
-            }
-            setPadding(dp(14), dp(10), dp(14), dp(10))
-            clipChildren = false; clipToPadding = false
-        }
-        // 小光灯泡："提示"图形（用 SVG 感的圆角方块 + 感叹号画，避免缺 drawable）
-        val hintIcon = TextView(context).apply {
-            text = "\u24D8"   // ⓘ 信息环
-            textSize = 16f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
-            setTextColor(crayonYellow)
-            background = GradientDrawable().apply {
-                cornerRadius = dp(8).toFloat()
-                setColor(Color.argb(70, Color.red(crayonYellow), Color.green(crayonYellow), Color.blue(crayonYellow)))
-                setStroke(Math.max(1, dp(1)), crayonYellow)
-            }
-            val s = dp(26); setPadding(0, 0, 0, 0)
-            layoutParams = LinearLayout.LayoutParams(s, s)
-        }
-        hintBar.addView(hintIcon)
-        // 主提示：三段短句 + 语义色键位
-        val hintText = TextView(context).apply {
-            setTextIsSelectable(false); isFocusable = false
-            textSize = 14f; setLineSpacing(dp(1).toFloat(), 1.1f)
-            setTextColor(textSecondary)
-            val ssb = SpannableStringBuilder()
-            val keyColor = Color.rgb(255, 255, 255)
-            fun appendKey(s: String) {
-                val p0 = ssb.length; ssb.append(s)
-                ssb.setSpan(ForegroundColorSpan(keyColor), p0, ssb.length, 0)
-                ssb.setSpan(object : android.text.style.StyleSpan(Typeface.BOLD) {}, p0, ssb.length, 0)
-            }
-            appendKey("↑ ↓ ← →"); ssb.append(" 移动焦点  ·  ")
-            appendKey("确定"); ssb.append(" 勾选条目  ·  ")
-            appendKey("返回"); ssb.append(" 关闭  ·  勾选后点击底部")
-            appendKey(" 删除选中")
-            text = ssb
-        }
-        hintBar.addView(hintText, LinearLayout.LayoutParams(
-            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
-        ).apply { marginStart = dp(12) })
-        panel.addView(hintBar, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { bottomMargin = dp(16) })
-
-        // ------------------------------------------------------------------
-        // 3) 滚动容器：放置在「提示条下方 + 按钮栏上方」，裁剪保持 true，溢出隐藏
+        // 2) 滚动容器：放置在「标题栏下方 + 按钮栏上方」，裁剪保持 true，溢出隐藏
         // ------------------------------------------------------------------
         // §二 通用可聚焦选项行（bg_dialog_focus_item 语义，三态）
         val list = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
+            // clipChildren=false：不裁剪 row 焦点态溢出，让放大+发光到达 scroll padding 缓冲区。
+            clipChildren = false
+            clipToPadding = false
         }
         val focusRows = mutableListOf<View>()
         lateinit var refresher: () -> Unit
@@ -262,38 +210,28 @@ class CartoonManagementDialog(
             isFocusable = false; isFocusableInTouchMode = false
             descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
             isVerticalScrollBarEnabled = false
-            clipChildren = true
-            clipToPadding = true
+            // 撑满弹窗宽度，左右 20dp 内边距作为 row 焦点态溢出缓冲 + 视觉边距。
+            // 上下 20dp 内边距作为焦点态溢出缓冲。
+            // clipChildren=true 最终防线 + clipToPadding=false 允许溢入 padding 区。
+            setPadding(dp(49), dp(49), dp(49), dp(49))
+            clipChildren = false
+            clipToPadding = false
             addView(list)
         }
-        // 滚动容器自身也套一层"面板"：与提示条/按钮栏一致的柔和描边 + 内 6dp padding，
-        // 让列表与提示条、按钮栏形成并列"面板"，而不是漂浮于背景，更清晰"滚动区夹在中间"。
+        // 滚动容器外层：撑满弹窗宽度，无边框无背景
         val scrollPanel = FrameLayout(context).apply {
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(16).toFloat()
-                setColor(Color.argb(56, 10, 12, 22))
-                setStroke(Math.max(1, dp(1)), Color.argb(90, 160, 172, 206))
-            }
-            // 10→14dp：再 +4dp 内边距，使行卡片聚焦态边框/发光充分不被面板边缘裁切
-            val pad = dp(14)
-            setPadding(pad, pad, pad, pad)
+            // clipChildren=true：与 scroll 的 clipChildren=true 双重防线。
+            clipChildren = true
             addView(scroll, FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
             ))
         }
         panel.addView(scrollPanel, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f   // 四段式核心：占满剩余空间 = 自动在 顶栏+提示+按钮栏 之间
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f   // 三段式核心：占满剩余空间 = 自动在 顶栏+按钮栏 之间
         ).apply { bottomMargin = dp(16) })
-        // 滚动溢出防御：锁裁剪（防止 FocusFxHelper.disableClippingUp 沿父链误关 ScrollView/panel 裁剪）
-        list.clipChildren = true; list.clipToPadding = true
-        scroll.post {
-            scroll.clipChildren = true; scroll.clipToPadding = true
-            list.clipChildren = true; list.clipToPadding = true
-        }
 
         // ------------------------------------------------------------------
-        // 4) 按钮栏：左「已选 N / 共 X 部」· 右「取消 / 删除选中」BatchBottomButton 语义
+        // 3) 按钮栏：左「已选 N / 共 X 部」· 右「取消 / 删除选中」BatchBottomButton 语义
         // ------------------------------------------------------------------
         bottomCount = TextView(context).apply {
             textSize = 14f
@@ -311,13 +249,6 @@ class CartoonManagementDialog(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.START or Gravity.CENTER_VERTICAL
             clipChildren = false; clipToPadding = false
-            // 与顶栏/提示条视觉层级对齐：面板底 + 描边
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = dp(16).toFloat()
-                setColor(Color.argb(64, 14, 16, 28))
-                setStroke(Math.max(1, dp(1)), Color.argb(110, 160, 172, 206))
-            }
             setPadding(dp(16), dp(12), dp(16), dp(12))
         }
         buttons.addView(bottomCount, LinearLayout.LayoutParams(
@@ -346,7 +277,7 @@ class CartoonManagementDialog(
             d.window?.apply {
                 setGravity(Gravity.CENTER)
                 setBackgroundDrawableResource(android.R.color.transparent)
-                setLayout(dp(600), dp(520))    // 四段式：600×520。滚动区 weight=1 自动压缩，按钮栏稳定露出
+                setLayout(dp(600), dp(520))    // 三段式：600×520。滚动区 weight=1 占满顶栏与按钮栏之间的剩余空间
                 val attrs = attributes
                 attrs.dimAmount = 0.32f
                 attributes = attrs
@@ -583,9 +514,8 @@ class CartoonManagementDialog(
             } else false
         }
         row.setOnClickListener { toggle(cartoon.cartoonId, ::refreshSelection) }
-        // maxDepth=1：只对直接父容器（行父 FrameLayout/横向 LinearLayout list 内部）关闭裁剪，
-        // 避免沿父链关掉外层 ScrollView / panel 的 clip → 滑动时内容跑出 340dp 容器外。
-        FocusFxHelper.disableClippingUp(row, maxDepth = 1)
+        // 焦点态裁剪方案：scroll padding 20dp 缓冲区 + clipChildren=true 防线 + clipToPadding=false。
+        // 不再需要 disableClippingUp——溢出控制在 scroll padding 区内。
         FocusFxHelper.applyFocusFxState(row, false, cornerRadiusDp = 18)
         return row
     }

@@ -812,9 +812,10 @@ class CartoonDetailPage(
         }
     }
 
-    /** 主 CTA：琥珀底液态玻璃卡（Radius.MD / TintMode.ACCENT），焦点态自动升级描边和高光。 */
+    /** 主 CTA：琥珀底液态玻璃卡（胶囊圆角 60dp / TintMode.ACCENT），焦点态自动升级描边和高光。 */
     private fun primaryButton(text: String, onClick: () -> Unit): TextView {
         val accent = CartoonDesign.Palette.ACCENT
+        val cornerDp = 60
         return TextView(context).apply {
             this.text = text
             textSize = CartoonDesign.Type.TITLE_SM
@@ -822,11 +823,11 @@ class CartoonDetailPage(
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
             isFocusable = true; isClickable = true
-            val ph = CartoonDesign.dp(context, 18); val pv = CartoonDesign.dp(context, 12)
+            val ph = CartoonDesign.dp(context, 10); val pv = CartoonDesign.dp(context, 6)
             setPadding(ph, pv, ph, pv)
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                cornerRadius = CartoonDesign.dp(context, CartoonDesign.Radius.MD.dp).toFloat()
+                cornerRadius = CartoonDesign.dp(context, cornerDp).toFloat()
                 setStroke(Math.max(1, CartoonDesign.dp(context, 1)), Color.argb(198, 198, 214, 230))
                 setColor(Color.TRANSPARENT)
             }
@@ -845,7 +846,7 @@ class CartoonDetailPage(
                 )
                 BoundaryFocusHandler.cancelShake(this@apply)
                 if (has) FocusFxHelper.applyFocusFxState(
-                    this@apply, true, cornerRadiusDp = CartoonDesign.Radius.MD.dp
+                    this@apply, true, cornerRadiusDp = cornerDp
                 ) else foreground = null
             }
         }
