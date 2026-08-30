@@ -166,10 +166,10 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: release-apk-v${{ steps.apk.outputs.version }}-${{ steps.apk.outputs.sha }}
-          path: |
-            casttv-receiver-v*.apk
-            builds/*/casttv-receiver-v*-release.apk
-            app/build/outputs/apk/release/*.apk
+          # 只上传 exportApk 定位的单个 APK。
+          # 之前用三个 glob（仓库根 legacy 副本 + builds/ 镜像 + outputs 原始产物），
+          # exportReleaseApk 会把同一个 APK 复制到这三处 → artifact 打包 3 份 ≈ 57MB。
+          path: ${{ steps.apk.outputs.apk }}
           retention-days: 90
           compression-level: 6
           if-no-files-found: error
