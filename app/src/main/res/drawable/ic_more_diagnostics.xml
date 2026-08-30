@@ -1,9 +1,55 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
+    android:width="48dp"
+    android:height="48dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <path android:pathData="M4,8.6C8.7,4.8 15.3,4.8 20,8.6M7,11.6C10,9.2 14,9.2 17,11.6M10,14.4C11.2,13.5 12.8,13.5 14,14.4" android:strokeColor="#FFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:fillColor="@android:color/transparent" />
-    <path android:pathData="M12,17.1A1,1 0,1 0,12 19.1A1,1 0,1 0,12 17.1" android:fillColor="#FFFFFF" />
-    <path android:pathData="M16.1,16.1A2.4,2.4 0,1 0,16.1 20.9A2.4,2.4 0,1 0,16.1 16.1M17.9,20.3L20.3,22" android:strokeColor="#FFFFFF" android:strokeWidth="1.5" android:strokeLineCap="round" android:fillColor="@android:color/transparent" />
+
+    <!-- 圆角方形背景：青蓝 -->
+    <path
+        android:pathData="M7,2 h10 a5,5 0 0 1 5,5 v10 a5,5 0 0 1 -5,5 h-10 a5,5 0 0 1 -5,-5 v-10 a5,5 0 0 1 5,-5 z"
+        android:fillColor="#0072BC" />
+
+    <!-- 顶部渐变高光层 -->
+    <path
+        android:pathData="M7,2 h10 a5,5 0 0 1 5,5 v6 h-20 v-6 a5,5 0 0 1 5,-5 z"
+        android:fillColor="#66D2FF"
+        android:fillAlpha="0.4" />
+
+    <!-- 信号波纹：外层 -->
+    <path
+        android:pathData="M6.5,12 a6,6 0 0 1 11,0"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.3"
+        android:strokeLineCap="round"
+        android:fillColor="@android:color/transparent" />
+
+    <!-- 信号波纹：中层 -->
+    <path
+        android:pathData="M8.3,12 a4,4 0 0 1 7.4,0"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.3"
+        android:strokeLineCap="round"
+        android:fillColor="@android:color/transparent" />
+
+    <!-- 信号波纹：内层 -->
+    <path
+        android:pathData="M10.1,12 a2,2 0 0 1 3.8,0"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.3"
+        android:strokeLineCap="round"
+        android:fillColor="@android:color/transparent" />
+
+    <!-- 中心信号点 -->
+    <path
+        android:pathData="M12,12 m-0.9,0 a0.9,0.9 0 1 0 1.8,0 a0.9,0.9 0 1 0 -1.8,0"
+        android:fillColor="#FFFFFF" />
+
+    <!-- 底部检查标记 -->
+    <path
+        android:pathData="M9.5,17.5 L11,19 L14.5,15.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="@android:color/transparent" />
 </vector>

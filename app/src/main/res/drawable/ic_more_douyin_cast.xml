@@ -1,46 +1,49 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
+    android:width="48dp"
+    android:height="48dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
 
-    <!-- 抖音音符主体（左移，与 TV 拉开间距） -->
-    <!-- 音符头（实心圆） -->
-    <path android:pathData="M4.5,16A2.8,2.3 0,1 0,4.5 20.6A2.8,2.3 0,1 0,4.5 16" android:fillColor="#FFFFFF" />
-    <!-- 音符杆 + 旗 -->
-    <path android:pathData="M7.1,17.2L7.1,4.4L13,5.8L13,8.4L7.1,7" android:strokeColor="#FFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round" android:fillColor="@android:color/transparent" />
-
-    <!-- TV 电视样式（右侧，底部与抖音音符底部对齐） -->
-    <!-- 圆角长方形（宽>高，底部 y=17.6，与底脚间距 3dp，底脚 y=20.6 对齐抖音底部） -->
+    <!-- 圆角方形背景：粉红 -->
     <path
-        android:pathData="M14,10.6L22.5,10.6Q23.5,10.6 23.5,11.6L23.5,16.6Q23.5,17.6 22.5,17.6L14,17.6Q13,17.6 13,16.6L13,11.6Q13,10.6 14,10.6Z"
-        android:fillColor="@android:color/transparent"
+        android:pathData="M7,2 h10 a5,5 0 0 1 5,5 v10 a5,5 0 0 1 -5,5 h-10 a5,5 0 0 1 -5,-5 v-10 a5,5 0 0 1 5,-5 z"
+        android:fillColor="#B42860" />
+
+    <!-- 顶部渐变高光层 -->
+    <path
+        android:pathData="M7,2 h10 a5,5 0 0 1 5,5 v6 h-20 v-6 a5,5 0 0 1 5,-5 z"
+        android:fillColor="#FF6E96"
+        android:fillAlpha="0.4" />
+
+    <!-- 电视屏幕 -->
+    <path
+        android:pathData="M6,7.5 h12 a1.2,1.2 0 0 1 1.2,1.2 v6.5 a1.2,1.2 0 0 1 -1.2,1.2 h-12 a1.2,1.2 0 0 1 -1.2,-1.2 v-6.5 a1.2,1.2 0 0 1 1.2,-1.2 z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.92" />
+
+    <!-- 屏幕内播放三角 -->
+    <path
+        android:pathData="M10.3,10.2 L14.2,12.3 L10.3,14.4 Z"
+        android:fillColor="#B42860" />
+
+    <!-- 电视底座 -->
+    <path
+        android:pathData="M9.5,17.8 L14.5,17.8"
         android:strokeColor="#FFFFFF"
         android:strokeWidth="1.4"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
-    <!-- T 字母（上下间距一致） -->
+        android:strokeLineCap="round" />
+
+    <!-- 左侧投屏信号波纹 -->
     <path
-        android:pathData="M15.5,12.75L18,12.75M16.75,12.75L16.75,15.45"
+        android:pathData="M4.2,11 a4.5,4.5 0 0 1 3.2,-1.3"
         android:strokeColor="#FFFFFF"
-        android:strokeWidth="1.5"
+        android:strokeWidth="1.1"
         android:strokeLineCap="round"
-        android:strokeLineJoin="round"
         android:fillColor="@android:color/transparent" />
-    <!-- V 字母（上下间距一致） -->
     <path
-        android:pathData="M18.5,12.75L19.75,15.45L21,12.75"
+        android:pathData="M5.4,12.5 a2.8,2.8 0 0 1 2,-0.8"
         android:strokeColor="#FFFFFF"
-        android:strokeWidth="1.5"
+        android:strokeWidth="1.1"
         android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:fillColor="@android:color/transparent" />
-    <!-- 底部圆角短横线（电视底脚，长度为方框宽度的60%） -->
-    <path
-        android:pathData="M15.1,20.6Q15.1,20.4 15.3,20.4L21.2,20.4Q21.4,20.4 21.4,20.6"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="1.2"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
         android:fillColor="@android:color/transparent" />
 </vector>

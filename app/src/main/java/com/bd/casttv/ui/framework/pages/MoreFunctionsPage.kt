@@ -305,7 +305,7 @@ class MoreFunctionsPage(
             // scrollContainerPad(16*2=32) + 卡片左右 margin(26*2*4=208) = 240dp
             val horizontal = dp(32) + dp(26) * 8
             val cardW = ((screenW - horizontal) / 4f).toInt()
-            val cardH = (cardW * 9f / 16f).toInt()
+            val cardH = (cardW * 16f / 9f).toInt()
 
             val outer = FrameLayout(parent.context).apply {
                 isFocusable = true
@@ -337,13 +337,12 @@ class MoreFunctionsPage(
                 clipToPadding = false
             }
 
-            val logoBg = View(parent.context)
+            val logoBg = View(parent.context).apply { visibility = View.GONE }
             val logoIcon = ImageView(parent.context).apply {
                 scaleType = ImageView.ScaleType.FIT_CENTER
-                imageTintList = ColorStateList.valueOf(Color.rgb(232, 234, 240))
             }
-            logo.addView(logoBg, FrameLayout.LayoutParams(dp(72), dp(72), Gravity.CENTER))
-            logo.addView(logoIcon, FrameLayout.LayoutParams(dp(40), dp(40), Gravity.CENTER))
+            logo.addView(logoBg, FrameLayout.LayoutParams(0, 0, Gravity.CENTER))
+            logo.addView(logoIcon, FrameLayout.LayoutParams(dp(56), dp(56), Gravity.CENTER))
 
             val shade = View(parent.context).apply {
                 background = GradientDrawable(
@@ -514,22 +513,9 @@ class MoreFunctionsPage(
                 name.text = item.title
                 image.setImageDrawable(null)
 
-                // 图标 chip 按卡品牌色渐变填充，每卡获得色彩身份（复活死代码 colors）。
+                // 全彩矢量图标自带背景，无需 tint
                 logoIcon.setImageResource(item.iconRes)
-                // 2026-08：动画城按参考太阳笑脸画成了全彩色图标，必须移除 imageTint 才能显示蓝/橙/黄/红；
-                // 其他功能卡片（设置/帮助/收藏…）仍是浅色线稿，继续走统一浅灰 Tint，不互相污染。
-                // RecyclerView 复用：非动画城卡必须把 tint 重新写回去。
-                val cartoonTint = item.pageId == "cartoon_city"
-                logoIcon.imageTintList = if (cartoonTint) {
-                    null
-                } else {
-                    ColorStateList.valueOf(Color.rgb(232, 234, 240))
-                }
-                // logoIcon 本身还是浅灰的半透描边盘（保持玻璃盘质感），彩色太阳落在盘心。
-                if (item.colors.isNotEmpty()) {
-                    logoBgDrawable.colors = item.colors
-                    logoBgDrawable.orientation = GradientDrawable.Orientation.TL_BR
-                }
+                logoIcon.imageTintList = null
 
                 updateBorder(outer.hasFocus())
                 applyVisualState(animated = true)
@@ -575,15 +561,7 @@ class MoreFunctionsPage(
                 if (cardW <= 0 || cardW == lastCardWidth) return
                 lastCardWidth = cardW
 
-                val bgSize = (cardW * 0.4f).toInt()
-                val iconSize = (bgSize * 0.55f).toInt()
-
-                val bgLp = logoBg.layoutParams
-                if (bgLp.width != bgSize || bgLp.height != bgSize) {
-                    bgLp.width = bgSize
-                    bgLp.height = bgSize
-                    logoBg.layoutParams = bgLp
-                }
+                val iconSize = (cardW * 0.48f).toInt()
 
                 val iconLp = logoIcon.layoutParams
                 if (iconLp.width != iconSize || iconLp.height != iconSize) {

@@ -1,18 +1,28 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
+    android:width="48dp"
+    android:height="48dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
+
+    <!-- 圆角方形背景：金黄 -->
     <path
-        android:pathData="M12,20.1C8.1,16.6 5,13.8 5,10.5C5,8 6.9,6.1 9.3,6.1C10.7,6.1 11.7,6.8 12.4,7.8C13.1,6.8 14.1,6.1 15.5,6.1C17.9,6.1 19.8,8 19.8,10.5C19.8,13.8 16.7,16.6 12,20.1Z"
+        android:pathData="M7,2 h10 a5,5 0 0 1 5,5 v10 a5,5 0 0 1 -5,5 h-10 a5,5 0 0 1 -5,-5 v-10 a5,5 0 0 1 5,-5 z"
+        android:fillColor="#D97B2E" />
+
+    <!-- 顶部渐变高光层 -->
+    <path
+        android:pathData="M7,2 h10 a5,5 0 0 1 5,5 v6 h-20 v-6 a5,5 0 0 1 5,-5 z"
+        android:fillColor="#FFC868"
+        android:fillAlpha="0.42" />
+
+    <!-- 五角星 -->
+    <path
+        android:pathData="M12,6.2 L13.85,10.0 L18.0,10.6 L15.0,13.5 L15.7,17.6 L12,15.65 L8.3,17.6 L9.0,13.5 L6.0,10.6 L10.15,10.0 Z"
         android:fillColor="#FFFFFF" />
+
+    <!-- 星形左侧高光 -->
     <path
-        android:pathData="M12.05,19.45C8.65,16.38 5.78,13.72 5.78,10.55C5.78,8.55 7.28,6.95 9.28,6.95C10.58,6.95 11.47,7.72 12.13,8.92C11.42,10.65 11.12,12.55 11.36,14.33C11.57,15.9 12.03,17.36 12.05,19.45Z"
-        android:fillColor="#33888888" />
-    <path
-        android:pathData="M9.35,7.35C10.45,7.35 11.18,8.05 11.82,9.05C10.72,8.62 9.62,8.7 8.86,9.28C8.28,9.72 7.98,10.36 7.82,11.05C7.56,9.38 8.18,7.35 9.35,7.35Z"
-        android:fillColor="#99FFFFFF" />
-    <path
-        android:pathData="M10.4,20.05C10.4,19.82 11.12,19.63 12,19.63C12.88,19.63 13.6,19.82 13.6,20.05C13.6,20.28 12.88,20.47 12,20.47C11.12,20.47 10.4,20.28 10.4,20.05Z"
-        android:fillColor="#22000000" />
+        android:pathData="M12,6.2 L13.85,10.0 L18.0,10.6 L15.0,13.5 L15.7,17.6 L12,15.65 Z"
+        android:fillColor="#000000"
+        android:fillAlpha="0.06" />
 </vector>

@@ -1,23 +1,38 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
+    android:width="48dp"
+    android:height="48dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
+
+    <!-- 圆角方形背景：橙红 -->
     <path
-        android:pathData="M12,3.5A8.5,8.5 0,1 0,12 20.5A8.5,8.5 0,1 0,12 3.5"
+        android:pathData="M7,2 h10 a5,5 0 0 1 5,5 v10 a5,5 0 0 1 -5,5 h-10 a5,5 0 0 1 -5,-5 v-10 a5,5 0 0 1 5,-5 z"
+        android:fillColor="#E8654A" />
+
+    <!-- 顶部渐变高光层 -->
+    <path
+        android:pathData="M7,2 h10 a5,5 0 0 1 5,5 v6 h-20 v-6 a5,5 0 0 1 5,-5 z"
+        android:fillColor="#FFB088"
+        android:fillAlpha="0.38" />
+
+    <!-- 时钟外环 -->
+    <path
+        android:pathData="M12,12 m-6.2,0 a6.2,6.2 0 1 0 12.4,0 a6.2,6.2 0 1 0 -12.4,0"
         android:strokeColor="#FFFFFF"
         android:strokeWidth="1.8"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
         android:fillColor="@android:color/transparent" />
+
+    <!-- 12点刻度 -->
+    <path android:pathData="M12,6.3 L12,7.6" android:strokeColor="#FFFFFF" android:strokeWidth="1.4" android:strokeLineCap="round" />
+    <!-- 6点刻度 -->
+    <path android:pathData="M12,16.4 L12,17.7" android:strokeColor="#FFFFFF" android:strokeWidth="1.4" android:strokeLineCap="round" />
+    <!-- 3点刻度 -->
+    <path android:pathData="M17.7,12 L16.4,12" android:strokeColor="#FFFFFF" android:strokeWidth="1.4" android:strokeLineCap="round" />
+    <!-- 9点刻度 -->
+    <path android:pathData="M6.3,12 L7.6,12" android:strokeColor="#FFFFFF" android:strokeWidth="1.4" android:strokeLineCap="round" />
+
+    <!-- 中心播放三角 -->
     <path
-        android:pathData="M12,7.4L12,12L9.4,14.1"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="1.7"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:fillColor="@android:color/transparent" />
-    <path
-        android:pathData="M14.3,10.1L18,12.2L14.3,14.3Z"
+        android:pathData="M10.8,9.5 L14.5,12 L10.8,14.5 Z"
         android:fillColor="#FFFFFF" />
 </vector>

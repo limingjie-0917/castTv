@@ -1,20 +1,39 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
+    android:width="48dp"
+    android:height="48dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
+
+    <!-- 圆角方形背景：蓝灰 -->
     <path
-        android:pathData="M12,8.7A3.3,3.3 0,1 0,12 15.3A3.3,3.3 0,1 0,12 8.7"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="1.7"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:fillColor="@android:color/transparent" />
+        android:pathData="M7,2 h10 a5,5 0 0 1 5,5 v10 a5,5 0 0 1 -5,5 h-10 a5,5 0 0 1 -5,-5 v-10 a5,5 0 0 1 5,-5 z"
+        android:fillColor="#1C3060" />
+
+    <!-- 顶部渐变高光层 -->
     <path
-        android:pathData="M18.6,9.6L21.5,11.0L21.5,13.0L18.6,14.4L17.4,16.5L17.6,19.8L15.9,20.8L13.2,18.9L10.8,18.9L8.1,20.8L6.4,19.8L6.6,16.5L5.4,14.4L2.5,13.0L2.5,11.0L5.4,9.6L6.6,7.5L6.4,4.2L8.1,3.2L10.8,5.1L13.2,5.1L15.9,3.2L17.6,4.2L17.4,7.5Z"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="1.5"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round"
-        android:fillColor="@android:color/transparent" />
+        android:pathData="M7,2 h10 a5,5 0 0 1 5,5 v6 h-20 v-6 a5,5 0 0 1 5,-5 z"
+        android:fillColor="#5276BE"
+        android:fillAlpha="0.4" />
+
+    <!-- 齿轮主体圆 -->
+    <path
+        android:pathData="M12,12 m-4.5,0 a4.5,4.5 0 1 0 9,0 a4.5,4.5 0 1 0 -9,0"
+        android:fillColor="#FFFFFF" />
+
+    <!-- 8 齿：上下左右 -->
+    <path android:pathData="M11,6.8 h2 v-2.3 h-2 z" android:fillColor="#FFFFFF" />
+    <path android:pathData="M11,17.2 h2 v2.3 h-2 z" android:fillColor="#FFFFFF" />
+    <path android:pathData="M6.8,11 v2 h-2.3 v-2 z" android:fillColor="#FFFFFF" />
+    <path android:pathData="M17.2,11 v2 h2.3 v-2 z" android:fillColor="#FFFFFF" />
+
+    <!-- 8 齿：对角 -->
+    <path android:pathData="M8.5,8.5 l1.2,-1.2 l-1.6,-1.6 l-1.2,1.2 z" android:fillColor="#FFFFFF" />
+    <path android:pathData="M14.3,8.5 l1.6,-1.6 l-1.2,-1.2 l-1.6,1.6 z" android:fillColor="#FFFFFF" />
+    <path android:pathData="M8.5,15.5 l-1.6,1.6 l1.2,1.2 l1.6,-1.6 z" android:fillColor="#FFFFFF" />
+    <path android:pathData="M15.5,15.5 l1.2,1.2 l1.6,-1.6 l-1.2,-1.2 z" android:fillColor="#FFFFFF" />
+
+    <!-- 中心孔 -->
+    <path
+        android:pathData="M12,12 m-1.8,0 a1.8,1.8 0 1 0 3.6,0 a1.8,1.8 0 1 0 -3.6,0"
+        android:fillColor="#1C3060" />
 </vector>

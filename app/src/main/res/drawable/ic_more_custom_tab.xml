@@ -1,36 +1,35 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
+    android:width="48dp"
+    android:height="48dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
+
+    <!-- 圆角方形背景：紫 -->
     <path
-        android:fillColor="@android:color/transparent"
-        android:pathData="M4.9,7.1L19.1,7.1Q20.3,7.1 20.3,8.3L20.3,18.6Q20.3,19.8 19.1,19.8L4.9,19.8Q3.7,19.8 3.7,18.6L3.7,8.3Q3.7,7.1 4.9,7.1Z"
-        android:strokeColor="#FFFFFF"
-        android:strokeLineJoin="round"
-        android:strokeWidth="1.6" />
+        android:pathData="M7,2 h10 a5,5 0 0 1 5,5 v10 a5,5 0 0 1 -5,5 h-10 a5,5 0 0 1 -5,-5 v-10 a5,5 0 0 1 5,-5 z"
+        android:fillColor="#4A4A6A" />
+
+    <!-- 顶部渐变高光层 -->
     <path
-        android:fillColor="#99FFFFFF"
-        android:pathData="M5.7,4.6L10.9,4.6Q11.8,4.6 11.8,5.5L11.8,7.1L4.8,7.1L4.8,5.5Q4.8,4.6 5.7,4.6Z" />
+        android:pathData="M7,2 h10 a5,5 0 0 1 5,5 v6 h-20 v-6 a5,5 0 0 1 5,-5 z"
+        android:fillColor="#7B7BA0"
+        android:fillAlpha="0.42" />
+
+    <!-- 书签 -->
     <path
-        android:fillColor="@android:color/transparent"
-        android:pathData="M14.2,4.6L18.3,4.6Q19.2,4.6 19.2,5.5L19.2,7.1L13.3,7.1L13.3,5.5Q13.3,4.6 14.2,4.6Z"
-        android:strokeColor="#BBFFFFFF"
-        android:strokeLineJoin="round"
-        android:strokeWidth="1.45" />
+        android:pathData="M8,5 h8 a1,1 0 0 1 1,1 v13 l-5,-3.2 l-5,3.2 v-13 a1,1 0 0 1 1,-1 z"
+        android:fillColor="#FFFFFF" />
+
+    <!-- 书签内凹槽 -->
     <path
-        android:fillColor="@android:color/transparent"
-        android:pathData="M16.25,5.15L16.25,6.55M15.55,5.85L16.95,5.85"
-        android:strokeColor="#FFFFFF"
-        android:strokeLineCap="round"
-        android:strokeWidth="1.25" />
+        android:pathData="M10,8 h4 v4 h-4 z"
+        android:fillColor="#4A4A6A"
+        android:fillAlpha="0.25" />
+
+    <!-- 加号（自定义） -->
     <path
-        android:fillColor="@android:color/transparent"
-        android:pathData="M6.4,10.2L17.6,10.2M6.4,13.1L15,13.1M6.4,16L12.7,16"
-        android:strokeColor="#99FFFFFF"
-        android:strokeLineCap="round"
-        android:strokeWidth="1.45" />
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M15.7,14.2L15.7,20.2L20.9,17.2Z" />
+        android:pathData="M12,9.2 L12,11.8 M10.7,10.5 L13.3,10.5"
+        android:strokeColor="#4A4A6A"
+        android:strokeWidth="1.0"
+        android:strokeLineCap="round" />
 </vector>
