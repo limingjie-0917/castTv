@@ -6,16 +6,16 @@
 
 | 项目 | 值 |
 |---|---|
-| 版本号 | v1.2.215 |
-| 提交 | dc4be72 |
+| 版本号 | v1.2.214 |
+| 提交 | b8991c9 |
 | 构建时间 | 2026-08-30 |
-| 文件大小 | ~25 MB |
+| 文件大小 | 21M |
 
 ## 下载地址
 
 ### GitHub Release（推荐，永久有效）
 
-[casttv-receiver-v1.2.215-release.apk](https://github.com/limingjie-0917/castTv/releases/download/v1.2.215/casttv-receiver-v1.2.215-release.apk)
+[casttv-receiver-v1.2.214-release.apk](https://github.com/limingjie-0917/castTv/releases/download/v1.2.214/casttv-receiver-v1.2.214-release.apk)
 
 ### GitHub Actions Artifacts（需登录 GitHub，90 天有效）
 
@@ -23,7 +23,7 @@
 
 ### Gitee Releases（国内镜像）
 
-[casttv-v1.2.215.apk](https://gitee.com/bdCasttv/video-source/releases/download/v1.2.215/casttv-v1.2.215.apk)
+[casttv-v1.2.214.apk](https://gitee.com/bdCasttv/video-source/releases/download/v1.2.214/casttv-v1.2.214.apk)
 
 ## 安装说明
 
