@@ -10,14 +10,15 @@ import com.bd.casttv.dlna.DeviceIdentity
  * / modelNumber / modelUrl / ssdpServer / dlnaProfiles …），用户切换到某一组时默认使用
  * [DouyinDeviceGroup.defaultIndex] 指定的成员；若还是搜不到设备，可在组内轮换其他成员。
  *
- * 选型原则（v1.2.xxx 调优）：
- *   1. manufacturer / modelName / modelNumber 用国内真机抓包常见值，不再用 "Xiaomi TV" 这类
- *      直译英语；抖音黑名单规则大概率会按特征字符串过滤 "XX TV" 通用写法。
- *   2. modelUrl 统一指向制造商真实官网产品页，绝不出现 casttv.local 等自报家门域名。
- *   3. SSDP SERVER 头按品牌写真机常见的 WebServer / Cling 值，绝不含 "CastTV"。
- *   4. X_DLNACAP（dlnaProfiles）统一用 DeviceIdentity.DEFAULT_DLNA_PROFILES 兜底，
- *      让 description.xml 看起来像一台真 DMR 而不是空壳。
- *   5. 覆盖抖音识别度较高的国内主流电视 5 家 + 主流投影 4 家 + 通用 DLNA 兜底 1 组，共 10 组。
+ * 选型原则（v1.2.xxx 调优；参考开源项目 wechat-finder-dlna 已验证可被国内 App 识别的小米真机描述符）：
+ *   1. modelName / modelDescription 用 DLNA 栈自报的 "{Brand} MediaRenderer" 风格，
+ *      不再用营销整机型号（L65M6-OTA 等）——指纹库收录的是 DLNA 栈广播值而非型号名。
+ *   2. modelNumber 留空 → description.xml 不输出 <modelNumber>（参考真机描述符无此字段）。
+ *   3. manufacturerUrl / modelUrl 用制造商官网 http://www.{brand}.com/ 形式。
+ *   4. SSDP SERVER 头按 "Linux/4.9 UPnP/1.0 DLNADOC/1.50 {Brand}-DLNA/1.0" 拼装
+ *      （wechat-finder-dlna 已验证该风格可被微信/B站/爱优腾等识别）。
+ *   5. X_DLNACAP（dlnaProfiles）统一用 DeviceIdentity.DEFAULT_DLNA_PROFILES 兜底。
+ *   6. 当贝组已被抖音实测可搜到（播控正常），保持原样不动。
  */
 data class DouyinDeviceGroup(
     val id: String,
@@ -35,14 +36,14 @@ data class DouyinDeviceGroup(
 
 object DouyinDeviceGroups {
 
-    /** 抓包兼容：小米/Redmi 真电视 SSDP 响应里最常看到的 Web Server 头。 */
-    private const val SSDP_CLING = "Linux/4.9 UPnP/1.0 Cling/2.1.20"
-    /** 抓包兼容：华为 / 雷鸟 / 海信等常见 ROM-Pager + Intel SDK 组合。 */
-    private const val SSDP_ALLEGRO = "Allegro-Software-RomPager/4.34 UPnP/1.0 Intel_SDK_for_UPnP_Devices/1.3"
-    /** 抓包兼容：极米 / 当贝 / 坚果 / 峰米等投影大多用 Rygel + Cling。 */
+    /**
+     * 已验证可被国内 App 识别的 DLNA 栈 SERVER 头风格（wechat-finder-dlna 小米真机仿真）：
+     * "Linux/4.9 UPnP/1.0 DLNADOC/1.50 {Brand}-DLNA/1.0"。
+     */
+    private fun ssdpBrandServer(brand: String) = "Linux/4.9 UPnP/1.0 DLNADOC/1.50 $brand-DLNA/1.0"
+
+    /** 当贝组已被抖音实测可搜到，SSDP 头保持原样。 */
     private const val SSDP_RYGEL = "Rygel/0.40.0 UPnP/1.0 Cling/2.1.20"
-    /** 通用兜底：Allegro 头是最多 App 都放行的字符串。 */
-    private const val SSDP_GENERIC = "Allegro-Software-RomPager/4.34 UPnP/1.0"
 
     private const val DEFAULT_PROFILES = DeviceIdentity.DEFAULT_DLNA_PROFILES
 
@@ -52,37 +53,38 @@ object DouyinDeviceGroups {
             id = "xiaomi",
             label = "小米电视组",
             members = listOf(
+                // 默认成员：wechat-finder-dlna 已验证可被识别的小米真机描述符（1:1 移植）
                 DeviceIdentity(
                     friendlyName = "小米电视",
                     manufacturer = "Xiaomi",
-                    manufacturerUrl = "https://www.mi.com",
-                    modelName = "L65M6-OTA",
-                    modelDescription = "MIBOX MediaRenderer",
-                    modelNumber = "MiTV-OLED",
-                    modelUrl = "https://www.mi.com/tv",
-                    ssdpServer = SSDP_CLING,
+                    manufacturerUrl = "http://www.xiaomi.com/",
+                    modelName = "Xiaomi MediaRenderer",
+                    modelDescription = "Xiaomi MediaRenderer",
+                    modelNumber = "",
+                    modelUrl = "http://www.xiaomi.com/",
+                    ssdpServer = ssdpBrandServer("Xiaomi"),
                     dlnaProfiles = DEFAULT_PROFILES
                 ),
                 DeviceIdentity(
                     friendlyName = "Redmi 电视",
                     manufacturer = "Xiaomi",
-                    manufacturerUrl = "https://www.mi.com",
-                    modelName = "L55M6-RA",
-                    modelDescription = "Redmi Smart TV MediaRenderer",
-                    modelNumber = "Redmi-Max",
-                    modelUrl = "https://www.mi.com/redmitv",
-                    ssdpServer = SSDP_CLING,
+                    manufacturerUrl = "http://www.xiaomi.com/",
+                    modelName = "Redmi MediaRenderer",
+                    modelDescription = "Redmi MediaRenderer",
+                    modelNumber = "",
+                    modelUrl = "http://www.xiaomi.com/",
+                    ssdpServer = ssdpBrandServer("Xiaomi"),
                     dlnaProfiles = DEFAULT_PROFILES
                 ),
                 DeviceIdentity(
                     friendlyName = "小米盒子",
                     manufacturer = "Xiaomi",
-                    manufacturerUrl = "https://www.mi.com",
-                    modelName = "MIBOX4",
-                    modelDescription = "Mi Box MediaRenderer",
-                    modelNumber = "MiBox-4S",
-                    modelUrl = "https://www.mi.com/mibox",
-                    ssdpServer = SSDP_CLING,
+                    manufacturerUrl = "http://www.xiaomi.com/",
+                    modelName = "MiBOX MediaRenderer",
+                    modelDescription = "MiBOX MediaRenderer",
+                    modelNumber = "",
+                    modelUrl = "http://www.xiaomi.com/",
+                    ssdpServer = ssdpBrandServer("Xiaomi"),
                     dlnaProfiles = DEFAULT_PROFILES
                 )
             )
@@ -94,23 +96,23 @@ object DouyinDeviceGroups {
                 DeviceIdentity(
                     friendlyName = "华为智慧屏",
                     manufacturer = "Huawei",
-                    manufacturerUrl = "https://www.huawei.com",
-                    modelName = "Vision-65",
-                    modelDescription = "HUAWEI Vision DMR",
-                    modelNumber = "HEGE-560",
-                    modelUrl = "https://consumer.huawei.com/cn/tv/",
-                    ssdpServer = SSDP_ALLEGRO,
+                    manufacturerUrl = "http://www.huawei.com/",
+                    modelName = "Huawei MediaRenderer",
+                    modelDescription = "Huawei MediaRenderer",
+                    modelNumber = "",
+                    modelUrl = "http://www.huawei.com/",
+                    ssdpServer = ssdpBrandServer("Huawei"),
                     dlnaProfiles = DEFAULT_PROFILES
                 ),
                 DeviceIdentity(
                     friendlyName = "荣耀智慧屏",
                     manufacturer = "Honor",
-                    manufacturerUrl = "https://www.honor.com",
-                    modelName = "HONOR-Vision",
-                    modelDescription = "Honor Vision MediaRenderer",
-                    modelNumber = "OSCA-550A",
-                    modelUrl = "https://www.honorstore.cn/tv",
-                    ssdpServer = SSDP_ALLEGRO,
+                    manufacturerUrl = "http://www.honor.com/",
+                    modelName = "Honor MediaRenderer",
+                    modelDescription = "Honor MediaRenderer",
+                    modelNumber = "",
+                    modelUrl = "http://www.honor.com/",
+                    ssdpServer = ssdpBrandServer("Honor"),
                     dlnaProfiles = DEFAULT_PROFILES
                 )
             )
@@ -122,23 +124,23 @@ object DouyinDeviceGroups {
                 DeviceIdentity(
                     friendlyName = "海信电视",
                     manufacturer = "Hisense",
-                    manufacturerUrl = "https://www.hisense.com",
-                    modelName = "HZ65A77E",
-                    modelDescription = "Hisense TV MediaRenderer",
-                    modelNumber = "A7F",
-                    modelUrl = "https://tv.hisense.cn/",
-                    ssdpServer = SSDP_ALLEGRO,
+                    manufacturerUrl = "http://www.hisense.com/",
+                    modelName = "Hisense MediaRenderer",
+                    modelDescription = "Hisense MediaRenderer",
+                    modelNumber = "",
+                    modelUrl = "http://www.hisense.com/",
+                    ssdpServer = ssdpBrandServer("Hisense"),
                     dlnaProfiles = DEFAULT_PROFILES
                 ),
                 DeviceIdentity(
                     friendlyName = "Vidda 电视",
-                    manufacturer = "Hisense",
-                    manufacturerUrl = "https://www.hisense.com",
-                    modelName = "Vidda-65V3H",
-                    modelDescription = "Vidda TV MediaRenderer",
-                    modelNumber = "V3H-Pro",
-                    modelUrl = "https://www.vidda.com/",
-                    ssdpServer = SSDP_ALLEGRO,
+                    manufacturer = "Vidda",
+                    manufacturerUrl = "http://www.vidda.com/",
+                    modelName = "Vidda MediaRenderer",
+                    modelDescription = "Vidda MediaRenderer",
+                    modelNumber = "",
+                    modelUrl = "http://www.vidda.com/",
+                    ssdpServer = ssdpBrandServer("Vidda"),
                     dlnaProfiles = DEFAULT_PROFILES
                 )
             )
@@ -150,23 +152,23 @@ object DouyinDeviceGroups {
                 DeviceIdentity(
                     friendlyName = "创维电视",
                     manufacturer = "Skyworth",
-                    manufacturerUrl = "https://www.skyworth.com",
-                    modelName = "55H80",
-                    modelDescription = "Skyworth TV MediaRenderer",
-                    modelNumber = "H90-Pro",
-                    modelUrl = "https://www.skyworth.com/topic/tv",
-                    ssdpServer = SSDP_ALLEGRO,
+                    manufacturerUrl = "http://www.skyworth.com/",
+                    modelName = "Skyworth MediaRenderer",
+                    modelDescription = "Skyworth MediaRenderer",
+                    modelNumber = "",
+                    modelUrl = "http://www.skyworth.com/",
+                    ssdpServer = ssdpBrandServer("Skyworth"),
                     dlnaProfiles = DEFAULT_PROFILES
                 ),
                 DeviceIdentity(
                     friendlyName = "酷开电视",
                     manufacturer = "Coocaa",
-                    manufacturerUrl = "https://www.coocaa.com",
-                    modelName = "Coocaa-65P50",
-                    modelDescription = "Coocaa TV MediaRenderer",
-                    modelNumber = "P50-Pro",
-                    modelUrl = "https://www.coocaa.com/tv",
-                    ssdpServer = SSDP_ALLEGRO,
+                    manufacturerUrl = "http://www.coocaa.com/",
+                    modelName = "Coocaa MediaRenderer",
+                    modelDescription = "Coocaa MediaRenderer",
+                    modelNumber = "",
+                    modelUrl = "http://www.coocaa.com/",
+                    ssdpServer = ssdpBrandServer("Coocaa"),
                     dlnaProfiles = DEFAULT_PROFILES
                 )
             )
@@ -178,23 +180,23 @@ object DouyinDeviceGroups {
                 DeviceIdentity(
                     friendlyName = "TCL 电视",
                     manufacturer = "TCL",
-                    manufacturerUrl = "https://www.tcl.com",
-                    modelName = "65Q10H",
-                    modelDescription = "TCL TV MediaRenderer",
-                    modelNumber = "C11G-Pro",
-                    modelUrl = "https://www.tcl.com/cn/televisions",
-                    ssdpServer = SSDP_ALLEGRO,
+                    manufacturerUrl = "http://www.tcl.com/",
+                    modelName = "TCL MediaRenderer",
+                    modelDescription = "TCL MediaRenderer",
+                    modelNumber = "",
+                    modelUrl = "http://www.tcl.com/",
+                    ssdpServer = ssdpBrandServer("TCL"),
                     dlnaProfiles = DEFAULT_PROFILES
                 ),
                 DeviceIdentity(
                     friendlyName = "雷鸟电视",
                     manufacturer = "FFalcon",
-                    manufacturerUrl = "https://www.ffalcon.com",
-                    modelName = "FFALCON-65R685C",
-                    modelDescription = "FFalcon TV MediaRenderer",
-                    modelNumber = "R685C-PRO",
-                    modelUrl = "https://www.ffalcon.com/product/tv",
-                    ssdpServer = SSDP_ALLEGRO,
+                    manufacturerUrl = "http://www.ffalcon.com/",
+                    modelName = "FFalcon MediaRenderer",
+                    modelDescription = "FFalcon MediaRenderer",
+                    modelNumber = "",
+                    modelUrl = "http://www.ffalcon.com/",
+                    ssdpServer = ssdpBrandServer("FFalcon"),
                     dlnaProfiles = DEFAULT_PROFILES
                 )
             )
@@ -208,12 +210,12 @@ object DouyinDeviceGroups {
                 DeviceIdentity(
                     friendlyName = "极米投影",
                     manufacturer = "XGIMI",
-                    manufacturerUrl = "https://www.xgimi.com",
-                    modelName = "XGIMI-H6",
-                    modelDescription = "XGIMI Projector MediaRenderer",
-                    modelNumber = "HORIZON-Ultra",
-                    modelUrl = "https://www.xgimi.com/projector",
-                    ssdpServer = SSDP_RYGEL,
+                    manufacturerUrl = "http://www.xgimi.com/",
+                    modelName = "XGIMI MediaRenderer",
+                    modelDescription = "XGIMI MediaRenderer",
+                    modelNumber = "",
+                    modelUrl = "http://www.xgimi.com/",
+                    ssdpServer = ssdpBrandServer("XGIMI"),
                     dlnaProfiles = DEFAULT_PROFILES
                 )
             )
@@ -253,12 +255,12 @@ object DouyinDeviceGroups {
                 DeviceIdentity(
                     friendlyName = "坚果投影",
                     manufacturer = "JmGO",
-                    manufacturerUrl = "https://www.jmgo.com",
-                    modelName = "JmGO-N1",
-                    modelDescription = "JmGO Projector MediaRenderer",
-                    modelNumber = "N1-Ultra",
-                    modelUrl = "https://www.jmgo.com/Projector",
-                    ssdpServer = SSDP_RYGEL,
+                    manufacturerUrl = "http://www.jmgo.com/",
+                    modelName = "JmGO MediaRenderer",
+                    modelDescription = "JmGO MediaRenderer",
+                    modelNumber = "",
+                    modelUrl = "http://www.jmgo.com/",
+                    ssdpServer = ssdpBrandServer("JmGO"),
                     dlnaProfiles = DEFAULT_PROFILES
                 )
             )
@@ -270,12 +272,12 @@ object DouyinDeviceGroups {
                 DeviceIdentity(
                     friendlyName = "峰米投影",
                     manufacturer = "Formovie",
-                    manufacturerUrl = "https://www.formovie.com",
-                    modelName = "Formovie-T1",
-                    modelDescription = "Formovie Projector MediaRenderer",
-                    modelNumber = "C3-TriColor",
-                    modelUrl = "https://www.formovie.com/projectors",
-                    ssdpServer = SSDP_RYGEL,
+                    manufacturerUrl = "http://www.formovie.com/",
+                    modelName = "Formovie MediaRenderer",
+                    modelDescription = "Formovie MediaRenderer",
+                    modelNumber = "",
+                    modelUrl = "http://www.formovie.com/",
+                    ssdpServer = ssdpBrandServer("Formovie"),
                     dlnaProfiles = DEFAULT_PROFILES
                 )
             )
@@ -289,23 +291,23 @@ object DouyinDeviceGroups {
                 DeviceIdentity(
                     friendlyName = "客厅的电视",
                     manufacturer = "Changhong",
-                    manufacturerUrl = "https://www.changhong.com",
-                    modelName = "CHiQ-Q9T",
-                    modelDescription = "Changhong MediaRenderer DLNA",
-                    modelNumber = "55Q9T",
-                    modelUrl = "https://www.changhong.com/ch/television",
-                    ssdpServer = SSDP_GENERIC,
+                    manufacturerUrl = "http://www.changhong.com/",
+                    modelName = "Changhong MediaRenderer",
+                    modelDescription = "Changhong MediaRenderer",
+                    modelNumber = "",
+                    modelUrl = "http://www.changhong.com/",
+                    ssdpServer = ssdpBrandServer("Changhong"),
                     dlnaProfiles = DEFAULT_PROFILES
                 ),
                 DeviceIdentity(
                     friendlyName = "卧室的电视",
                     manufacturer = "Skyworth",
-                    manufacturerUrl = "https://www.skyworth.com",
-                    modelName = "Skyworth-G32",
-                    modelDescription = "Skyworth TV MediaRenderer",
-                    modelNumber = "G32-Pro",
-                    modelUrl = "https://www.skyworth.com/topic/tv",
-                    ssdpServer = SSDP_GENERIC,
+                    manufacturerUrl = "http://www.skyworth.com/",
+                    modelName = "Skyworth MediaRenderer",
+                    modelDescription = "Skyworth MediaRenderer",
+                    modelNumber = "",
+                    modelUrl = "http://www.skyworth.com/",
+                    ssdpServer = ssdpBrandServer("Skyworth"),
                     dlnaProfiles = DEFAULT_PROFILES
                 )
             )

@@ -70,7 +70,8 @@ class MoreFunctionsPage(
         val root = FrameLayout(context).apply {
             clipChildren = false
             clipToPadding = false
-            setPadding(dp(32), dp(24), dp(32), dp(24))
+            // 左右边距 32dp → 12dp：标题区域与滚动容器统一收紧，让 4 列功能卡片栅格更贴近屏幕两侧
+            setPadding(dp(12), dp(24), dp(12), dp(24))
         }
         val title = TextView(context).apply {
             text = "更多功能"
@@ -302,7 +303,9 @@ class MoreFunctionsPage(
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
             val screenW = resources.displayMetrics.widthPixels
             val horizontal = dp(64) + dp(16) + dp(18) * 3
-            val cardW = ((screenW - horizontal) / 4f).toInt().coerceAtLeast(dp(180))
+            // 宽度比栅格可用宽度再缩 2dp，高度按 9:16 等比缩小；卡片右/下 margin 不变（18dp），
+            // 缩出来的 2dp 顺势变成相邻卡片间的额外间隙
+            val cardW = (((screenW - horizontal) / 4f).toInt() - dp(2)).coerceAtLeast(dp(180))
             val cardH = (cardW * 9f / 16f).toInt()
 
             val outer = FrameLayout(parent.context).apply {

@@ -889,9 +889,22 @@ class CartoonCityPage(context: Context) : BasePage(context) {
             outer.setOnFocusChangeListener { _, has ->
                 if (!has) BoundaryFocusHandler.cancelShake(outer)
                 CartoonDesign.liquidGlassToFocused(itemView.context, card, has)
-                if (has) FocusFxHelper.applyFocusFxState(outer, true, cornerRadiusDp = CartoonDesign.Radius.SM.dp)
-                else outer.foreground = null
+                // 2026-08：焦点 fx 必须落到 card 这层（液态玻璃 LayerDrawable 有圆角 background +
+                // ViewOutlineProvider.BACKGROUND 输出实心轮廓），不能落 outer（无背景、轮廓为空）。
+                // 之前写 outer → translationZ 8dp 的暖黄 spotShadow 在 Android TV 上被当成"空投影"几乎
+                // 不可见；同时卡片 warm-yellow 2dp 边框在深海报上又被盖掉，两个机制一起失效。
+                if (has) FocusFxHelper.applyFocusFxState(card, true, cornerRadiusDp = CartoonDesign.Radius.SM.dp)
+                else {
+                    FocusFxHelper.applyFocusFxState(card, false, cornerRadiusDp = CartoonDesign.Radius.SM.dp)
+                    card.foreground = null
+                }
             }
+            // 2026-08：parent clip 必须在 ViewHolder 初始化时就关闭。
+            // 旧实现放在 hasFocus=true 分支里 → 第一次聚焦瞬间，父 RecyclerView/外层默认 clip=true，
+            // FocusFx 的 scale 1.05 + 4px 双层边框 + spotShadow 在首帧立刻被裁掉，用户看到的就是
+            // "边框不明显/感觉没聚焦"。之后即便 disableClippingUp 生效，首帧视觉已经被用户误判。
+            FocusFxHelper.disableClippingUp(card, maxDepth = 4)
+            FocusFxHelper.disableClippingUp(outer, maxDepth = 4)
             outer.setOnClickListener {
                 val item = current ?: return@setOnClickListener
                 openCartoon(item, outer)
@@ -973,12 +986,16 @@ class CartoonCityPage(context: Context) : BasePage(context) {
             outer.setOnFocusChangeListener { _, has ->
                 if (!has) BoundaryFocusHandler.cancelShake(outer)
                 CartoonDesign.liquidGlassToFocused(itemView.context, card, has)
-                if (has) {
-                    FocusFxHelper.applyFocusFxState(outer, true, cornerRadiusDp = CartoonDesign.Radius.SM.dp)
-                } else {
+                // 与 CartoonVH 一致：FocusFx 落到 card 层（有液态玻璃背景→实心轮廓→暖黄发光可见）
+                if (has) FocusFxHelper.applyFocusFxState(card, true, cornerRadiusDp = CartoonDesign.Radius.SM.dp)
+                else {
+                    FocusFxHelper.applyFocusFxState(card, false, cornerRadiusDp = CartoonDesign.Radius.SM.dp)
                     outer.foreground = null
                 }
             }
+            // 与 CartoonVH 同步：init 阶段就关闭父链裁剪，避免首帧裁切
+            FocusFxHelper.disableClippingUp(card, maxDepth = 4)
+            FocusFxHelper.disableClippingUp(outer, maxDepth = 4)
             outer.setOnClickListener { openManagement(outer) }
             outer.setOnKeyListener { _, keyCode, event ->
                 if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false

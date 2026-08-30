@@ -2020,7 +2020,7 @@ class SettingsPage(context: Context) : BasePage(context) {
             isFillViewport = false
             clipChildren = true
             clipToPadding = true
-            setPadding(dp(4), dp(4), dp(4), dp(4))
+            setPadding(dp(8), dp(8), dp(8), dp(8))
             addView(listContainer, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         }
         panel.addView(scroll, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(360)))
@@ -2044,7 +2044,7 @@ class SettingsPage(context: Context) : BasePage(context) {
                 showDeviceNameChangeGuide()
                 refresh()
             }
-            (row as? TextView)?.apply { gravity = Gravity.CENTER_VERTICAL; setPadding(dp(14), 0, dp(14), 0) }
+            (row as? TextView)?.apply { gravity = Gravity.CENTER; setPadding(dp(14), 0, dp(14), 0) }
             listContainer.addView(row, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(44)).apply {
                 topMargin = if (idx == 0) 0 else dp(8)
             })

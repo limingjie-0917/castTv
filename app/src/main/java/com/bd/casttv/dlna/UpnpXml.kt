@@ -67,6 +67,13 @@ object UpnpXml {
         }
         val dlnaCap = identity.dlnaProfiles.ifBlank { DeviceIdentity.DEFAULT_DLNA_PROFILES }
         val presentationUrl = identity.presentationUrl.ifBlank { "/" }
+        // 参考真机 DLNA 栈描述符（如小米）：不输出 <modelNumber> 字段。
+        // identity.modelNumber 留空即省略该元素。
+        val modelNumberXml = if (identity.modelNumber.isBlank()) {
+            ""
+        } else {
+            "\n    <modelNumber>${escape(identity.modelNumber)}</modelNumber>"
+        }
         return """<?xml version="1.0" encoding="utf-8"?>
 <root xmlns="urn:schemas-upnp-org:device-1-0" xmlns:dlna="urn:schemas-dlna-org:device-1-0">
   <specVersion>
@@ -79,8 +86,7 @@ object UpnpXml {
     <manufacturer>${escape(identity.manufacturer)}</manufacturer>
     <manufacturerURL>${escape(identity.manufacturerUrl)}</manufacturerURL>
     <modelDescription>${escape(identity.modelDescription)}</modelDescription>
-    <modelName>${escape(identity.modelName)}</modelName>
-    <modelNumber>${escape(identity.modelNumber)}</modelNumber>
+    <modelName>${escape(identity.modelName)}</modelName>$modelNumberXml
     <modelURL>${escape(modelUrl)}</modelURL>
     <serialNumber>$serialNumber</serialNumber>
     <UDN>$udn</UDN>

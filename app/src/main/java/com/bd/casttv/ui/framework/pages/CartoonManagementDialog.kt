@@ -100,33 +100,36 @@ class CartoonManagementDialog(
     fun show() {
         rowRefreshers.clear()
         selected.clear()
-        // ===== §一 容器尺寸 + §七 padding（标准型 560dp，四周 26dp） =====
+
+        // ===== §一 容器：主题磨砂面板 + 分栏四段式骨架（顶栏 / 按键提示 / 滚动列表 / 按钮栏） =====
         val panel = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             // §二 主面板：ThemeManager.dialogPanelBg（跟随主题），圆角 26dp
             background = ThemeManager.dialogPanelBg(context, 26)
-            setPadding(dp(26), dp(26), dp(26), dp(26))
+            setPadding(dp(24), dp(22), dp(24), dp(20))
             clipChildren = false
             clipToPadding = false
             descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
         }
 
-        // ===== §三 标题行 =====
+        // ------------------------------------------------------------------
+        // 1) 顶部标题栏：贴纸 + 主标题 + 右上角「共 X 部」徽章
+        // ------------------------------------------------------------------
         val header = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             clipChildren = false; clipToPadding = false
         }
-        // 贴纸：44dp 圆形 + 动画城图标 + fg_sticker_circle_border 与 AddToCartoonDialog 一致
+        // 贴纸：44dp 圆形 + 动画城图标（全彩太阳笑脸）+ 贴纸边框环
         header.addView(ClippedImageView(context).apply {
             setCircle(true)
             setImageResource(R.drawable.ic_more_cartoon)
             scaleType = ImageView.ScaleType.CENTER_CROP
             foreground = ResourcesCompat.getDrawable(context.resources, R.drawable.fg_sticker_circle_border, null)
         }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(12) })
-        // 标题文字：去掉渐变背景牌与描边，改为纯文字（参考 FavoritesPage.crayonDialogTitle）
-        // 焦点态/主题感仅通过文字色 + 投影保留，避免与底部操作按钮争抢视觉层级。
-        titleCount = object : TextView(context) {
+
+        // 主标题：20sp bold，onSizeChanged 线性渐变着色（暖黄→琥珀），与全局对话框标题统一
+        val titleOnly = object : TextView(context) {
             init {
                 textSize = 20f
                 typeface = Typeface.DEFAULT_BOLD
@@ -145,35 +148,111 @@ class CartoonManagementDialog(
                 )
             }
         }
-        header.addView(titleCount, LinearLayout.LayoutParams(
+        titleOnly.text = "管理我的动画城"
+        titleCount = titleOnly   // 保留对外引用语义；后续 updateCounts 不再改标题（仅加已选徽章在顶栏右端）
+        header.addView(titleOnly, LinearLayout.LayoutParams(
             0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
         ))
-        // 右侧副标题/计数（§三：crayon_yellow 15sp bold；按主题走 accent）
-        header.addView(TextView(context).apply {
-            text = "共 ${cartoons.size} 部"
-            textSize = 15f
-            typeface = Typeface.DEFAULT_BOLD
+        // 顶栏右端：共 X 部 胶囊 + 勾选 >0 时并排放「已选 N」accent 胶囊
+        val headerBadges = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val selectedPill = TextView(context).apply {
+            textSize = 13f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            visibility = View.GONE
+            background = GradientDrawable().apply {
+                cornerRadius = 9999f
+                setColor(Color.argb(70, Color.red(crayonYellow), Color.green(crayonYellow), Color.blue(crayonYellow)))
+                setStroke(Math.max(1, dp(1)), crayonYellow)
+            }
+            setTextColor(crayonYellow)
+            val ph = dp(10); val pv = dp(5)
+            setPadding(ph, pv, ph, pv)
+        }
+        val totalPill = TextView(context).apply {
+            textSize = 15f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            // 用 accent 渲染（与之前顶栏「共 X 部」同色），视觉上仍有身份
+            background = GradientDrawable().apply {
+                cornerRadius = 9999f
+                setColor(Color.argb(54, Color.red(accent), Color.green(accent), Color.blue(accent)))
+                setStroke(Math.max(1, dp(1)), accent)
+            }
             setTextColor(accent)
-        })
+            val ph = dp(12); val pv = dp(6)
+            setPadding(ph, pv, ph, pv)
+        }
+        totalPill.text = "共 ${cartoons.size} 部"
+        headerBadges.addView(selectedPill)
+        headerBadges.addView(totalPill, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { marginStart = dp(10) })
+        header.addView(headerBadges)
         panel.addView(header, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        ))
+        ).apply { bottomMargin = dp(16) })
 
-        // §五 说明文字（15sp，text_secondary，marginTop 对应 10~16dp）
-        panel.addView(TextView(context).apply {
-            text = "方向键移动焦点 · 确定键勾选条目 · 勾选后点「删除选中」"
-            textSize = 15f
+        // ------------------------------------------------------------------
+        // 2) 按键提示条：暖黄胶囊 icon + 三段说明；行高与标题栏分隔明显
+        // ------------------------------------------------------------------
+        val hintBar = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            // 半透明 SURFACE_2 胶囊底 + 软白内折射边，整体"信息提示"语义
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(14).toFloat()
+                setColor(Color.argb(90, 24, 28, 44))
+                setStroke(Math.max(1, dp(1)), Color.argb(120, 220, 228, 246))
+            }
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            clipChildren = false; clipToPadding = false
+        }
+        // 小光灯泡："提示"图形（用 SVG 感的圆角方块 + 感叹号画，避免缺 drawable）
+        val hintIcon = TextView(context).apply {
+            text = "\u24D8"   // ⓘ 信息环
+            textSize = 16f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+            setTextColor(crayonYellow)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(8).toFloat()
+                setColor(Color.argb(70, Color.red(crayonYellow), Color.green(crayonYellow), Color.blue(crayonYellow)))
+                setStroke(Math.max(1, dp(1)), crayonYellow)
+            }
+            val s = dp(26); setPadding(0, 0, 0, 0)
+            layoutParams = LinearLayout.LayoutParams(s, s)
+        }
+        hintBar.addView(hintIcon)
+        // 主提示：三段短句 + 语义色键位
+        val hintText = TextView(context).apply {
+            setTextIsSelectable(false); isFocusable = false
+            textSize = 14f; setLineSpacing(dp(1).toFloat(), 1.1f)
             setTextColor(textSecondary)
-            setPadding(0, dp(12), 0, dp(6))
-        }, LinearLayout.LayoutParams(
+            val ssb = SpannableStringBuilder()
+            val keyColor = Color.rgb(255, 255, 255)
+            fun appendKey(s: String) {
+                val p0 = ssb.length; ssb.append(s)
+                ssb.setSpan(ForegroundColorSpan(keyColor), p0, ssb.length, 0)
+                ssb.setSpan(object : android.text.style.StyleSpan(Typeface.BOLD) {}, p0, ssb.length, 0)
+            }
+            appendKey("↑ ↓ ← →"); ssb.append(" 移动焦点  ·  ")
+            appendKey("确定"); ssb.append(" 勾选条目  ·  ")
+            appendKey("返回"); ssb.append(" 关闭  ·  勾选后点击底部")
+            appendKey(" 删除选中")
+            text = ssb
+        }
+        hintBar.addView(hintText, LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+        ).apply { marginStart = dp(12) })
+        panel.addView(hintBar, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        ))
+        ).apply { bottomMargin = dp(16) })
 
-        // ===== §二 通用可聚焦选项行（bg_dialog_focus_item 语义，三态） =====
+        // ------------------------------------------------------------------
+        // 3) 滚动容器：放置在「提示条下方 + 按钮栏上方」，裁剪保持 true，溢出隐藏
+        // ------------------------------------------------------------------
+        // §二 通用可聚焦选项行（bg_dialog_focus_item 语义，三态）
         val list = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            // 2026-08 UI 调整：滚动容器与其内层都开启默认裁剪，
-            // 避免滚动到边缘时行卡片/焦点辉光溢出 340dp 高容器，与底部按钮撞边。
         }
         val focusRows = mutableListOf<View>()
         lateinit var refresher: () -> Unit
@@ -189,27 +268,39 @@ class CartoonManagementDialog(
             overScrollMode = ScrollView.OVER_SCROLL_NEVER
             isFocusable = false; isFocusableInTouchMode = false
             descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
-            // 2026-08 UI 要求：滑动时内容必须限制在容器区域内，溢出隐藏。
-            // ScrollView 默认会按自身绘制区域 canvas.clipRect 裁剪子 View，但为了阻止运行期
-            // FocusFxHelper.disableClippingUp / setClipChildren(false) 等副作用，这里显式锁死
-            // clipChildren（针对子 View 超界绘制的运行期开关）与 clipToPadding（针对 padding 内边距区的超界）。
             isVerticalScrollBarEnabled = false
             clipChildren = true
             clipToPadding = true
             addView(list)
         }
-        panel.addView(scroll, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, dp(340)
-        ).apply { topMargin = dp(4) })
-        // 防御：等 view 首次布局后，再把 ScrollView + 行列表两层的裁剪开关强制锁回 true；
-        // 避免任何 disableClippingUp（maxDepth 误传）在挂载前后的调用"溢出"到滚动容器。
+        // 滚动容器自身也套一层"面板"：与提示条/按钮栏一致的柔和描边 + 内 6dp padding，
+        // 让列表与提示条、按钮栏形成并列"面板"，而不是漂浮于背景，更清晰"滚动区夹在中间"。
+        val scrollPanel = FrameLayout(context).apply {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(16).toFloat()
+                setColor(Color.argb(56, 10, 12, 22))
+                setStroke(Math.max(1, dp(1)), Color.argb(90, 160, 172, 206))
+            }
+            val pad = dp(6)
+            setPadding(pad, pad, pad, pad)
+            addView(scroll, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT
+            ))
+        }
+        panel.addView(scrollPanel, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f   // 四段式核心：占满剩余空间 = 自动在 顶栏+提示+按钮栏 之间
+        ).apply { bottomMargin = dp(16) })
+        // 滚动溢出防御：锁裁剪（防止 FocusFxHelper.disableClippingUp 沿父链误关 ScrollView/panel 裁剪）
         list.clipChildren = true; list.clipToPadding = true
         scroll.post {
             scroll.clipChildren = true; scroll.clipToPadding = true
             list.clipChildren = true; list.clipToPadding = true
         }
 
-        // ===== §四 底部操作按钮（BatchBottomButton 语义） =====
+        // ------------------------------------------------------------------
+        // 4) 按钮栏：左「已选 N / 共 X 部」· 右「取消 / 删除选中」BatchBottomButton 语义
+        // ------------------------------------------------------------------
         bottomCount = TextView(context).apply {
             textSize = 14f
             setTextColor(textSecondary)
@@ -224,21 +315,35 @@ class CartoonManagementDialog(
         }
         val buttons = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            gravity = Gravity.START or Gravity.CENTER_VERTICAL
             clipChildren = false; clipToPadding = false
-            addView(bottomCount, LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
-            ).apply { marginEnd = dp(12) })
-            addView(cancel)
-            addView(deleteBtn, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { marginStart = dp(14) })  // §四：间距 6dp（标准）；确认/取消之间 14dp 更强区分
+            // 与顶栏/提示条视觉层级对齐：面板底 + 描边
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(16).toFloat()
+                setColor(Color.argb(64, 14, 16, 28))
+                setStroke(Math.max(1, dp(1)), Color.argb(110, 160, 172, 206))
+            }
+            setPadding(dp(16), dp(12), dp(16), dp(12))
         }
+        buttons.addView(bottomCount, LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+        ).apply { marginEnd = dp(12) })
+        // 按钮区：底部右对齐，取新子容器（保持 buttons 背景连续）
+        val btnRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            clipChildren = false; clipToPadding = false
+        }
+        btnRow.addView(cancel)
+        btnRow.addView(deleteBtn, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { marginStart = dp(14) })
+        buttons.addView(btnRow)
         panel.addView(buttons, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = dp(18) })
+        ))
 
-        // §一 AlertDialog：Theme_CastTV_Dialog + 透明背景 + 居中 + dimAmount + §六 560dp
+        // §一 AlertDialog：Theme_CastTV_Dialog + 透明背景 + 居中 + dimAmount
         dialog = AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog).setView(panel).create().also { d ->
             d.setOnDismissListener { scope.cancel() }
             d.setOnShowListener { focusRows.firstOrNull()?.requestFocus() }
@@ -247,14 +352,26 @@ class CartoonManagementDialog(
             d.window?.apply {
                 setGravity(Gravity.CENTER)
                 setBackgroundDrawableResource(android.R.color.transparent)
-                setLayout(dp(560), WindowManager.LayoutParams.WRAP_CONTENT) // §六 标准型 560dp
+                setLayout(dp(600), dp(720))    // 四段式：固定 600×720 更"分栏"稳定，列表按权重撑开
                 val attrs = attributes
                 attrs.dimAmount = 0.32f
                 attributes = attrs
                 addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
             }
         }
-        updateCounts()
+        // 顶栏「已选 N」徽章 + 底部计数 + 删除按钮态
+        fun updateHeaderSelectedPill(n: Int) {
+            if (n <= 0) {
+                selectedPill.visibility = View.GONE
+            } else {
+                selectedPill.text = "已选 $n"
+                selectedPill.visibility = View.VISIBLE
+            }
+        }
+        // 拦截 updateCounts 扩展：额外刷新顶栏徽章
+        val origRefresher: (Int) -> Unit = { n -> updateHeaderSelectedPill(n) }
+        // 把 header 选中徽章回写通过闭包挂钩；实现见 updateCounts 内部（本次同步改造）
+        updateCounts(extraHook = origRefresher)
     }
 
     // ================= §二 标题牌 Drawable（橙→黄→蓝 横向渐变 18dp 圆角） =================
@@ -554,17 +671,24 @@ class CartoonManagementDialog(
         refresh(); updateCounts()
     }
 
-    private fun updateCounts() {
+    /**
+     * 统一刷新四个位置：
+     *  1) 顶栏右端「已选 N」胶囊徽章（selectedPill）
+     *  2) 顶栏标题 shader（若文字没变也强制 invalidate，避免被 shader 回收时丢失渐变）
+     *  3) 按钮栏左侧「已选 N / 共 X 部」（bottomCount）
+     *  4) 底部「删除选中」按钮的启用/禁用状态（danger 语义，alpha=0.4 禁用）
+     */
+    private fun updateCounts(extraHook: ((Int) -> Unit)? = null) {
         val s = selected.size; val t = cartoons.size
-        titleCount.text = buildString {
-            append("我的动画城")
-            if (s > 0) append(" · 已选 $s")
-        }
-        // 重绘触发渐变 shader 重算
+        // 顶栏标题：四段式固定文案「管理我的动画城」，不再追加 · 已选 N，避免与右端徽章重复
+        val titleText = "管理我的动画城"
+        if (titleCount.text != titleText) titleCount.text = titleText
         titleCount.post {
             titleCount.invalidate()
             titleCount.requestLayout()
         }
+        extraHook?.invoke(s)
+
         val sb = SpannableStringBuilder()
         val a0 = "已选 "; val a1 = "$s"
         val b0 = "  /  共 "; val b1 = "$t"; val b2 = " 部"

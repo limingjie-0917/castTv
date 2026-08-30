@@ -182,10 +182,13 @@ class PlayerActivity : AppCompatActivity() {
             @Suppress("DEPRECATION")
             window.addFlags(
                 android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                    android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                    android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+                    android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
             )
         }
+        // 常亮：无论 SDK 走哪个分支都必须加 FLAG_KEEP_SCREEN_ON（O_MR1+ 的
+        // setShowWhenLocked/setTurnScreenOn 只负责"锁屏上显示/点亮屏幕"，不含常亮）。
+        // 旧代码把 KEEP_SCREEN_ON 放在 <27 分支里 → 新系统播放时系统熄屏超时照常触发。
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         binding = ActivityPlayerBinding.inflate(layoutInflater)
         setContentView(binding.root)
 

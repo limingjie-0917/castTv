@@ -247,6 +247,11 @@ class DouyinCastPage(context: Context) : BasePage(context) {
         if (currentIndex < 0) return false
         val targetIndex = currentIndex + offset
         if (targetIndex !in 0 until groupsListContainer.childCount) {
+            if (offset < 0) {
+                // 顶部边界（第一个设备组按「上」）：不拦截、不 shake，
+                // 返回 false 让 KeyEvent 走系统默认焦点搜索 → 落到列表上方的「＋ 添加」按钮
+                return false
+            }
             BoundaryFocusHandler.shake(current)
             return true
         }
@@ -302,14 +307,11 @@ class DouyinCastPage(context: Context) : BasePage(context) {
             setOnKeyListener { v, keyCode, event ->
                 if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
                 when (keyCode) {
-                    KeyEvent.KEYCODE_DPAD_UP -> {
-                        focusAdjacentDeviceGroup(v, -1)
-                        true
-                    }
-                    KeyEvent.KEYCODE_DPAD_DOWN -> {
-                        focusAdjacentDeviceGroup(v, 1)
-                        true
-                    }
+                    // 向上/向下直接返回 focusAdjacentDeviceGroup 的结果：
+                    // 列表内正常移动 = true（已消费）；顶部边界 = false（放行给系统默认焦点搜索，
+                    // 让焦点落到列表上方的「＋ 添加」按钮，而不是被 shake 拦截吞掉）
+                    KeyEvent.KEYCODE_DPAD_UP -> focusAdjacentDeviceGroup(v, -1)
+                    KeyEvent.KEYCODE_DPAD_DOWN -> focusAdjacentDeviceGroup(v, 1)
                     KeyEvent.KEYCODE_DPAD_RIGHT -> {
                         if (!focusFirstTimelineThumb()) BoundaryFocusHandler.shake(v)
                         true
@@ -473,13 +475,15 @@ class DouyinCastPage(context: Context) : BasePage(context) {
 
     private fun buildAddDeviceGroupButton(): View {
         val warm = Color.parseColor("#FFD07A")
+        val silver = Color.parseColor("#C6CDD6")   // 银白描边（默认态）
         fun TextView.refresh(focused: Boolean) {
             background = GradientDrawable().apply {
                 cornerRadius = dpi(14).toFloat()
-                setColor(if (focused) Color.parseColor("#55FFD07A") else Color.parseColor("#33FFD07A"))
-                setStroke(dpi(if (focused) 2 else 1), warm)
+                // 默认态：透明底（去背景色）+ 银白描边；焦点态：暖黄半透底 + 暖黄描边
+                setColor(if (focused) Color.parseColor("#55FFD07A") else Color.TRANSPARENT)
+                setStroke(dpi(if (focused) 2 else 1), if (focused) warm else silver)
             }
-            setTextColor(if (focused) Color.WHITE else warm)
+            setTextColor(Color.WHITE)   // 默认/焦点均为白色字体（默认态由银白描边区分）
         }
         return TextView(context).apply {
             text = "＋ 添加"

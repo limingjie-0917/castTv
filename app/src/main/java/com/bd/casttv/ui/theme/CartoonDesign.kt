@@ -271,16 +271,55 @@ object CartoonDesign {
         }
     }
 
-    /** 把液态玻璃卡切到聚焦态：粗描边 2px 琥珀 + 高光层加亮。 */
+    /**
+     * 把液态玻璃卡切到聚焦态：
+     *  · 聚焦：4px 暖黄实描边（外）+ 1.5dp 琥珀内边光环 + 高光层满亮度
+     *  · 默认：1px STROKE_SOFT 描边 + 高光层 48 透明度
+     *
+     * 为什么「4px + 内边光环」两层？Android TV 4K 显示上 poster 常有接近暖黄的亮色局部
+     * （皮卡丘/猫和老鼠等），单层 3px 经常被"吃掉"。第二层内边环是半透明琥珀，从视觉上
+     * 把边框整体厚度推到 ~5.5dp，在任意颜色海报外都能明显锚定焦点。
+     */
     fun liquidGlassToFocused(ctx: Context, card: View, focused: Boolean) {
         val layers = card.background as? LayerDrawable ?: return
         val base = layers.getDrawable(0) as? GradientDrawable ?: return
         val glow = layers.getDrawable(1) as? GradientDrawable ?: return
         if (focused) {
-            base.setStroke(Math.max(2, dp(ctx, 2)), Palette.ACCENT)
-            glow.alpha = 110
+            // 外层实描边：4px（大屏最小可感厚度）
+            base.setStroke(dp(ctx, 4), Palette.ACCENT)
+            // 内侧半透环：用 topGlow 层改造成"1.5dp 琥珀描边 + 透明填充"，再贴一层到
+            // inset 1px 位置 —— 因为 topGlow 本身是 LayerDrawable[1]，这里通过 mutate +
+            // setStroke 让其在聚焦态变成"内缘光环"，与外层 4px 实边形成双层结构。
+            glow.mutate()
+            (glow as? GradientDrawable)?.apply {
+                setColor(Color.argb(90, Color.red(Palette.ACCENT), Color.green(Palette.ACCENT), Color.blue(Palette.ACCENT)))
+                setStroke(Math.max(1, dp(ctx, 1)), Palette.ACCENT)
+            }
+            layers.setLayerInset(1, dp(ctx, 3), dp(ctx, 3), dp(ctx, 3), dp(ctx, 3))
+            layers.setLayerGravity(1, Gravity.NO_GRAVITY)
+            glow.alpha = 255
         } else {
             base.setStroke(Math.max(1, dp(ctx, 1)), Palette.STROKE_SOFT)
+            // 还原 topGlow：默认贴顶部的线性内高光条（22dp 高），避免丢失液态玻璃"上亮下暗"质感
+            glow.mutate()
+            // 与 liquidGlassDrawable() 生产路径一致，用 base 实际圆角保证一致
+            val baseCorner = (base as? GradientDrawable)?.cornerRadius?.takeIf { it > 0f }
+                ?: dp(ctx, Radius.SM.dp).toFloat()
+            (glow as? GradientDrawable)?.apply {
+                // 先还原渐变方向与颜色（setColors 会触发 re-init；不清理 setStroke 会残留 4px）
+                colors = intArrayOf(
+                    Color.argb(48, 255, 255, 255),
+                    Color.argb(0, 255, 255, 255)
+                )
+                orientation = GradientDrawable.Orientation.TOP_BOTTOM
+                setStroke(0, Color.TRANSPARENT)
+                cornerRadius = baseCorner
+                setSize(-1, dp(ctx, 22))
+                setColor(Color.argb(0, 0, 0, 0))
+            }
+            val insetH = dp(ctx, 1); val insetV = dp(ctx, 1)
+            layers.setLayerInset(1, insetH, insetV, insetH, 0)
+            layers.setLayerGravity(1, Gravity.TOP)
             glow.alpha = 48
         }
     }
