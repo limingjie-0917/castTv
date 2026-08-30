@@ -4,9 +4,7 @@ import android.content.Context
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.DashPathEffect
-import android.graphics.LinearGradient
 import android.graphics.Paint
-import android.graphics.Shader
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
@@ -128,25 +126,14 @@ class CartoonManagementDialog(
             foreground = ResourcesCompat.getDrawable(context.resources, R.drawable.fg_sticker_circle_border, null)
         }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(12) })
 
-        // 主标题：20sp bold，onSizeChanged 线性渐变着色（暖黄→琥珀），与全局对话框标题统一
-        val titleOnly = object : TextView(context) {
-            init {
-                textSize = 20f
-                typeface = Typeface.DEFAULT_BOLD
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, 0, 0, 0)
-                setShadowLayer(2f, 0f, 1f, Color.argb(140, 0, 0, 0))
-                setTextColor(textPrimary)
-            }
-            override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-                super.onSizeChanged(w, h, oldw, oldh)
-                if (w <= 0 || h <= 0) return
-                val grad = ThemeManager.dialogTitleGradient(context)
-                if (grad.isEmpty()) return
-                paint.shader = LinearGradient(
-                    0f, h * 0.5f, w.toFloat(), h * 0.5f, grad, null, Shader.TileMode.CLAMP
-                )
-            }
+        // 主标题：20sp bold 白色（去掉渐变 shader —— 渐变在磨砂面板上对比度不足）
+        val titleOnly = TextView(context).apply {
+            textSize = 20f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, 0)
+            setShadowLayer(2f, 0f, 1f, Color.argb(140, 0, 0, 0))
+            setTextColor(Color.WHITE)
         }
         titleOnly.text = "管理我的动画城"
         titleCount = titleOnly   // 保留对外引用语义；后续 updateCounts 不再改标题（仅加已选徽章在顶栏右端）
@@ -352,7 +339,7 @@ class CartoonManagementDialog(
             d.window?.apply {
                 setGravity(Gravity.CENTER)
                 setBackgroundDrawableResource(android.R.color.transparent)
-                setLayout(dp(600), dp(720))    // 四段式：固定 600×720 更"分栏"稳定，列表按权重撑开
+                setLayout(dp(600), dp(520))    // 四段式：600×520。滚动区 weight=1 自动压缩，按钮栏稳定露出
                 val attrs = attributes
                 attrs.dimAmount = 0.32f
                 attributes = attrs
