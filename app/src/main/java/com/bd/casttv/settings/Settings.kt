@@ -68,9 +68,9 @@ class Settings(context: Context) {
         get() = prefs.getBoolean(KEY_WEB_PARSE_ENABLED, false)
         set(value) = prefs.edit().putBoolean(KEY_WEB_PARSE_ENABLED, value).apply()
 
-    /** 页面布局模式：classic=经典多页翻页，launcher=启动台模式；默认 classic。 */
+    /** 页面布局模式：classic=经典多页翻页，launcher=启动台模式；默认 launcher。 */
     var pageLayoutMode: String
-        get() = normalizePageLayoutMode(prefs.getString(KEY_PAGE_LAYOUT_MODE, PAGE_LAYOUT_CLASSIC))
+        get() = normalizePageLayoutMode(prefs.getString(KEY_PAGE_LAYOUT_MODE, PAGE_LAYOUT_LAUNCHER))
         set(value) = prefs.edit().putString(KEY_PAGE_LAYOUT_MODE, normalizePageLayoutMode(value)).apply()
 
     /** 推荐可见开关（默认关闭）：开启后其他用户可在定向推荐时看到本设备。 */

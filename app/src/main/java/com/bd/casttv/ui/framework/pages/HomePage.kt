@@ -18,6 +18,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -28,6 +29,7 @@ import com.bd.casttv.dlna.PlaybackController
 import com.bd.casttv.favorites.FavoritesStore
 import com.bd.casttv.player.PlayerActivity
 import com.bd.casttv.queue.PlayQueueStore
+import com.bd.casttv.settings.CustomDockTabsStore
 import com.bd.casttv.settings.Settings
 import com.bd.casttv.sync.GiteeSyncManager
 import com.bd.casttv.sync.RecommendationsStore
@@ -50,7 +52,7 @@ class HomePage(context: Context) : BasePage(context), PlaybackController.StateOb
     private val stateDesc = TextView(context)
     private val guideArrow = TextView(context)
     private val bottomGuide = LinearLayout(context)
-    private val launcherMoreButton = FrameLayout(context)
+    private val functionBar = HorizontalScrollView(context)
     private val launcherMode = settings.pageLayoutMode == Settings.PAGE_LAYOUT_LAUNCHER
     private var guideAnimating = false
     private var tutorialIndex = 0
@@ -173,8 +175,8 @@ class HomePage(context: Context) : BasePage(context), PlaybackController.StateOb
     init {
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(dp(96), dp(48), dp(96), dp(48))
+            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            setPadding(dp(96), dp(12), dp(96), dp(48))
         }
         homeBodyRoot = root
         homeBodyRootDescendantFocusability = root.descendantFocusability
@@ -189,7 +191,7 @@ class HomePage(context: Context) : BasePage(context), PlaybackController.StateOb
             isFocusable = true
             isFocusableInTouchMode = true
             background = cardBg(false)
-            setPadding(dp(34), dp(24), dp(34), dp(24))
+            setPadding(dp(27), dp(19), dp(27), dp(19))
             setOnFocusChangeListener { v, has ->
                 applyStateCardBackground(has)
                 v.animate().scaleX(if (has) 1.04f else 1f).scaleY(if (has) 1.04f else 1f).setDuration(140).start()
@@ -199,22 +201,22 @@ class HomePage(context: Context) : BasePage(context), PlaybackController.StateOb
             }
             setOnKeyListener { v, _, e -> handleCardKey(v, e) }
         }
-        stateTitle.apply { textSize = 30f; setTextColor(Color.parseColor("#FFD700")); gravity = Gravity.CENTER }
+        stateTitle.apply { textSize = 24f; setTextColor(Color.parseColor("#FFD700")); gravity = Gravity.CENTER }
         stateDesc.apply {
-            textSize = 17f
+            textSize = 14f
             setTextColor(Color.rgb(214, 219, 226))
             gravity = Gravity.CENTER
-            setPadding(0, dp(12), 0, 0)
+            setPadding(0, dp(10), 0, 0)
         }
         stateCard.addView(stateTitle, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         stateCard.addView(stateDesc, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
         root.addView(tutorialText, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         // 移动端开关/切换按钮已按需求移除：屏幕两侧的翻页按钮（‹ ›）默认常驻，无需入口按钮。
-        root.addView(stateCard, LinearLayout.LayoutParams(dp(560), dp(315)).apply { topMargin = dp(16) })
+        root.addView(stateCard, LinearLayout.LayoutParams(dp(448), dp(252)).apply { topMargin = dp(13) })
 
         if (launcherMode) {
-            buildLauncherMoreIndicator()
+            buildFunctionBar()
         } else {
             buildBottomGuide()
         }
@@ -224,10 +226,8 @@ class HomePage(context: Context) : BasePage(context), PlaybackController.StateOb
             clipToPadding = false
             addView(root, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
             if (launcherMode) {
-                addView(launcherMoreButton, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, dp(58), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
-                    leftMargin = dp(96)
-                    rightMargin = dp(96)
-                    bottomMargin = dp(6)
+                addView(functionBar, FrameLayout.LayoutParams((resources.displayMetrics.widthPixels * 0.8f).toInt(), FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
+                    bottomMargin = dp(28)
                 })
             } else {
                 addView(bottomGuide, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
@@ -286,84 +286,110 @@ class HomePage(context: Context) : BasePage(context), PlaybackController.StateOb
         return super.dispatchKeyEvent(event)
     }
 
-    private fun buildLauncherMoreIndicator() {
-        launcherMoreButton.apply {
-            id = View.generateViewId()
-            isFocusable = true
-            isFocusableInTouchMode = false
-            isClickable = true
-            background = null
-            setPadding(0, 0, 0, 0)
+    private data class ShortcutItem(val pageId: String, val title: String, val iconRes: Int)
+
+    private fun buildFunctionCards(): List<ShortcutItem> {
+        val cards = mutableListOf<ShortcutItem>()
+        cards += ShortcutItem("watch_later", "稍后播放", R.drawable.ic_more_watch_later)
+        cards += ShortcutItem("favorites", "我的收藏", R.drawable.ic_more_favorites)
+        if (settings.webParseEnabled) {
+            cards += ShortcutItem(Settings.PAGE_ID_WEB_PARSE, "网页解析", R.drawable.ic_more_web_parse)
+            cards += ShortcutItem("cartoon_city", "动画城", R.drawable.ic_more_cartoon)
+        }
+        if (settings.douyinCastEnabled) {
+            cards += ShortcutItem(Settings.PAGE_ID_DOUYIN_CAST, "抖音投屏", R.drawable.ic_more_douyin_cast)
+        }
+        CustomDockTabsStore(context).list().forEach { tab ->
+            cards += ShortcutItem("customtab_${tab.id}", tab.name, R.drawable.ic_more_custom_tab)
+        }
+        cards += ShortcutItem("phonehub", "连接手机", R.drawable.ic_more_phonehub)
+        cards += ShortcutItem("history", "历史记录", R.drawable.ic_more_history)
+        cards += ShortcutItem("diagnostics", "网络诊断", R.drawable.ic_more_diagnostics)
+        cards += ShortcutItem("help", "帮助", R.drawable.ic_more_help)
+        cards += ShortcutItem("settings", "设置", R.drawable.ic_more_settings)
+        return cards
+    }
+
+    private fun buildFunctionBar() {
+        val items = buildFunctionCards()
+        if (items.isEmpty()) return
+
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
             clipChildren = false
             clipToPadding = false
-            val moreLabel = TextView(context).apply {
-                text = "更多功能"
-                setTextColor(Color.parseColor("#AAAAAA"))
-                textSize = 12f
-                gravity = Gravity.CENTER
-            }
-            val bar = View(context).apply {
-                background = GradientDrawable().apply {
-                    cornerRadius = dp(2).toFloat()
-                    setColor(Color.parseColor("#AAAAAA"))
-                }
-            }
-            val indicatorColumn = LinearLayout(context).apply {
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+        }
+
+        items.forEachIndexed { index, card ->
+            val item = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                addView(moreLabel, LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { gravity = Gravity.CENTER_HORIZONTAL })
-                addView(bar, LinearLayout.LayoutParams(
-                    (resources.displayMetrics.widthPixels * 0.15f).toInt(),
-                    dp(4)
-                ).apply {
-                    gravity = Gravity.CENTER_HORIZONTAL
-                    topMargin = dp(4)
-                })
-            }
-            addView(indicatorColumn, FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-            ).apply {
-                bottomMargin = dp(14)
-            })
-            setOnFocusChangeListener { v, has ->
-                v.alpha = if (has) 1f else 0.72f
-                if (has) {
-                    if (v.tag == "suppress_launcher_open_once") {
-                        v.tag = null
-                    } else {
-                        openLauncherMoreFunctions()
+                isFocusable = true
+                isFocusableInTouchMode = false
+                isClickable = true
+                setPadding(dp(12), dp(8), dp(12), dp(8))
+                if (index == 0) id = View.generateViewId()
+                setOnFocusChangeListener { v, has ->
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(12).toFloat()
+                        setColor(if (has) Color.argb(40, 255, 255, 255) else Color.TRANSPARENT)
+                        if (has) setStroke(dp(2), WARM) else setStroke(0, Color.TRANSPARENT)
+                    }
+                    FocusFxHelper.applyFocusFxState(v, has, cornerRadiusDp = 12)
+                }
+                setOnClickListener {
+                    (context as? NewMainActivity)?.openLauncherFunctionPage(card.pageId, this)
+                }
+                setOnKeyListener { _, keyCode, event ->
+                    if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+                    when (keyCode) {
+                        KeyEvent.KEYCODE_DPAD_UP -> { stateCard.requestFocus(); true }
+                        KeyEvent.KEYCODE_DPAD_LEFT -> {
+                            if (index == 0) { BoundaryFocusHandler.shake(this); true } else false
+                        }
+                        KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                            if (index == items.size - 1) { BoundaryFocusHandler.shake(this); true } else false
+                        }
+                        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                            (context as? NewMainActivity)?.openLauncherFunctionPage(card.pageId, this); true
+                        }
+                        else -> false
                     }
                 }
             }
-            setOnClickListener { openLauncherMoreFunctions() }
-            setOnKeyListener { _, _, event -> handleLauncherMoreKey(event) }
-        }
-        stateCard.nextFocusDownId = launcherMoreButton.id
-    }
-
-    private fun openLauncherMoreFunctions() {
-        (context as? NewMainActivity)?.openLauncherMoreFunctions(launcherMoreButton)
-    }
-
-    private fun handleLauncherMoreKey(event: KeyEvent): Boolean {
-        if (event.action != KeyEvent.ACTION_DOWN) return false
-        return when (event.keyCode) {
-            KeyEvent.KEYCODE_DPAD_UP -> {
-                stateCard.requestFocus()
-                true
+            val icon = ImageView(context).apply {
+                setImageResource(card.iconRes)
+                scaleType = ImageView.ScaleType.FIT_CENTER
             }
-            KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                openLauncherMoreFunctions()
-                true
+            item.addView(icon, LinearLayout.LayoutParams(dp(48), dp(48)).apply { gravity = Gravity.CENTER_HORIZONTAL })
+            val label = TextView(context).apply {
+                text = card.title
+                textSize = 12f
+                setTextColor(Color.argb(200, 255, 255, 255))
+                gravity = Gravity.CENTER
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
             }
-            KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> BoundaryFocusHandler.onContentBoundary(launcherMoreButton, event, View.FOCUS_RIGHT, this)
-            else -> false
+            item.addView(label, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(4)
+                gravity = Gravity.CENTER_HORIZONTAL
+            })
+            container.addView(item, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                marginEnd = dp(4)
+            })
         }
+
+        functionBar.apply {
+            isFocusable = false
+            isHorizontalScrollBarEnabled = false
+            isVerticalScrollBarEnabled = false
+            clipChildren = false
+            clipToPadding = false
+            addView(container, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT))
+        }
+        stateCard.nextFocusDownId = container.getChildAt(0).id
     }
 
     private fun buildBottomGuide() {
@@ -989,7 +1015,7 @@ class HomePage(context: Context) : BasePage(context), PlaybackController.StateOb
                 // 解码期间可能已切走播放状态或缩略图已变化，丢弃过期结果。
                 if (!playing || com.bd.casttv.dlna.PlaybackController.currentThumbPath() != path) return@post
                 if (bmp != null && !bmp.isRecycled) {
-                    stateThumbDrawable = RoundedCenterCropDrawable(bmp, dp(22).toFloat())
+                    stateThumbDrawable = RoundedCenterCropDrawable(bmp, dp(18).toFloat())
                 } else {
                     stateThumbDrawable = null
                 }
@@ -1000,7 +1026,7 @@ class HomePage(context: Context) : BasePage(context), PlaybackController.StateOb
 
     /**
      * 应用 stateCard 背景：
-     * - 播放中且有缩略图：缩略图作为填充层铺满 560×315dp，叠加圆角边框（焦点态高亮）。
+     * - 播放中且有缩略图：缩略图作为填充层铺满 448×252dp，叠加圆角边框（焦点态高亮）。
      * - 其余情况：恢复原来的 [cardBg]。
      */
     private fun applyStateCardBackground(focused: Boolean) {
@@ -1017,7 +1043,7 @@ class HomePage(context: Context) : BasePage(context), PlaybackController.StateOb
 
     /** 仅圆角描边、填充透明的边框层，用于叠加在缩略图之上保留卡片边框与焦点高亮。 */
     private fun cardBorderOverlay(focused: Boolean) = GradientDrawable().apply {
-        cornerRadius = dp(22).toFloat()
+        cornerRadius = dp(18).toFloat()
         setColor(Color.TRANSPARENT)
         setStroke(dp(if (focused) 3 else 1), if (focused) Color.parseColor("#FFD700") else Color.argb(170, 210, 214, 222))
     }
@@ -1076,7 +1102,8 @@ class HomePage(context: Context) : BasePage(context), PlaybackController.StateOb
             KeyEvent.KEYCODE_DPAD_UP -> BoundaryFocusHandler.onContentBoundary(v, e, View.FOCUS_UP, this)
             KeyEvent.KEYCODE_DPAD_DOWN -> {
                 if (launcherMode) {
-                    launcherMoreButton.requestFocus()
+                    val firstItem = (functionBar.getChildAt(0) as? LinearLayout)?.getChildAt(0)
+                    firstItem?.requestFocus()
                 } else {
                     openBottomSheet()
                 }
@@ -1096,7 +1123,7 @@ class HomePage(context: Context) : BasePage(context), PlaybackController.StateOb
     }
 
     private fun cardBg(focused: Boolean) = GradientDrawable().apply {
-        cornerRadius = dp(22).toFloat()
+        cornerRadius = dp(18).toFloat()
         setColor(0xFF4169E1.toInt())
         setStroke(dp(if (focused) 3 else 1), if (focused) Color.parseColor("#FFD700") else Color.argb(170, 210, 214, 222))
     }

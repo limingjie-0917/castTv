@@ -217,10 +217,10 @@ class SettingsPage(context: Context) : BasePage(context) {
             isSelected = checked
             clipChildren = false
             clipToPadding = false
-            background = card(focused = false, selected = checked)
+            background = card(focused = false)
             setPadding(dp(20), 0, dp(20), 0)
             setOnFocusChangeListener { view, has ->
-                view.background = card(focused = has, selected = isSelected)
+                view.background = card(focused = has)
                 FocusFxHelper.applyFocusFxState(view, has, cornerRadiusDp = 16)
             }
         }
@@ -245,7 +245,7 @@ class SettingsPage(context: Context) : BasePage(context) {
             minHeight = dp(31)
             setOnCheckedChangeListener { _, isOn ->
                 row.isSelected = isOn
-                row.background = card(focused = row.hasFocus(), selected = isOn)
+                row.background = card(focused = row.hasFocus())
                 on(isOn)
                 toast(if (isOn) "已开启" else "已关闭")
                 // 局部通知，避免整页 refresh 重建导致闪屏与焦点跳失
@@ -1932,22 +1932,10 @@ class SettingsPage(context: Context) : BasePage(context) {
 
     private fun bindBoundary() { val l = View.OnKeyListener { v, code, e -> if(e.action==KeyEvent.ACTION_DOWN && ((code==KeyEvent.KEYCODE_DPAD_UP && v===focusables.firstOrNull()) || (code==KeyEvent.KEYCODE_DPAD_DOWN && v===focusables.lastOrNull()))) { v.animate().translationY(if(code==KeyEvent.KEYCODE_DPAD_UP) -dp(8).toFloat() else dp(8).toFloat()).setDuration(60).withEndAction{v.animate().translationY(0f).setDuration(90).start()}.start(); true } else false }; focusables.forEach{it.setOnKeyListener(l)} }
     // 卡片背景：低不透明度 + 16dp 圆角 + 轻描边，现代简约不过度装饰
-    private fun card(focused:Boolean, selected:Boolean = false)=GradientDrawable().apply{
-        cornerRadius=dp(16).toFloat()
-        setColor(when {
-            focused && selected -> Color.argb(140, 44, 42, 30)
-            selected -> Color.argb(100, 32, 31, 26)
-            focused -> Color.argb(90, 28, 30, 38)
-            else -> Color.argb(70, 18, 20, 26)
-        })
-        setStroke(
-            dp(if(focused) 2 else 1),
-            when {
-                focused -> WARM
-                selected -> Color.argb(120, 245, 196, 81)
-                else -> Color.argb(45, 255, 255, 255)
-            }
-        )
+    private fun card(focused: Boolean) = GradientDrawable().apply {
+        cornerRadius = dp(16).toFloat()
+        setColor(if (focused) Color.argb(90, 28, 30, 38) else Color.argb(70, 18, 20, 26))
+        setStroke(dp(if (focused) 2 else 1), if (focused) WARM else Color.argb(45, 255, 255, 255))
     }
     private fun maskPassword(value: String) = if (value.isBlank()) "" else "已设置：" + "•".repeat(value.length.coerceAtMost(8))
     private fun dialog() = AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog)
