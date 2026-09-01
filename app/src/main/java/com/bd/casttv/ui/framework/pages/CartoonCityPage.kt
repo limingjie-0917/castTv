@@ -939,6 +939,18 @@ class CartoonCityPage(context: Context) : BasePage(context) {
                             true
                         } else false
                     }
+                    KeyEvent.KEYCODE_DPAD_UP -> {
+                        if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+                        if (batchMode && pos < SPAN_COUNT) {
+                            // 批量模式下首行按上：焦点跳到按钮栏「取消」按钮
+                            val toolbar = batchToolbar ?: return@setOnKeyListener false
+                            val inner = toolbar.getChildAt(0) as? LinearLayout ?: return@setOnKeyListener false
+                            // 按钮顺序：0=全选 1=取消勾选 2=删除 3=取消
+                            val target = inner.getChildAt(3) ?: inner.getChildAt(inner.childCount - 1)
+                            target?.requestFocus()
+                            true
+                        } else false
+                    }
                     KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
                         when (event.action) {
                             KeyEvent.ACTION_DOWN -> {
@@ -1157,7 +1169,7 @@ class CartoonCityPage(context: Context) : BasePage(context) {
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
                 cornerRadius = dp(14).toFloat()
-                setColor(Color.parseColor("#2A2A2E")) // 深灰色背景
+                setColor(Color.argb(179, 42, 42, 46)) // 深灰色背景 + 30% 透明度（70% 不透明）
                 setStroke(dp(1), Color.argb(60, 255, 255, 255))
             }
             val h = dp(12); val v = dp(8)
@@ -1217,11 +1229,23 @@ class CartoonCityPage(context: Context) : BasePage(context) {
                 FocusFxHelper.applyFocusFxState(view, has, cornerRadiusDp = 60)
             }
             setOnClickListener { onClick() }
-            setOnKeyListener { _, keyCode, event ->
-                if (event.action == KeyEvent.ACTION_DOWN &&
-                    (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER)) {
-                    onClick(); true
-                } else false
+            setOnKeyListener { v, keyCode, event ->
+                if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+                when (keyCode) {
+                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> { onClick(); true }
+                    KeyEvent.KEYCODE_DPAD_DOWN -> {
+                        // 按钮栏按下：焦点回到第 0 位剧集卡片（首行首列）
+                        val rv = grid ?: return@setOnKeyListener false
+                        val target = (rv.layoutManager as? GridLayoutManager)?.findViewByPosition(0)
+                        target?.requestFocus()
+                        true
+                    }
+                    KeyEvent.KEYCODE_DPAD_UP -> {
+                        // 按钮栏已经是最顶部，按上做抖动拦截
+                        BoundaryFocusHandler.shake(v); true
+                    }
+                    else -> false
+                }
             }
         }
     }
