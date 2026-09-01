@@ -18,11 +18,14 @@ import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewOutlineProvider
+import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
+import androidx.core.content.res.ResourcesCompat
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -50,10 +53,10 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * 动画城：云端动画卡片网格（5 列），末尾一张管理卡。
+ * 动画城：云端动画卡片网格（4 列）。
  * 进入时从云端拉取 cartoons 索引并缓存到本地 [CartoonStore]，离线时展示缓存。
  * 点击卡片 → P3 将 WebParsePage 按需下载适配器 + 强制解析。
- * 点击管理卡 → P5 CartoonManagementDialog。
+ * 长按 OK/ENTER 或 MENU 键 → 进入批量模式，可多选卡片并批量删除。
  */
 class CartoonCityPage(context: Context) : BasePage(context) {
     override val pageId = "cartoon_city"
@@ -71,11 +74,21 @@ class CartoonCityPage(context: Context) : BasePage(context) {
     private val adapter = CartoonAdapter()
     private var grid: RecyclerView? = null
 
+    // ---- 批量操作状态 ----
+    private var batchMode = false
+    private val batchSelected = mutableSetOf<String>() // cartoonId set
+    private var batchToolbar: LinearLayout? = null // 顶部工具条浮层
+
+    // 批量删除二次确认弹窗配色（与 CartoonManagementDialog.showConfirmDialog 同构）
+    private val CRAYON_PANEL_BG = Color.parseColor("#4169E1")  // 皇家蓝蜡笔面板
+    private val CRAYON_CARD_BG = Color.argb(18, 255, 255, 255) // 卡片/按钮暗底
+    private val CRAYON_WARM = Color.rgb(245, 196, 81)           // 焦点/强调暖色
+    private val CRAYON_BTN_BORDER = Color.argb(170, 210, 214, 222) // 默认态浅灰白描边
+    private val DANGER_TEXT = Color.parseColor("#FF6B6B")       // 危险按钮文字色
+
     companion object {
         /** 封面网格列数：4 列，卡片尺寸更舒展、焦点态无重叠。 */
         private const val SPAN_COUNT = 4
-        private const val TYPE_CARTOON = 0
-        private const val TYPE_MGMT = 1
     }
 
     /** 空态/加载视图：Premium Media 风格，去掉底板，保留琥珀圆环 loading + 文案胶囊徽。 */
@@ -264,6 +277,47 @@ class CartoonCityPage(context: Context) : BasePage(context) {
         super.onEnter()
         Log.i(TAG, "onEnter() fired; contentContainer w=${contentContainer.width} h=${contentContainer.height}")
         loadCartoons()
+        showMenuKeyHintBanner()
+    }
+
+    /** 通知条幅：提示遥控器菜单键可触发更多操作，5 秒后自动消失。位于左上角、全局状态栏下方。 */
+    private var hintBanner: View? = null
+    private fun showMenuKeyHintBanner() {
+        val host = (grid?.parent as? FrameLayout) ?: return
+        hintBanner?.let { host.removeView(it) }
+        val banner = TextView(context).apply {
+            text = "遥控器菜单键，可触发更多操作"
+            textSize = 14f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.argb(240, 255, 255, 255)) // 白色字体
+            background = GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(Color.parseColor("#4169E1"), Color.parseColor("#5BC0EB")) // 皇家蓝→浅蓝渐变
+            ).apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(12).toFloat()
+            }
+            val h = dp(16); val v = dp(10)
+            setPadding(h, v, h, v)
+            isFocusable = false
+            isClickable = false
+            elevation = dp(6).toFloat()
+            visibility = View.INVISIBLE
+        }
+        val lp = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.START or Gravity.TOP
+        ).apply { setMargins(dp(20), dp(12), dp(20), 0) }
+        host.addView(banner, lp)
+        hintBanner = banner
+        banner.post {
+            if (banner.visibility == View.INVISIBLE) banner.visibility = View.VISIBLE
+        }
+        banner.postDelayed({
+            (banner.parent as? ViewGroup)?.removeView(banner)
+            hintBanner = null
+        }, 5000)
     }
 
     override fun refreshTheme() {
@@ -326,8 +380,7 @@ class CartoonCityPage(context: Context) : BasePage(context) {
                             cleanupCloudDirtyCartoons(cartoons)
                         }
                     }
-                    val nextItems = cartoons.map { CartoonItem.Cartoon(it) } +
-                            if (cartoons.isNotEmpty()) listOf(CartoonItem.Management) else emptyList()
+                    val nextItems = cartoons.map { CartoonItem.Cartoon(it) }
                     runOnUiAnchor {
                         adapter.submit(nextItems)
                         updateEmpty(cartoons.isEmpty())
@@ -353,8 +406,7 @@ class CartoonCityPage(context: Context) : BasePage(context) {
                 is GiteeApi.ApiResult.NotFound,
                 is GiteeApi.ApiResult.Error -> {
                     val keep = cached.isNotEmpty()
-                    val nextItems = if (keep) cached.map { CartoonItem.Cartoon(it) } +
-                            listOf(CartoonItem.Management) else emptyList()
+                    val nextItems = if (keep) cached.map { CartoonItem.Cartoon(it) } else emptyList()
                     val msg = (result as? GiteeApi.ApiResult.Error)?.message.orEmpty()
                     runOnUiAnchor {
                         if (keep) adapter.submit(nextItems)
@@ -387,7 +439,7 @@ class CartoonCityPage(context: Context) : BasePage(context) {
     private fun loadFailed(title: String, detail: String, cached: List<GiteeShareStore.SharedCartoon>? = cachedSnapshotLast) {
         val safeCache = cached ?: emptyList()
         if (safeCache.isNotEmpty()) {
-            adapter.submit(safeCache.map { CartoonItem.Cartoon(it) } + CartoonItem.Management)
+            adapter.submit(safeCache.map { CartoonItem.Cartoon(it) })
             updateEmpty(false)
             Toast.makeText(context, title, Toast.LENGTH_SHORT).show()
             return
@@ -578,23 +630,10 @@ class CartoonCityPage(context: Context) : BasePage(context) {
         }
     }
 
-    private fun openManagement(sourceView: View) {
-        val currentCartoons = cartoonStore.getCachedCartoons()
-        if (currentCartoons.isEmpty()) {
-            Toast.makeText(context, "动画城还是空的，暂无可管理内容", Toast.LENGTH_SHORT).show()
-            return
-        }
-        CartoonManagementDialog(context, currentCartoons) {
-            // 删除完成回调：清理本地缓存并重新拉云端（同时触发适配器级联删除的副作用）
-            loadCartoons()
-        }.show()
-    }
-
     // ---- Adapter ----
 
     private sealed class CartoonItem {
         data class Cartoon(val data: GiteeShareStore.SharedCartoon) : CartoonItem()
-        object Management : CartoonItem()
     }
 
     /**
@@ -648,12 +687,8 @@ class CartoonCityPage(context: Context) : BasePage(context) {
                 override fun areItemsTheSame(oldPos: Int, newPos: Int): Boolean {
                     val a = data[oldPos]
                     val b = list[newPos]
-                    return when {
-                        a is CartoonItem.Cartoon && b is CartoonItem.Cartoon ->
-                            a.data.cartoonId == b.data.cartoonId
-                        a is CartoonItem.Management && b is CartoonItem.Management -> true
-                        else -> false
-                    }
+                    return a is CartoonItem.Cartoon && b is CartoonItem.Cartoon &&
+                        a.data.cartoonId == b.data.cartoonId
                 }
                 override fun areContentsTheSame(oldPos: Int, newPos: Int): Boolean {
                     val a = data[oldPos]
@@ -670,8 +705,6 @@ class CartoonCityPage(context: Context) : BasePage(context) {
         }
 
         override fun getItemCount() = data.size
-
-        override fun getItemViewType(position: Int) = if (data[position] is CartoonItem.Management) TYPE_MGMT else TYPE_CARTOON
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
             // 卡片宽度 = (RV 可用宽度 - 左右 padding - 列间 gap 总和) / SPAN_COUNT * 缩小比例
@@ -750,11 +783,7 @@ class CartoonCityPage(context: Context) : BasePage(context) {
             }
             outer.addView(card, FrameLayout.LayoutParams(cardW, totalH, Gravity.CENTER_HORIZONTAL))
 
-            return if (viewType == TYPE_MGMT) {
-                createManagementHolder(outer, card, parent, CARD_R)
-            } else {
-                createCartoonHolder(outer, card, card, parent, coverH, titleBar, CARD_R)
-            }
+            return createCartoonHolder(outer, card, card, parent, coverH, titleBar, CARD_R)
         }
 
         private fun createCartoonHolder(
@@ -839,90 +868,15 @@ class CartoonCityPage(context: Context) : BasePage(context) {
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP or Gravity.END
             ).apply { setMargins(0, CartoonDesign.dp(ctx, 10), CartoonDesign.dp(ctx, 10), 0) })
-            return CartoonVH(root, outer, image, badge, name)
-        }
-
-        private fun createManagementHolder(
-            root: FrameLayout, outer: FrameLayout, parent: ViewGroup, cardR: CartoonDesign.Radius
-        ): MgmtVH {
-            val ctx = parent.context
-            // 管理卡：宝蓝→浅蓝渐变（与剧集卡片的暖色调形成对比）
-            val rPx = CartoonDesign.dp(ctx, cardR.dp).toFloat()
-            val base = GradientDrawable(
-                GradientDrawable.Orientation.TL_BR,
-                intArrayOf(Color.parseColor("#1C9BDB"), Color.parseColor("#5BC0EB"))
-            ).apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = rPx
-                setStroke(Math.max(1, CartoonDesign.dp(ctx, 1)), CartoonDesign.Palette.STROKE_SOFT)
+            // 批量模式复选框：银白圆环（未选）/ 暖黄填充 + 对勾（已选），仅 batch 模式下可见
+            val checkbox = BatchCheckbox(ctx).apply {
+                visibility = View.GONE
             }
-            val topGlow = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(
-                Color.argb(48, 255, 255, 255), Color.argb(0, 255, 255, 255)
-            )).apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = rPx
-                setSize(-1, CartoonDesign.dp(ctx, 22))
-            }
-            val bottomShadow = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(
-                Color.argb(72, 0, 0, 0), Color.argb(0, 0, 0, 0)
-            )).apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = rPx
-                setSize(-1, CartoonDesign.dp(ctx, 26))
-            }
-            outer.background = LayerDrawable(arrayOf(base, topGlow, bottomShadow)).apply {
-                val insetH = CartoonDesign.dp(ctx, 1)
-                val insetV = CartoonDesign.dp(ctx, 1)
-                setLayerInset(1, insetH, insetV, insetH, 0)
-                setLayerGravity(1, Gravity.TOP)
-                setLayerInset(2, insetH, 0, insetH, insetV)
-                setLayerGravity(2, Gravity.BOTTOM)
-            }
-            val icon = ImageView(ctx).apply {
-                scaleType = ImageView.ScaleType.FIT_CENTER
-                setImageResource(R.drawable.ic_more_settings)
-                imageTintList = android.content.res.ColorStateList.valueOf(
-                    CartoonDesign.Palette.BADGE_ACCENT_FG
-                )
-            }
-            val label = TextView(ctx).apply {
-                text = "管理我的动画"
-                textSize = CartoonDesign.Type.TITLE_SM
-                typeface = Typeface.DEFAULT_BOLD
-                setTextColor(CartoonDesign.Palette.BADGE_ACCENT_FG)
-                gravity = Gravity.CENTER_HORIZONTAL
-            }
-            val sub = TextView(ctx).apply {
-                text = "删除 / 上传播放记录 / 同步设备"
-                textSize = CartoonDesign.Type.STATUS
-                setTextColor(CartoonDesign.mixColor(
-                    CartoonDesign.Palette.BADGE_ACCENT_FG,
-                    CartoonDesign.Palette.TEXT_MUTED, 0.35f
-                ))
-                gravity = Gravity.CENTER_HORIZONTAL
-            }
-            val center = LinearLayout(ctx).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                clipChildren = false
-            }
-            center.addView(icon, LinearLayout.LayoutParams(
-                CartoonDesign.dp(ctx, 44), CartoonDesign.dp(ctx, 44)
-            ).apply { bottomMargin = CartoonDesign.dp(ctx, 10) })
-            center.addView(label, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ))
-            center.addView(sub, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = CartoonDesign.dp(ctx, 4) })
-            outer.addView(center, FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER
-            ).apply {
-                val p = CartoonDesign.dp(ctx, 16)
-                setMargins(p, CartoonDesign.dp(ctx, 20), p, p)
-            })
-            return MgmtVH(root, outer)
+            card.addView(checkbox, FrameLayout.LayoutParams(
+                CartoonDesign.dp(ctx, 24), CartoonDesign.dp(ctx, 24),
+                Gravity.TOP or Gravity.START
+            ).apply { setMargins(CartoonDesign.dp(ctx, 8), CartoonDesign.dp(ctx, 8), 0, 0) })
+            return CartoonVH(root, outer, image, badge, name, checkbox)
         }
 
         override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
@@ -938,10 +892,13 @@ class CartoonCityPage(context: Context) : BasePage(context) {
         private val card: FrameLayout,
         private val image: ClippedImageView,
         private val badge: TextView,
-        private val name: TextView
+        private val name: TextView,
+        private val checkbox: BatchCheckbox
     ) : RecyclerView.ViewHolder(outer) {
 
         private var current: GiteeShareStore.SharedCartoon? = null
+        private var longPressRunnable: Runnable? = null
+        private var longPressFired = false
 
         init {
             outer.setOnFocusChangeListener { _, has ->
@@ -961,17 +918,71 @@ class CartoonCityPage(context: Context) : BasePage(context) {
             // 不再需要 disableClippingUp 关闭父链 clip——溢出控制在 RV padding 区内。
             outer.setOnClickListener {
                 val item = current ?: return@setOnClickListener
-                openCartoon(item, outer)
+                if (batchMode) {
+                    toggleBatchSelection(item.cartoonId)
+                } else {
+                    openCartoon(item, outer)
+                }
+            }
+            // 手机端长按：进入批量模式
+            outer.setOnLongClickListener {
+                if (!batchMode) enterBatchMode()
+                true
             }
             outer.setOnKeyListener { _, keyCode, event ->
-                if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
                 val pos = bindingAdapterPosition
                 if (pos == RecyclerView.NO_POSITION) return@setOnKeyListener false
                 when (keyCode) {
+                    KeyEvent.KEYCODE_MENU -> {
+                        if (event.action == KeyEvent.ACTION_DOWN && !batchMode) {
+                            enterBatchMode()
+                            true
+                        } else false
+                    }
                     KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                        val item = current ?: return@setOnKeyListener false
-                        openCartoon(item, outer)
-                        true
+                        when (event.action) {
+                            KeyEvent.ACTION_DOWN -> {
+                                val item = current ?: return@setOnKeyListener false
+                                if (batchMode) {
+                                    toggleBatchSelection(item.cartoonId)
+                                    true
+                                } else {
+                                    // 启动长按定时器：500ms 后进入批量模式
+                                    longPressFired = false
+                                    longPressRunnable?.let { outer.removeCallbacks(it) }
+                                    val rp = Runnable {
+                                        longPressFired = true
+                                        if (!batchMode) enterBatchMode()
+                                    }
+                                    longPressRunnable = rp
+                                    outer.postDelayed(rp, 500)
+                                    true
+                                }
+                            }
+                            KeyEvent.ACTION_UP -> {
+                                if (batchMode) {
+                                    // 批量模式：选择已在 ACTION_DOWN 时切换
+                                    true
+                                } else {
+                                    // 取消长按定时器
+                                    longPressRunnable?.let { outer.removeCallbacks(it) }
+                                    longPressRunnable = null
+                                    if (!longPressFired) {
+                                        // 短按：打开动画详情
+                                        val item = current ?: return@setOnKeyListener false
+                                        openCartoon(item, outer)
+                                    }
+                                    longPressFired = false
+                                    true
+                                }
+                            }
+                            else -> {
+                                longPressRunnable?.let { outer.removeCallbacks(it) }
+                                longPressRunnable = null
+                                longPressFired = false
+                                false
+                            }
+                        }
                     }
                     else -> false
                 }
@@ -1012,6 +1023,13 @@ class CartoonCityPage(context: Context) : BasePage(context) {
                     )
                 }
             }
+            // 批量模式：显示复选框并设置选中态
+            if (batchMode) {
+                checkbox.visibility = View.VISIBLE
+                checkbox.checked = batchSelected.contains(cartoon.cartoonId)
+            } else {
+                checkbox.visibility = View.GONE
+            }
             image.setImageResource(R.drawable.ic_thumb_default)
             if (cartoon.cover.isNotBlank()) {
                 pageScope.launch {
@@ -1032,32 +1050,351 @@ class CartoonCityPage(context: Context) : BasePage(context) {
         }
     }
 
-    private inner class MgmtVH(
-        private val outer: FrameLayout,
-        private val card: FrameLayout
-    ) : RecyclerView.ViewHolder(outer) {
-        init {
-            outer.setOnFocusChangeListener { _, has ->
-                if (!has) BoundaryFocusHandler.cancelShake(outer)
-                CartoonDesign.liquidGlassToFocused(itemView.context, card, has)
-                // 与 CartoonVH 一致：FocusFx 落到 card 层（有液态玻璃背景→实心轮廓→暖黄发光可见）
-                if (has) FocusFxHelper.applyFocusFxState(card, true, cornerRadiusDp = CartoonDesign.Radius.SM.dp)
-                else {
-                    FocusFxHelper.applyFocusFxState(card, false, cornerRadiusDp = CartoonDesign.Radius.SM.dp)
-                    outer.foreground = null
+    // ---- 批量操作 ----
+
+    private fun enterBatchMode() {
+        if (batchMode) return
+        val items = adapter.dataSnapshot().filterIsInstance<CartoonItem.Cartoon>()
+        if (items.isEmpty()) return
+        batchMode = true
+        batchSelected.clear()
+        showBatchToolbar()
+        adapter.notifyItemRangeChanged(0, adapter.itemCount)
+        // 焦点回到第一张卡片
+        grid?.post {
+            (grid?.layoutManager as? GridLayoutManager)?.findViewByPosition(0)?.requestFocus()
+        }
+    }
+
+    private fun exitBatchMode() {
+        batchMode = false
+        batchSelected.clear()
+        batchToolbar?.let { (grid?.parent as? FrameLayout)?.removeView(it) }
+        batchToolbar = null
+        adapter.notifyItemRangeChanged(0, adapter.itemCount)
+        // 焦点回到第一张卡片
+        grid?.post {
+            (grid?.layoutManager as? GridLayoutManager)?.findViewByPosition(0)?.requestFocus()
+        }
+    }
+
+    private fun toggleBatchSelection(cartoonId: String) {
+        if (batchSelected.contains(cartoonId)) batchSelected.remove(cartoonId)
+        else batchSelected.add(cartoonId)
+        refreshBatchUI()
+    }
+
+    private fun refreshBatchUI() {
+        adapter.notifyItemRangeChanged(0, adapter.itemCount)
+        // 更新「全选」按钮文案
+        val all = adapter.dataSnapshot().filterIsInstance<CartoonItem.Cartoon>()
+        val selectAllBtn = batchToolbar?.getChildAt(0) as? TextView
+        selectAllBtn?.text = if (batchSelected.size == all.size && all.isNotEmpty()) "取消全选" else "全选"
+        // 启用/禁用删除按钮
+        val deleteBtn = batchToolbar?.getChildAt(1) as? TextView
+        deleteBtn?.alpha = if (batchSelected.isNotEmpty()) 1f else 0.4f
+        deleteBtn?.isClickable = batchSelected.isNotEmpty()
+    }
+
+    private fun showBatchToolbar() {
+        val rv = grid ?: return
+        val toolbar = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            clipChildren = false
+            clipToPadding = false
+            descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+        }
+        val selectAllBtn = batchButton("全选") {
+            val all = adapter.dataSnapshot().filterIsInstance<CartoonItem.Cartoon>()
+            if (batchSelected.size == all.size && all.isNotEmpty()) {
+                batchSelected.clear()
+            } else {
+                batchSelected.clear()
+                all.forEach { batchSelected.add(it.data.cartoonId) }
+            }
+            refreshBatchUI()
+        }
+        val deleteBtn = batchButton("删除", warning = true) {
+            showBatchDeleteConfirm()
+        }
+        val cancelBtn = batchButton("取消") {
+            exitBatchMode()
+        }
+        toolbar.addView(selectAllBtn, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { marginEnd = dp(14) })
+        toolbar.addView(deleteBtn, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { marginEnd = dp(14) })
+        toolbar.addView(cancelBtn, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
+        val params = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        ).apply { topMargin = dp(8) }
+        (rv.parent as? FrameLayout)?.addView(toolbar, params)
+        batchToolbar = toolbar
+        // 默认焦点给「取消」按钮
+        toolbar.post { cancelBtn.requestFocus() }
+    }
+
+    private fun batchButton(text: String, warning: Boolean = false, onClick: () -> Unit): TextView {
+        return TextView(context).apply {
+            this.text = text
+            textSize = 14f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(if (warning) DANGER_TEXT else Color.WHITE)
+            gravity = Gravity.CENTER
+            isFocusable = true
+            isFocusableInTouchMode = false
+            isClickable = true
+            val h = dp(16); val v = dp(10)
+            setPadding(h, v, h, v)
+            minimumWidth = dp(80)
+            fun refresh(focused: Boolean) {
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.RECTANGLE
+                    cornerRadius = dp(60).toFloat()
+                    setColor(Color.TRANSPARENT)
+                    setStroke(
+                        dp(if (focused) 2 else 1),
+                        if (warning && focused) DANGER_TEXT
+                        else if (focused) CartoonDesign.Palette.ACCENT
+                        else Color.argb(170, 210, 214, 222)
+                    )
+                }
+                setTextColor(
+                    if (focused)
+                        if (warning) DANGER_TEXT else CartoonDesign.Palette.ACCENT
+                    else
+                        if (warning) DANGER_TEXT else Color.WHITE
+                )
+            }
+            refresh(false)
+            setOnFocusChangeListener { view, has ->
+                refresh(has)
+                FocusFxHelper.applyFocusFxState(view, has, cornerRadiusDp = 60)
+            }
+            setOnClickListener { onClick() }
+            setOnKeyListener { _, keyCode, event ->
+                if (event.action == KeyEvent.ACTION_DOWN &&
+                    (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER)) {
+                    onClick(); true
+                } else false
+            }
+        }
+    }
+
+    // ---- 批量删除二次确认弹窗（与 CartoonManagementDialog.showConfirmDialog 同构） ----
+
+    private fun showBatchDeleteConfirm() {
+        if (batchSelected.isEmpty()) return
+        val count = batchSelected.size
+        val sel = adapter.dataSnapshot().filterIsInstance<CartoonItem.Cartoon>()
+            .filter { batchSelected.contains(it.data.cartoonId) }
+            .map { it.data }
+
+        // 面板层
+        val panel = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(16), dp(16), dp(16))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(18).toFloat()
+                setColor(CRAYON_PANEL_BG)
+            }
+            clipChildren = false; clipToPadding = false
+            descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+        }
+        // 内容层
+        val content = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+            clipChildren = false; clipToPadding = false
+        }
+        // 标题行：贴纸 + 标题
+        val header = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            clipChildren = false; clipToPadding = false
+        }
+        header.addView(ClippedImageView(context).apply {
+            setCircle(true)
+            setImageResource(R.drawable.sticker_shinchan)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            foreground = ResourcesCompat.getDrawable(context.resources, R.drawable.fg_sticker_circle_border, null)
+            contentDescription = null
+        }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { rightMargin = dp(12) })
+        header.addView(TextView(context).apply {
+            text = "删除动画"
+            textSize = 20f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(CRAYON_WARM)
+            gravity = Gravity.CENTER_VERTICAL
+            setShadowLayer(2f, 0f, 1f, Color.argb(130, 0, 0, 0))
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        content.addView(header, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
+        // 提示文案
+        content.addView(TextView(context).apply {
+            text = "确定删除选中的 $count 部动画吗？\n此操作将同步修改 Gitee 云端数据，无法撤销。"
+            textSize = 15f
+            setLineSpacing(dp(4).toFloat(), 1f)
+            setTextColor(Color.argb(238, 255, 255, 255))
+            gravity = Gravity.START
+        }, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(16) })
+        // 底部按钮
+        val btns = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+        }
+        val cancel = crayonConfirmButton("再想想")
+        val confirm = crayonConfirmButton("确认删除")
+        btns.addView(cancel, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
+        btns.addView(confirm, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { marginStart = dp(14) })
+        content.addView(btns, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(22) })
+        panel.addView(content, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ))
+
+        val dlg = AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog).setView(panel).create()
+        cancel.setOnClickListener {
+            dlg.dismiss()
+        }
+        confirm.setOnClickListener {
+            dlg.dismiss()
+            performBatchDelete(sel)
+        }
+        dlg.show()
+        dlg.window?.apply {
+            setGravity(Gravity.CENTER)
+            setBackgroundDrawableResource(android.R.color.transparent)
+            decorView.setBackgroundColor(Color.TRANSPARENT)
+            setLayout(dp(380), WindowManager.LayoutParams.WRAP_CONTENT)
+            val attrs = attributes
+            attrs.dimAmount = 0.32f
+            attributes = attrs
+            addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            decorView.isFocusable = true
+            decorView.setOnKeyListener { _, keyCode, ev ->
+                if (keyCode == KeyEvent.KEYCODE_BACK && ev.action == KeyEvent.ACTION_DOWN) {
+                    cancel.performClick(); true
+                } else false
+            }
+            decorView.post { cancel.requestFocus() }
+        }
+    }
+
+    private fun crayonConfirmButton(label: String): TextView = TextView(context).apply {
+        text = label
+        textSize = 15f
+        typeface = Typeface.DEFAULT_BOLD
+        gravity = Gravity.CENTER
+        isFocusable = true; isFocusableInTouchMode = false; isClickable = true
+        minWidth = dp(92)
+        setPadding(dp(18), dp(10), dp(18), dp(10))
+        fun refresh(focused: Boolean) {
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(10).toFloat()
+                setColor(CRAYON_CARD_BG)
+                setStroke(dp(if (focused) 3 else 1), if (focused) CRAYON_WARM else CRAYON_BTN_BORDER)
+            }
+            setTextColor(if (focused) CRAYON_WARM else Color.argb(235, 245, 245, 245))
+        }
+        refresh(false)
+        setOnFocusChangeListener { v, has ->
+            refresh(has)
+            FocusFxHelper.applyFocusFxState(v, has, cornerRadiusDp = 10)
+        }
+    }
+
+    private fun performBatchDelete(cartoons: List<GiteeShareStore.SharedCartoon>) {
+        pageScope.launch {
+            Toast.makeText(context, "正在删除 ${cartoons.size} 部…", Toast.LENGTH_SHORT).show()
+            val ok = withContext(Dispatchers.IO) {
+                val latest = (GiteeShareStore.fetchCartoonsIndex() as? GiteeApi.ApiResult.Success)?.value ?: cartoons
+                val recs = (GiteeShareStore.fetchRecordsIndex() as? GiteeApi.ApiResult.Success)?.value.orEmpty()
+                var o = 0
+                cartoons.forEachIndexed { i, c ->
+                    val working = latest.filterNot { cc ->
+                        val removed = cartoons.subList(0, i)
+                        removed.any { it.cartoonId == cc.cartoonId }
+                    }
+                    when (GiteeShareStore.deleteCartoon(c.cartoonId, working, recs)) {
+                        is GiteeApi.ApiResult.Success -> o++
+                        else -> {}
+                    }
+                }
+                if (o > 0) runCatching {
+                    cartoonStore.removeLocal(cartoons.take(o).map { it.cartoonId })
+                }
+                o
+            }
+            withContext(Dispatchers.Main) {
+                if (ok > 0) {
+                    Toast.makeText(context, "✓ 已删除 $ok 部", Toast.LENGTH_SHORT).show()
+                    exitBatchMode()
+                    loadCartoons()
+                } else {
+                    Toast.makeText(context, "× 删除失败，请检查网络", Toast.LENGTH_SHORT).show()
                 }
             }
-            // 卡片焦点态裁剪方案：RV padding 20dp 缓冲区 + clipChildren=true 防线 + clipToPadding=false。
-            outer.setOnClickListener { openManagement(outer) }
-            outer.setOnKeyListener { _, keyCode, event ->
-                if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
-                when (keyCode) {
-                    KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                        openManagement(outer)
-                        true
-                    }
-                    else -> false
-                }
+        }
+    }
+
+    // ---- 批量模式复选框：自定义绘制 View ----
+
+    private class BatchCheckbox(context: Context) : View(context) {
+        var checked: Boolean = false
+            set(value) { field = value; invalidate() }
+
+        private val density = resources.displayMetrics.density
+        private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 1.5f * density
+        }
+        private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.FILL
+        }
+        private val checkPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = 2f * density
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val cx = width / 2f
+            val cy = height / 2f
+            val r = (minOf(width, height) / 2f - borderPaint.strokeWidth).coerceAtLeast(0f)
+            if (checked) {
+                val accent = CartoonDesign.Palette.ACCENT
+                borderPaint.color = accent
+                fillPaint.color = Color.argb(76, Color.red(accent), Color.green(accent), Color.blue(accent))
+                canvas.drawCircle(cx, cy, r, fillPaint)
+                canvas.drawCircle(cx, cy, r, borderPaint)
+                // 对勾
+                checkPaint.color = accent
+                val cr = r * 0.5f
+                canvas.drawLine(cx - cr * 0.6f, cy, cx - cr * 0.1f, cy + cr * 0.5f, checkPaint)
+                canvas.drawLine(cx - cr * 0.1f, cy + cr * 0.5f, cx + cr * 0.7f, cy - cr * 0.5f, checkPaint)
+            } else {
+                borderPaint.color = Color.argb(200, 210, 214, 222)
+                canvas.drawCircle(cx, cy, r, borderPaint)
             }
         }
     }
