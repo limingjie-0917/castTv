@@ -54,6 +54,7 @@ class HomePage(context: Context) : BasePage(context), PlaybackController.StateOb
     private val bottomGuide = LinearLayout(context)
     private val functionBar = HorizontalScrollView(context)
     private val launcherMode = settings.pageLayoutMode == Settings.PAGE_LAYOUT_LAUNCHER
+    private var lastFunctionSnapshot: List<ShortcutItem>? = null // 上次功能栏快照，返回主页时局部刷新用
     private var guideAnimating = false
     private var tutorialIndex = 0
     private var playing = false
@@ -246,10 +247,126 @@ class HomePage(context: Context) : BasePage(context), PlaybackController.StateOb
         if (!launcherMode) {
             startGuideAnimation()
             queueStore.addListener(onQueueChanged)
+        } else {
+            // 启动台模式：从功能详情页返回时，局部刷新底部功能图标列表（自定义Tab/开关可能变更）
+            refreshFunctionBarIfNeeded()
         }
         PlaybackController.registerObserver(this)
         // 进入首页时补刷一次，覆盖投屏状态在页面进入前已变化的场景。
         renderCastState()
+    }
+
+    /** 对比快照，若功能项有变化则局部刷新，保留滚动位置与焦点。 */
+    private fun refreshFunctionBarIfNeeded() {
+        if (!launcherMode) return
+        val current = buildFunctionCards()
+        val last = lastFunctionSnapshot
+        if (last != null && last.size == current.size && last.zip(current).all { (a, b) -> a.pageId == b.pageId && a.title == b.title }) {
+            return // 无变化，跳过
+        }
+        // 记录当前焦点位置（按 pageId）
+        val container = functionBar.getChildAt(0) as? LinearLayout ?: return
+        val focused = container.findFocus()
+        var focusPageId: String? = null
+        if (focused != null) {
+            for (i in 0 until container.childCount) {
+                if (container.getChildAt(i) === focused) {
+                    focusPageId = last?.getOrNull(i)?.pageId
+                    break
+                }
+            }
+        }
+        // 记录滚动位置
+        val scrollX = functionBar.scrollX
+        // 重建子容器
+        functionBar.removeAllViews()
+        rebuildFunctionBarContainer(current)
+        lastFunctionSnapshot = current
+        // 恢复滚动
+        functionBar.post { functionBar.scrollTo(scrollX, 0) }
+        // 恢复焦点（按 pageId 匹配，找不到则聚焦第一项）
+        functionBar.post {
+            val newContainer = functionBar.getChildAt(0) as? LinearLayout ?: return@post
+            val targetIndex = if (focusPageId != null) {
+                current.indexOfFirst { it.pageId == focusPageId }.coerceAtLeast(0)
+            } else 0
+            (newContainer.getChildAt(targetIndex) ?: newContainer.getChildAt(0))?.requestFocus()
+        }
+    }
+
+    /** 单独重建 functionBar 内部的 LinearLayout 容器（复用原有构建逻辑）。 */
+    private fun rebuildFunctionBarContainer(items: List<ShortcutItem>) {
+        if (items.isEmpty()) return
+        val container = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            clipChildren = false
+            clipToPadding = false
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+        }
+        items.forEachIndexed { index, card ->
+            val item = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                isFocusable = true
+                isFocusableInTouchMode = false
+                isClickable = true
+                setPadding(dp(12), dp(8), dp(12), dp(8))
+                if (index == 0) id = View.generateViewId()
+                setOnFocusChangeListener { v, has ->
+                    background = GradientDrawable().apply {
+                        cornerRadius = dp(12).toFloat()
+                        setColor(if (has) Color.argb(40, 255, 255, 255) else Color.TRANSPARENT)
+                        if (has) setStroke(dp(2), WARM) else setStroke(0, Color.TRANSPARENT)
+                    }
+                    FocusFxHelper.applyFocusFxState(v, has, cornerRadiusDp = 12)
+                }
+                setOnClickListener {
+                    (context as? NewMainActivity)?.openLauncherFunctionPage(card.pageId, this)
+                }
+                setOnKeyListener { _, keyCode, event ->
+                    if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+                    when (keyCode) {
+                        KeyEvent.KEYCODE_DPAD_UP -> { stateCard.requestFocus(); true }
+                        KeyEvent.KEYCODE_DPAD_LEFT -> {
+                            if (index == 0) { BoundaryFocusHandler.shake(this); true } else false
+                        }
+                        KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                            if (index == items.size - 1) { BoundaryFocusHandler.shake(this); true } else false
+                        }
+                        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
+                            (context as? NewMainActivity)?.openLauncherFunctionPage(card.pageId, this); true
+                        }
+                        else -> false
+                    }
+                }
+            }
+            val icon = ImageView(context).apply {
+                setImageResource(card.iconRes)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+            }
+            item.addView(icon, LinearLayout.LayoutParams(dp(48), dp(48)).apply { gravity = Gravity.CENTER_HORIZONTAL })
+            val label = TextView(context).apply {
+                text = card.title
+                textSize = 12f
+                setTextColor(Color.argb(200, 255, 255, 255))
+                gravity = Gravity.CENTER
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+            }
+            item.addView(label, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(4)
+                gravity = Gravity.CENTER_HORIZONTAL
+            })
+            container.addView(item, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                marginEnd = dp(4)
+            })
+        }
+        functionBar.addView(container, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT))
+        val firstId = container.getChildAt(0)?.id
+        if (firstId != null && firstId != View.NO_ID) {
+            stateCard.nextFocusDownId = firstId
+        }
     }
 
     override fun onLeave() {
@@ -313,83 +430,15 @@ class HomePage(context: Context) : BasePage(context), PlaybackController.StateOb
     private fun buildFunctionBar() {
         val items = buildFunctionCards()
         if (items.isEmpty()) return
-
-        val container = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            clipChildren = false
-            clipToPadding = false
-            setPadding(dp(8), dp(8), dp(8), dp(8))
-        }
-
-        items.forEachIndexed { index, card ->
-            val item = LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                isFocusable = true
-                isFocusableInTouchMode = false
-                isClickable = true
-                setPadding(dp(12), dp(8), dp(12), dp(8))
-                if (index == 0) id = View.generateViewId()
-                setOnFocusChangeListener { v, has ->
-                    background = GradientDrawable().apply {
-                        cornerRadius = dp(12).toFloat()
-                        setColor(if (has) Color.argb(40, 255, 255, 255) else Color.TRANSPARENT)
-                        if (has) setStroke(dp(2), WARM) else setStroke(0, Color.TRANSPARENT)
-                    }
-                    FocusFxHelper.applyFocusFxState(v, has, cornerRadiusDp = 12)
-                }
-                setOnClickListener {
-                    (context as? NewMainActivity)?.openLauncherFunctionPage(card.pageId, this)
-                }
-                setOnKeyListener { _, keyCode, event ->
-                    if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
-                    when (keyCode) {
-                        KeyEvent.KEYCODE_DPAD_UP -> { stateCard.requestFocus(); true }
-                        KeyEvent.KEYCODE_DPAD_LEFT -> {
-                            if (index == 0) { BoundaryFocusHandler.shake(this); true } else false
-                        }
-                        KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                            if (index == items.size - 1) { BoundaryFocusHandler.shake(this); true } else false
-                        }
-                        KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
-                            (context as? NewMainActivity)?.openLauncherFunctionPage(card.pageId, this); true
-                        }
-                        else -> false
-                    }
-                }
-            }
-            val icon = ImageView(context).apply {
-                setImageResource(card.iconRes)
-                scaleType = ImageView.ScaleType.FIT_CENTER
-            }
-            item.addView(icon, LinearLayout.LayoutParams(dp(48), dp(48)).apply { gravity = Gravity.CENTER_HORIZONTAL })
-            val label = TextView(context).apply {
-                text = card.title
-                textSize = 12f
-                setTextColor(Color.argb(200, 255, 255, 255))
-                gravity = Gravity.CENTER
-                maxLines = 1
-                ellipsize = TextUtils.TruncateAt.END
-            }
-            item.addView(label, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = dp(4)
-                gravity = Gravity.CENTER_HORIZONTAL
-            })
-            container.addView(item, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                marginEnd = dp(4)
-            })
-        }
-
         functionBar.apply {
             isFocusable = false
             isHorizontalScrollBarEnabled = false
             isVerticalScrollBarEnabled = false
             clipChildren = false
             clipToPadding = false
-            addView(container, FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT))
         }
-        stateCard.nextFocusDownId = container.getChildAt(0).id
+        rebuildFunctionBarContainer(items)
+        lastFunctionSnapshot = items // 保存初始快照
     }
 
     private fun buildBottomGuide() {

@@ -7,4 +7,6 @@
     <item name="sideActionIcon" type="id" />
     <!-- FocusFxHelper：标记 View 已挂载焦点态视觉增强，避免二次链式注册。 -->
     <item name="tag_focus_fx_applied" type="id" />
+    <!-- FocusFxHelper：焦点态暖黄朦胧光晕 Drawable 的 tag key。 -->
+    <item name="tag_focus_glow_drawable" type="id" />
 </resources>

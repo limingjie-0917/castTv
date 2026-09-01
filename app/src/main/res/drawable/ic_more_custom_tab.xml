@@ -1,35 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="48dp"
     android:height="48dp"
-    android:viewportWidth="24"
-    android:viewportHeight="24">
+    android:viewportWidth="64"
+    android:viewportHeight="64">
 
-    <!-- 圆角方形背景：紫 -->
-    <path
-        android:pathData="M7,2 h10 a5,5 0 0 1 5,5 v10 a5,5 0 0 1 -5,5 h-10 a5,5 0 0 1 -5,-5 v-10 a5,5 0 0 1 5,-5 z"
-        android:fillColor="#4A4A6A" />
+    <!-- Light theme TV + channel list + preview + play (no gradients for compatibility) -->
 
-    <!-- 顶部渐变高光层 -->
+    <!-- Antenna -->
     <path
-        android:pathData="M7,2 h10 a5,5 0 0 1 5,5 v6 h-20 v-6 a5,5 0 0 1 5,-5 z"
-        android:fillColor="#7B7BA0"
-        android:fillAlpha="0.42" />
+        android:fillColor="#00000000"
+        android:strokeColor="#7AA7FF"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M26,14 L20,8" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#7AA7FF"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M38,14 L44,8" />
 
-    <!-- 书签 -->
+    <!-- TV body (rounded rect) -->
     <path
-        android:pathData="M8,5 h8 a1,1 0 0 1 1,1 v13 l-5,-3.2 l-5,3.2 v-13 a1,1 0 0 1 1,-1 z"
-        android:fillColor="#FFFFFF" />
+        android:fillColor="#F7FAFF"
+        android:pathData="M20,14 H44 A10,10 0 0 1 54,24 V44 A10,10 0 0 1 44,54 H20 A10,10 0 0 1 10,44 V24 A10,10 0 0 1 20,14 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#C7D3EA"
+        android:strokeWidth="1.2"
+        android:pathData="M21,16.5 H43 A8,8 0 0 1 51,24.5 V43 A8,8 0 0 1 43,51 H21 A8,8 0 0 1 13,43 V24.5 A8,8 0 0 1 21,16.5 Z" />
 
-    <!-- 书签内凹槽 -->
+    <!-- Left channel list card -->
     <path
-        android:pathData="M10,8 h4 v4 h-4 z"
-        android:fillColor="#4A4A6A"
-        android:fillAlpha="0.25" />
+        android:fillColor="#EAF1FF"
+        android:pathData="M18,22 H24 A6,6 0 0 1 30,28 V40 A6,6 0 0 1 24,46 H18 A6,6 0 0 1 12,40 V28 A6,6 0 0 1 18,22 Z" />
 
-    <!-- 加号（自定义） -->
+    <!-- List rows -->
+    <path android:fillColor="#8AA0C8" android:pathData="M15,26 H27 V28.6 H15 Z" />
+    <path android:fillColor="#A3B4D6" android:pathData="M15,30 H25 V32.6 H15 Z" />
+
+    <!-- Highlighted (zoom) row: wider + warm accent -->
     <path
-        android:pathData="M12,9.2 L12,11.8 M10.7,10.5 L13.3,10.5"
-        android:strokeColor="#4A4A6A"
-        android:strokeWidth="1.0"
-        android:strokeLineCap="round" />
+        android:fillColor="#FFB703"
+        android:pathData="M13.2,34 H31.5 V39.4 H13.2 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FF7A45"
+        android:strokeWidth="1.2"
+        android:pathData="M13.2,34 H31.5 V39.4 H13.2 Z" />
+
+    <!-- Small magnify hint -->
+    <path android:fillColor="#FF7A45" android:pathData="M31.2,35.5 a1.2,1.2 0 1,0 0.01,0 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#FF7A45"
+        android:strokeWidth="1.2"
+        android:strokeLineCap="round"
+        android:pathData="M32.0,37.2 L33.2,38.4" />
+
+    <path android:fillColor="#A3B4D6" android:pathData="M15,41 H26 V43.6 H15 Z" />
+
+    <!-- Right preview frame -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:strokeColor="#B8C7E6"
+        android:strokeWidth="1.2"
+        android:pathData="M35,22 H45 A5,5 0 0 1 50,27 V33 A5,5 0 0 1 45,38 H35 A5,5 0 0 1 30,33 V27 A5,5 0 0 1 35,22 Z" />
+
+    <!-- Preview inner screen (soft tint) -->
+    <path
+        android:fillColor="#EAFBFF"
+        android:pathData="M36.5,24 H43.5 A4,4 0 0 1 47.5,28 V32 A4,4 0 0 1 43.5,36 H36.5 A4,4 0 0 1 32.5,32 V28 A4,4 0 0 1 36.5,24 Z" />
+
+    <!-- Play button -->
+    <path android:fillColor="#22C55E" android:pathData="M46.2,34.7 a4.6,4.6 0 1,0 0.01,0 Z" />
+    <path android:fillColor="#0B2A14" android:pathData="M44.7,32.7 L44.7,36.7 L48.0,34.7 Z" />
+
+    <!-- Dashed channel name under preview (approx with short segments) -->
+    <path android:fillColor="#B7C8F0" android:pathData="M31,42.8 H33.4 V45.0 H31 Z" />
+    <path android:fillColor="#B7C8F0" android:pathData="M36.2,42.8 H38.6 V45.0 H36.2 Z" />
+    <path android:fillColor="#B7C8F0" android:pathData="M41.4,42.8 H43.8 V45.0 H41.4 Z" />
+    <path android:fillColor="#B7C8F0" android:pathData="M46.6,42.8 H49.0 V45.0 H46.6 Z" />
+
+    <!-- TV feet -->
+    <path android:fillColor="#C9D3E6" android:pathData="M20,54 H28 V57.2 H20 Z" />
+    <path android:fillColor="#C9D3E6" android:pathData="M36,54 H44 V57.2 H36 Z" />
 </vector>

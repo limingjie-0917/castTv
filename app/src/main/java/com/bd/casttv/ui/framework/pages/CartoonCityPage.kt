@@ -77,7 +77,7 @@ class CartoonCityPage(context: Context) : BasePage(context) {
     // ---- 批量操作状态 ----
     private var batchMode = false
     private val batchSelected = mutableSetOf<String>() // cartoonId set
-    private var batchToolbar: LinearLayout? = null // 顶部工具条浮层
+    private var batchToolbar: FrameLayout? = null // 顶部工具条浮层（深灰底父容器 FrameLayout，内部含 LinearLayout 按钮容器）
 
     // 批量删除二次确认弹窗配色（与 CartoonManagementDialog.showConfirmDialog 同构）
     private val CRAYON_PANEL_BG = Color.parseColor("#4169E1")  // 皇家蓝蜡笔面板
@@ -1086,19 +1086,29 @@ class CartoonCityPage(context: Context) : BasePage(context) {
 
     private fun refreshBatchUI() {
         adapter.notifyItemRangeChanged(0, adapter.itemCount)
-        // 更新「全选」按钮文案
+        // batchToolbar 结构：外层 FrameLayout（深灰底） → 内层 LinearLayout（按钮容器，getChildAt(0)）
+        val inner = (batchToolbar?.getChildAt(0) as? LinearLayout) ?: return
         val all = adapter.dataSnapshot().filterIsInstance<CartoonItem.Cartoon>()
-        val selectAllBtn = batchToolbar?.getChildAt(0) as? TextView
-        selectAllBtn?.text = if (batchSelected.size == all.size && all.isNotEmpty()) "取消全选" else "全选"
-        // 启用/禁用删除按钮
-        val deleteBtn = batchToolbar?.getChildAt(1) as? TextView
-        deleteBtn?.alpha = if (batchSelected.isNotEmpty()) 1f else 0.4f
-        deleteBtn?.isClickable = batchSelected.isNotEmpty()
+        val hasSelection = batchSelected.isNotEmpty()
+        // 按钮顺序：0=全选/取消全选  1=取消勾选  2=删除  3=取消
+        val selectAllBtn = inner.getChildAt(0) as? TextView
+        selectAllBtn?.text = if (hasSelection && batchSelected.size == all.size) "取消全选" else "全选"
+        // 「取消勾选」按钮：有选中项时可点击
+        val uncheckBtn = inner.getChildAt(1) as? TextView
+        uncheckBtn?.alpha = if (hasSelection) 1f else 0.4f
+        uncheckBtn?.isClickable = hasSelection
+        // 「删除」按钮：有选中项时可点击
+        val deleteBtn = inner.getChildAt(2) as? TextView
+        deleteBtn?.alpha = if (hasSelection) 1f else 0.4f
+        deleteBtn?.isClickable = hasSelection
     }
 
     private fun showBatchToolbar() {
         val rv = grid ?: return
-        val toolbar = LinearLayout(context).apply {
+        val parent = rv.parent as? FrameLayout ?: return
+
+        // 内层：按钮容器（LinearLayout）
+        val inner = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             clipChildren = false
@@ -1107,12 +1117,17 @@ class CartoonCityPage(context: Context) : BasePage(context) {
         }
         val selectAllBtn = batchButton("全选") {
             val all = adapter.dataSnapshot().filterIsInstance<CartoonItem.Cartoon>()
-            if (batchSelected.size == all.size && all.isNotEmpty()) {
+            if (batchSelected.isNotEmpty() && batchSelected.size == all.size) {
                 batchSelected.clear()
             } else {
                 batchSelected.clear()
                 all.forEach { batchSelected.add(it.data.cartoonId) }
             }
+            refreshBatchUI()
+        }
+        val uncheckBtn = batchButton("取消勾选") {
+            if (batchSelected.isEmpty()) return@batchButton
+            batchSelected.clear()
             refreshBatchUI()
         }
         val deleteBtn = batchButton("删除", warning = true) {
@@ -1121,21 +1136,44 @@ class CartoonCityPage(context: Context) : BasePage(context) {
         val cancelBtn = batchButton("取消") {
             exitBatchMode()
         }
-        toolbar.addView(selectAllBtn, LinearLayout.LayoutParams(
+        inner.addView(selectAllBtn, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply { marginEnd = dp(14) })
-        toolbar.addView(deleteBtn, LinearLayout.LayoutParams(
+        inner.addView(uncheckBtn, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply { marginEnd = dp(14) })
-        toolbar.addView(cancelBtn, LinearLayout.LayoutParams(
+        inner.addView(deleteBtn, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { marginEnd = dp(14) })
+        inner.addView(cancelBtn, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
         ))
+
+        // 外层：深灰色背景父容器（FrameLayout）
+        val toolbar = FrameLayout(context).apply {
+            clipChildren = false
+            clipToPadding = false
+            descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = dp(14).toFloat()
+                setColor(Color.parseColor("#2A2A2E")) // 深灰色背景
+                setStroke(dp(1), Color.argb(60, 255, 255, 255))
+            }
+            val h = dp(12); val v = dp(8)
+            setPadding(h, v, h, v)
+            addView(inner, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT,
+                Gravity.CENTER
+            ))
+        }
+
         val params = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT,
             Gravity.TOP or Gravity.CENTER_HORIZONTAL
         ).apply { topMargin = dp(8) }
-        (rv.parent as? FrameLayout)?.addView(toolbar, params)
+        parent.addView(toolbar, params)
         batchToolbar = toolbar
         // 默认焦点给「取消」按钮
         toolbar.post { cancelBtn.requestFocus() }
