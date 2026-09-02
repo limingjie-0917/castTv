@@ -80,12 +80,20 @@ class SourceCheckDialog(
     private var checkJob: kotlinx.coroutines.Job? = null
     private val unavailableIds = linkedSetOf<String>()
     private var checkedCount = 0
+    // 异常频道记录（name + 失败源数）
+    private val abnormalChannels = mutableListOf<Pair<String, Int>>()
 
     private var contentRoot: LinearLayout? = null
     private var summaryView: TextView? = null
     private var buttonHost: LinearLayout? = null
-    private var checkingPanel: FoldPanel? = null
-    private var resultPanel: FoldPanel? = null
+    // 内容切换区域（检测中 / 检测完成）
+    private var contentArea: LinearLayout? = null
+    private var loadingView: View? = null
+    private var progressText: TextView? = null
+    private var resultView: View? = null
+    private var resultSummary: TextView? = null
+    private var resultScrollView: ScrollView? = null
+    private var resultListContainer: LinearLayout? = null
 
     fun show() {
         val panel = LinearLayout(context).apply {
@@ -108,22 +116,95 @@ class SourceCheckDialog(
         }
         contentRoot = content
         val summary = messageView("")
-        val checking = createFoldPanel("正在检测 · 开始检测")
-        val result = createFoldPanel("检测结果 · 0 个频道已检测完成")
+        summaryView = summary
+
+        // 内容切换区域（检测中 / 检测完成），默认 GONE
+        val area = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            clipChildren = false
+            clipToPadding = false
+            visibility = View.GONE
+        }
+        contentArea = area
+
+        // 检测中视图：圆环 loading + 进度文案
+        val loading = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            clipChildren = false
+            clipToPadding = false
+            setPadding(0, dp(30), 0, dp(30))
+        }
+        val progressBar = android.widget.ProgressBar(context, null, android.R.attr.progressBarStyleLarge).apply {
+            isIndeterminate = true
+            indeterminateDrawable?.setColorFilter(warm, android.graphics.PorterDuff.Mode.SRC_IN)
+        }
+        val progText = TextView(context).apply {
+            textSize = 14f
+            setTextColor(Color.argb(210, 220, 225, 235))
+            gravity = Gravity.CENTER
+            setPadding(0, dp(14), 0, 0)
+            text = "检测中（0/${workingChannels.size}）"
+        }
+        progressText = progText
+        loading.addView(progressBar, LinearLayout.LayoutParams(dp(52), dp(52)))
+        loading.addView(progText, lpMatch())
+        loadingView = loading
+
+        // 检测完成视图：异常频道数量 + 列表
+        val resultLayout = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            clipChildren = false
+            clipToPadding = false
+            setPadding(0, dp(20), 0, dp(10))
+        }
+        val summaryTv = TextView(context).apply {
+            textSize = 16f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.argb(238, 255, 255, 255))
+            gravity = Gravity.CENTER
+            setPadding(0, dp(6), 0, dp(14))
+        }
+        resultSummary = summaryTv
+        val listScroll = object : ScrollView(context) {
+            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                super.onMeasure(widthMeasureSpec, View.MeasureSpec.makeMeasureSpec(dp(200), View.MeasureSpec.AT_MOST))
+            }
+        }.apply {
+            isFillViewport = false
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            background = GradientDrawable().apply {
+                cornerRadius = dp(8).toFloat()
+                setColor(Color.argb(132, 18, 22, 30))
+            }
+        }
+        val listContainer = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+        }
+        resultListContainer = listContainer
+        resultScrollView = listScroll
+        listScroll.addView(listContainer, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        resultLayout.addView(summaryTv, lpMatch())
+        resultLayout.addView(listScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        resultView = resultLayout
+
+        area.addView(loading, lpMatch())
+        area.addView(resultLayout, lpMatch())
+
         val buttons = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             clipChildren = false
             clipToPadding = false
         }
-        summaryView = summary
-        checkingPanel = checking
-        resultPanel = result
         buttonHost = buttons
 
         content.addView(titleView("播放源检测"))
         content.addView(summary, lpMatch().apply { topMargin = dp(18) })
-        content.addView(checking.root, lpMatch().apply { topMargin = dp(18) })
-        content.addView(result.root, lpMatch().apply { topMargin = dp(14) })
+        content.addView(area, lpMatch().apply { topMargin = dp(14) })
         content.addView(buttons, lpMatch().apply { topMargin = dp(22) })
         contentInset.addView(content, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         panel.addView(contentInset, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -150,44 +231,27 @@ class SourceCheckDialog(
         checkJob?.cancel()
         checkedCount = 0
         unavailableIds.clear()
+        abnormalChannels.clear()
         summaryView?.text = "是否检测频道可用性？不可用的频道将在本次会话中被隐藏"
-        checkingPanel?.let { panel ->
-            panel.contentView.removeAllViews()
-            panel.contentView.addView(infoLine("开始检测后，这里会显示当前频道各个播放源的实时状态。"))
-            setPanelTitle(panel, "正在检测 · 开始检测")
-            setPanelExpanded(panel, false)
-        }
-        resultPanel?.let { panel ->
-            panel.contentView.removeAllViews()
-            panel.contentView.addView(infoLine("检测完成的频道会在这里逐条汇总。"))
-            setPanelTitle(panel, "检测结果 · 0 个频道已检测完成")
-            setPanelExpanded(panel, false)
-        }
+        contentArea?.visibility = View.GONE
         val skip = dialogButton("跳过") {
             callback.onSkip()
             dialog?.dismiss()
         }
         val start = dialogButton("开始检测") { startChecking() }
         setButtons(skip, start)
-        checkingPanel?.header?.requestFocus()
     }
 
     private fun startChecking() {
         checkJob?.cancel()
         checkedCount = 0
         unavailableIds.clear()
-        resultPanel?.contentView?.removeAllViews()
-        setResultTitle()
-        checkingPanel?.let { panel ->
-            panel.contentView.removeAllViews()
-            setPanelTitle(panel, "正在检测 · 准备开始")
-            setPanelExpanded(panel, true)
-        }
-        resultPanel?.let { panel ->
-            panel.contentView.removeAllViews()
-            panel.contentView.addView(infoLine("正在等待首个频道检测完成…"))
-            setPanelExpanded(panel, false)
-        }
+        abnormalChannels.clear()
+        // 切换到检测中视图
+        contentArea?.visibility = View.VISIBLE
+        loadingView?.visibility = View.VISIBLE
+        resultView?.visibility = View.GONE
+        progressText?.text = "检测中（0/${workingChannels.size}）"
         summaryView?.text = "正在逐频道检测，并会把响应最快的可用源自动设为主源。"
         val skip = dialogButton("跳过") {
             checkJob?.cancel()
@@ -207,9 +271,16 @@ class SourceCheckDialog(
                         replaceChannel(index, result.updatedChannel)
                         if (result.availableCount == 0) {
                             unavailableIds += channelId(result.updatedChannel)
+                            abnormalChannels.add(result.updatedChannel.displayName to result.availableCount)
+                        } else {
+                            // 有可用源但部分源失败也算异常
+                            val totalSources = result.updatedChannel.playableSources.count { it.item.uri.trim().isNotBlank() }
+                            if (result.availableCount < totalSources) {
+                                val failedCount = totalSources - result.availableCount
+                                abnormalChannels.add(result.updatedChannel.displayName to failedCount)
+                            }
                         }
-                        appendResultRow(result.updatedChannel.displayName, result.availableCount)
-                        setResultTitle()
+                        progressText?.text = "检测中（${checkedCount}/${workingChannels.size}）"
                     }
                 }
                 withContext(Dispatchers.Main) { showCompletedStage() }
@@ -221,33 +292,11 @@ class SourceCheckDialog(
 
     private suspend fun detectSingleChannel(channel: TabChannel, index: Int): ChannelCheckResult = coroutineScope {
         val playableSources = channel.playableSources.filter { it.item.uri.trim().isNotBlank() }
-        val rowMap = linkedMapOf<String, TextView>()
-        withContext(Dispatchers.Main) {
-            summaryView?.text = "正在检测 ${index + 1} / 共 ${workingChannels.size} 个频道"
-            checkingPanel?.let { panel ->
-                setPanelTitle(panel, "正在检测 · ${channel.displayName}")
-                setPanelExpanded(panel, true)
-                panel.contentView.removeAllViews()
-                if (playableSources.isEmpty()) {
-                    panel.contentView.addView(statusLine("❌ 无可检测播放源", failure = true))
-                } else {
-                    playableSources.forEach { source ->
-                        val row = statusLine(buildCheckingText(source.item.uri.trim()))
-                        rowMap[source.sourceId] = row
-                        panel.contentView.addView(row)
-                    }
-                }
-            }
-        }
         if (playableSources.isEmpty()) return@coroutineScope ChannelCheckResult(channel, 0)
 
         val results = playableSources.map { source ->
             async(Dispatchers.IO) {
-                val result = probeSource(source)
-                withContext(Dispatchers.Main) {
-                    rowMap[source.sourceId]?.let { updateStatusLine(it, result) }
-                }
-                result
+                probeSource(source)
             }
         }.awaitAll()
 
@@ -258,27 +307,49 @@ class SourceCheckDialog(
     }
 
     private fun showCompletedStage() {
-        summaryView?.text = "共 ${workingChannels.size} 个频道，${workingChannels.size - unavailableIds.size} 个可用，${unavailableIds.size} 个不可用"
-        checkingPanel?.let { panel ->
-            setPanelTitle(panel, "正在检测 · 检测完成")
-            setPanelExpanded(panel, false)
+        // 切换到检测完成视图
+        loadingView?.visibility = View.GONE
+        resultView?.visibility = View.VISIBLE
+        summaryView?.text = ""
+
+        val total = workingChannels.size
+        val abnormalCount = abnormalChannels.size
+        val normalCount = total - abnormalCount
+
+        resultSummary?.text = if (abnormalCount == 0) {
+            "本次检测共发现 0 个播放源异常频道\n全部 $total 个频道均可正常播放"
+        } else {
+            "本次检测共发现 $abnormalCount 个播放源异常频道\n$normalCount 个频道播放正常"
         }
-        resultPanel?.let { panel ->
-            if (panel.contentView.childCount == 0) {
-                panel.contentView.addView(infoLine("这次没有可汇总的频道。"))
+
+        // 填充异常频道列表
+        resultListContainer?.apply {
+            removeAllViews()
+            if (abnormalChannels.isEmpty()) {
+                addView(statusLine("✅ 全部频道播放源正常", success = true))
+            } else {
+                abnormalChannels.forEach { (name, failedCount) ->
+                    val text = if (failedCount == 0) {
+                        "❌ $name · 全部播放源失败"
+                    } else {
+                        "⚠ $name · $failedCount 个播放源异常"
+                    }
+                    addView(statusLine(text, failure = failedCount == 0))
+                }
             }
-            setPanelExpanded(panel, true)
         }
+
         val keepAll = dialogButton("不过滤") {
             callback.onSkip()
             dialog?.dismiss()
         }
-        val filter = dialogButton("过滤不可用") {
-            callback.onFilter(unavailableIds.toSet())
-            dialog?.dismiss()
-        }
-        setButtons(keepAll, filter)
-        resultPanel?.header?.requestFocus()
+        val filter = if (unavailableIds.isNotEmpty()) {
+            dialogButton("过滤不可用") {
+                callback.onFilter(unavailableIds.toSet())
+                dialog?.dismiss()
+            }
+        } else null
+        if (filter != null) setButtons(keepAll, filter) else setButtons(keepAll)
     }
 
     private fun reorderChannel(channel: TabChannel, results: List<UrlProbeResult>): TabChannel {
@@ -308,25 +379,6 @@ class SourceCheckDialog(
         if (index in workingChannels.indices) {
             workingChannels[index] = updated
         }
-    }
-
-    private fun setResultTitle() {
-        setPanelTitle(resultPanel, "检测结果 · $checkedCount 个频道已检测完成")
-    }
-
-    private fun appendResultRow(channelName: String, availableCount: Int) {
-        val panel = resultPanel ?: return
-        if (panel.contentView.childCount == 1) {
-            val first = panel.contentView.getChildAt(0)
-            val tag = first.tag as? String
-            if (tag == "placeholder") panel.contentView.removeAllViews()
-        }
-        val text = if (availableCount > 0) {
-            "$channelName · ${availableCount}个可用 · ✅已设主源"
-        } else {
-            "$channelName · 全部失败"
-        }
-        panel.contentView.addView(statusLine(text, success = availableCount > 0, failure = availableCount == 0))
     }
 
     private fun createFoldPanel(title: String): FoldPanel {
@@ -430,8 +482,6 @@ class SourceCheckDialog(
         }
         host.addView(row, lpMatch())
         val focusables = mutableListOf<View>().apply {
-            checkingPanel?.header?.let { add(it) }
-            resultPanel?.header?.let { add(it) }
             buttons.forEach { add(it) }
         }
         contentRoot?.let { bindBoundary(it, focusables) }
