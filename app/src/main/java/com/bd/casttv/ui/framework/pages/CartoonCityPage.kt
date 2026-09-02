@@ -306,8 +306,8 @@ class CartoonCityPage(context: Context) : BasePage(context) {
         val lp = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT,
-            Gravity.START or Gravity.TOP
-        ).apply { setMargins(dp(20), dp(12), dp(20), 0) }
+            Gravity.TOP or Gravity.CENTER_HORIZONTAL
+        ).apply { topMargin = dp(12) }
         host.addView(banner, lp)
         hintBanner = banner
         banner.post {
@@ -1271,28 +1271,24 @@ class CartoonCityPage(context: Context) : BasePage(context) {
         }
     }
 
-    // ---- 批量模式删除图标：红色圆边框 + 红色垃圾桶图标，无背景色 ----
+    // ---- 批量模式删除图标：银白边框 + 灰白色垃圾桶矢量图标，无背景色 ----
 
     private class DeleteIconView(context: Context) : View(context) {
         private val density = resources.displayMetrics.density
-        private val RED = Color.parseColor("#FF6B6B")
-        private val RED_DIM = Color.argb(200, 255, 107, 107)
+        private val SILVER = Color.argb(230, 210, 214, 222) // 银白色
+        private val GRAY_WHITE = Color.argb(200, 200, 205, 215) // 灰白色
 
         private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeWidth = 2f * density
-            color = RED
+            color = SILVER
         }
         private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeWidth = 2f * density
             strokeCap = Paint.Cap.ROUND
             strokeJoin = Paint.Join.ROUND
-            color = RED
-        }
-        private val iconFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            color = RED_DIM
+            color = GRAY_WHITE
         }
 
         override fun onDraw(canvas: Canvas) {
@@ -1300,28 +1296,29 @@ class CartoonCityPage(context: Context) : BasePage(context) {
             val cx = width / 2f
             val cy = height / 2f
             val r = (minOf(width, height) / 2f - borderPaint.strokeWidth).coerceAtLeast(0f)
-            // 红色圆边框（无背景色填充）
+            // 银白圆边框（无背景色填充）
             canvas.drawCircle(cx, cy, r, borderPaint)
 
-            // 垃圾桶图标尺寸
-            val iconSize = r * 0.5f
+            // 垃圾桶矢量图标（纯描边，无填充）
+            val iconSize = r * 0.45f
             val left = cx - iconSize
             val right = cx + iconSize
-            val top = cy - iconSize * 0.7f
-            val bottom = cy + iconSize * 0.9f
+            val top = cy - iconSize * 0.6f
+            val bottom = cy + iconSize * 0.8f
+            val bodyTop = top + iconSize * 0.3f
 
-            // 垃圾桶桶身（矩形）
-            canvas.drawRect(left, top + iconSize * 0.25f, right, bottom, iconFillPaint)
-            // 垃圾桶盖（横线 + 两侧小竖线）
-            val lidY = top + iconSize * 0.15f
-            canvas.drawLine(left - iconSize * 0.15f, lidY, right + iconSize * 0.15f, lidY, iconPaint)
+            // 桶身（矩形描边）
+            canvas.drawRect(left, bodyTop, right, bottom, iconPaint)
+            // 桶盖横线
+            val lidY = top + iconSize * 0.1f
+            canvas.drawLine(left - iconSize * 0.12f, lidY, right + iconSize * 0.12f, lidY, iconPaint)
             // 盖子顶部小把手
-            val handleY = top - iconSize * 0.05f
-            canvas.drawLine(cx - iconSize * 0.2f, handleY, cx + iconSize * 0.2f, handleY, iconPaint)
+            val handleY = top - iconSize * 0.08f
+            canvas.drawLine(cx - iconSize * 0.15f, handleY, cx + iconSize * 0.15f, handleY, iconPaint)
             // 桶身竖线纹路
-            val lineY1 = top + iconSize * 0.4f
-            val lineY2 = bottom - iconSize * 0.15f
-            val colStep = iconSize * 0.4f
+            val lineY1 = bodyTop + iconSize * 0.15f
+            val lineY2 = bottom - iconSize * 0.12f
+            val colStep = iconSize * 0.35f
             canvas.drawLine(cx - colStep, lineY1, cx - colStep, lineY2, iconPaint)
             canvas.drawLine(cx, lineY1, cx, lineY2, iconPaint)
             canvas.drawLine(cx + colStep, lineY1, cx + colStep, lineY2, iconPaint)
