@@ -200,7 +200,9 @@ class PageContainer @JvmOverloads constructor(context: Context, attrs: Attribute
         return when (event.action) {
             KeyEvent.ACTION_DOWN -> {
                 swallowNextBackUp = true
-                if (current.hasFocusAwayFromRoot()) {
+                if (current.interceptBackKey()) {
+                    true
+                } else if (current.hasFocusAwayFromRoot()) {
                     current.focusToRoot()
                     true
                 } else {

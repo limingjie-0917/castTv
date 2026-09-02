@@ -66,7 +66,7 @@ class WebParseHistoryDialog(
         }
         if (histories.isEmpty()) {
             val empty = TextView(context).apply {
-                text = "暂无解析记录\n成功解析影片后会自动保存最近 20 条记录"
+                text = "暂无解析记录\n解析成功后可点击「收藏网站」手动保存"
                 textSize = 15f
                 setTextColor(Color.argb(210, 255, 255, 255))
                 gravity = Gravity.CENTER

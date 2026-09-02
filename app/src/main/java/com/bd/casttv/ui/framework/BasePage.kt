@@ -219,6 +219,7 @@ abstract class BasePage @JvmOverloads constructor(context: Context, attrs: Attri
     open fun onEnter() {}
     open fun onLeave() {}
     open fun interceptPageSwitch(targetIndex: Int, direction: Int, proceed: () -> Unit): Boolean = false
+    open fun interceptBackKey(): Boolean = false
     open fun refreshTheme() {
         if (useContentPanel) {
             contentHost?.background = contentPanelBg()

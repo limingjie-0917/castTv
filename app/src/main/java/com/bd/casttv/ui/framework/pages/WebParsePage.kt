@@ -23,6 +23,8 @@ import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import android.view.WindowManager
+import androidx.appcompat.app.AlertDialog
 import androidx.media3.common.MimeTypes
 import com.bd.casttv.R
 import com.bd.casttv.dlna.PlaybackController
@@ -102,6 +104,10 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
     private var cartoonContext: CartoonContext? = null
     /** 最近一次解析用到的适配器信息，供「添加到动画城」判断是否要上传自定义适配器。 */
     private var lastAdapterMeta: AdapterMeta? = null
+    /** 列表页解析信息快照，供列表页「收藏网站」按钮使用。 */
+    private var listSiteInfo: SiteBookmarkInfo? = null
+    /** 详情页解析信息快照，供详情页「收藏网站」按钮使用。 */
+    private var detailSiteInfo: SiteBookmarkInfo? = null
     private var selectedSourceIndex = 0
     private var selectedEpisodeIndex = 0
     private var extractor = WebParseExtractor(context.applicationContext)
@@ -223,6 +229,8 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
     private val addToCartoonButton = dialogButton("添加到动画城") { onAddToCartoon() }
     private val jsonButton = dialogButton("JSON解析") { showJsonAdapterDialog() }
     private val listJsonButton = dialogButton("JSON 解析") { showListJsonAdapterDialog() }
+    private val bookmarkButton = dialogButton("收藏网站") { detailSiteInfo?.let { showBookmarkConfirmDialog(it) } }
+    private val listBookmarkButton = dialogButton("收藏网站") { listSiteInfo?.let { showBookmarkConfirmDialog(it) } }
     private val jsonTip = TextView(context).apply {
         text = "解析结果异常？试试AI生成JSON解析"
         textSize = 14f
@@ -256,7 +264,8 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         addView(jsonTip, LinearLayout.LayoutParams(dp(270), dp(42)).apply { marginEnd = dp(10) })
         addView(jsonButton, LinearLayout.LayoutParams(dp(118), dp(42)).apply { marginEnd = dp(10) })
         addView(addToCartoonButton, LinearLayout.LayoutParams(dp(150), dp(42)).apply { marginEnd = dp(10) })
-        addView(saveButton, LinearLayout.LayoutParams(dp(132), dp(42)))
+        addView(saveButton, LinearLayout.LayoutParams(dp(132), dp(42)).apply { marginEnd = dp(10) })
+        addView(bookmarkButton, LinearLayout.LayoutParams(dp(132), dp(42)))
     }
 
     init {
@@ -319,6 +328,17 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
     ) {
         val isCustomJson: Boolean get() = kind == AdapterKind.CUSTOM_JSON
     }
+
+    /** 「收藏网站」按钮所需的解析信息快照。 */
+    private data class SiteBookmarkInfo(
+        val title: String,
+        val url: String,
+        val pageType: String,
+        val siteTitle: String,
+        val frameworkType: String,
+        val adapterName: String,
+        val adapterId: String
+    )
 
     /**
      * 解析成功后回写云端 cartoons：以 detailUrl 为主键 upsert，更新 title/cover/集数。
@@ -568,7 +588,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                 }
                 listMovies = parsedList
                 listNextPageUrl = nextPageUrl
-                store.saveParseHistory(
+                listSiteInfo = SiteBookmarkInfo(
                     title = "列表页 · ${parsedList.size} 个条目",
                     url = url,
                     pageType = "list",
@@ -639,10 +659,11 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                     host = binding?.host.orEmpty().ifBlank { host },
                     frameworkType = binding?.frameworkType ?: WebFrameworkType.UNKNOWN
                 )
-                store.saveParseHistory(
+                detailSiteInfo = SiteBookmarkInfo(
                     title = parsed.title,
                     url = url,
                     pageType = "detail",
+                    siteTitle = "",
                     frameworkType = frameworkDisplayName(adapterSelection),
                     adapterName = adapterSelection.adapterInfo.name,
                     adapterId = adapterSelection.adapterInfo.id
@@ -690,10 +711,11 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                     frameworkType = binding?.frameworkType ?: WebFrameworkType.UNKNOWN
                 )
                 movie = parsed
-                store.saveParseHistory(
+                detailSiteInfo = SiteBookmarkInfo(
                     title = parsed.title,
                     url = url,
                     pageType = "detail",
+                    siteTitle = "",
                     frameworkType = WebFrameworkType.CUSTOM.displayName,
                     adapterName = ruleName,
                     adapterId = fileName
@@ -735,6 +757,117 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         ).show()
     }
 
+    private fun showBookmarkConfirmDialog(info: SiteBookmarkInfo) {
+        val pageTypeLabel = if (info.pageType == "list") "列表页" else "详情页"
+        val panel = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(20), dp(20), dp(20))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(16).toFloat()
+                setColor(Color.argb(245, 28, 30, 38))
+                setStroke(dp(1), Color.argb(80, 255, 215, 0))
+            }
+            clipChildren = false
+            clipToPadding = false
+        }
+
+        val titleRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            val sticker = ImageView(context).apply {
+                setImageResource(R.drawable.sticker_shinchan)
+                scaleType = ImageView.ScaleType.CENTER_CROP
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setStroke(dp(2), Color.argb(180, 255, 215, 0))
+                }
+            }
+            val stickerSize = dp(40)
+            addView(sticker, LinearLayout.LayoutParams(stickerSize, stickerSize).apply { marginEnd = dp(12) })
+            addView(TextView(context).apply {
+                text = "收藏网站"
+                textSize = 20f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(warm)
+            })
+        }
+        panel.addView(titleRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(16) })
+
+        fun infoRow(label: String, value: String) {
+            panel.addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(6), 0, dp(6))
+                addView(TextView(context).apply {
+                    text = label
+                    textSize = 14f
+                    setTextColor(Color.argb(180, 180, 185, 195))
+                    minWidth = dp(80)
+                })
+                addView(TextView(context).apply {
+                    text = value
+                    textSize = 14f
+                    setTextColor(Color.argb(230, 240, 240, 245))
+                    maxLines = 2
+                    ellipsize = TextUtils.TruncateAt.END
+                })
+            })
+        }
+
+        infoRow("影片标题", info.title)
+        infoRow("网页类型", pageTypeLabel)
+        infoRow("网址", info.url)
+        if (info.siteTitle.isNotBlank()) infoRow("网站标题", info.siteTitle)
+        infoRow("框架类型", info.frameworkType)
+        infoRow("适配器", info.adapterName)
+
+        val btnRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            clipChildren = false
+            clipToPadding = false
+        }
+        val cancel = dialogButton("取消") { }
+        val confirm = dialogButton("确认收藏") { }
+        btnRow.addView(cancel, LinearLayout.LayoutParams(dp(100), dp(42)).apply { marginEnd = dp(12) })
+        btnRow.addView(confirm, LinearLayout.LayoutParams(dp(120), dp(42)))
+        panel.addView(btnRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(20) })
+
+        val dlg = AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog).setView(panel).create()
+        cancel.setOnClickListener { dlg.dismiss() }
+        confirm.setOnClickListener {
+            dlg.dismiss()
+            store.saveParseHistory(
+                title = info.title,
+                url = info.url,
+                pageType = info.pageType,
+                siteTitle = info.siteTitle,
+                frameworkType = info.frameworkType,
+                adapterName = info.adapterName,
+                adapterId = info.adapterId
+            )
+            toast("已收藏到解析记录")
+        }
+        dlg.show()
+        dlg.window?.apply {
+            setGravity(Gravity.CENTER)
+            setBackgroundDrawableResource(android.R.color.transparent)
+            decorView.setBackgroundColor(Color.TRANSPARENT)
+            setLayout(dp(400), WindowManager.LayoutParams.WRAP_CONTENT)
+            val attrs = attributes
+            attrs.dimAmount = 0.32f
+            attributes = attrs
+            addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            decorView.isFocusable = true
+            decorView.setOnKeyListener { _, keyCode, ev ->
+                if (keyCode == KeyEvent.KEYCODE_BACK && ev.action == KeyEvent.ACTION_DOWN) {
+                    cancel.performClick(); true
+                } else false
+            }
+            decorView.post { cancel.requestFocus() }
+        }
+    }
+
     private fun startParseDetailWithJsonRule(jsonRule: String) {
         val url = inputEdit.text?.toString()?.trim().orEmpty().ifBlank { currentUrl }
         if (!url.startsWith("http://", true) && !url.startsWith("https://", true)) {
@@ -766,10 +899,11 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                 val parsed = extractor.extractWithRule(url, info.fileName)
                 saveCustomAdapterBinding(url, info.name, info.fileName, ParsePageKind.DETAIL)
                 movie = parsed
-                store.saveParseHistory(
+                detailSiteInfo = SiteBookmarkInfo(
                     title = parsed.title,
                     url = url,
                     pageType = "detail",
+                    siteTitle = "",
                     frameworkType = WebFrameworkType.CUSTOM.displayName,
                     adapterName = info.name,
                     adapterId = info.fileName
@@ -858,7 +992,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                 listMovies = parsedList
                 listNextPageUrl = result.nextPageUrl
                 listJsonRule = jsonRule
-                store.saveParseHistory(
+                listSiteInfo = SiteBookmarkInfo(
                     title = "列表页 JSON · ${parsedList.size} 个条目",
                     url = url,
                     pageType = "list",
@@ -1008,6 +1142,8 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                 }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                 detachFromParent(listJsonButton)
                 addView(listJsonButton, LinearLayout.LayoutParams(dp(118), dp(36)).apply { marginStart = dp(12) })
+                detachFromParent(listBookmarkButton)
+                addView(listBookmarkButton, LinearLayout.LayoutParams(dp(118), dp(36)).apply { marginStart = dp(10) })
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             addView(TextView(context).apply {
                 text = "请选择要播放的影片，确认后会进入详情页解析流程"

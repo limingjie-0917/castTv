@@ -13,6 +13,7 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.LayerDrawable
 import android.text.TextUtils
 import android.util.Log
+import android.util.LruCache
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
@@ -88,6 +89,18 @@ class CartoonCityPage(context: Context) : BasePage(context) {
     companion object {
         /** 封面网格列数：4 列，卡片尺寸更舒展、焦点态无重叠。 */
         private const val SPAN_COUNT = 4
+        /** 封面内存缓存：避免滑动时 RecyclerView 复用 VH 导致重复网络请求和闪烁。 */
+        private val coverCache = object : LruCache<String, Bitmap>((Runtime.getRuntime().maxMemory() / 16).toInt()) {
+            override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
+        }
+    }
+
+    override fun interceptBackKey(): Boolean {
+        if (batchMode) {
+            exitBatchMode()
+            return true
+        }
+        return false
     }
 
     /** 空态/加载视图：Premium Media 风格，去掉底板，保留琥珀圆环 loading + 文案胶囊徽。 */
@@ -935,13 +948,6 @@ class CartoonCityPage(context: Context) : BasePage(context) {
                             true
                         } else false
                     }
-                    KeyEvent.KEYCODE_BACK -> {
-                        // 批量模式下按返回键退出
-                        if (event.action == KeyEvent.ACTION_DOWN && batchMode) {
-                            exitBatchMode()
-                            true
-                        } else false
-                    }
                     KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER -> {
                         when (event.action) {
                             KeyEvent.ACTION_DOWN -> {
@@ -992,6 +998,12 @@ class CartoonCityPage(context: Context) : BasePage(context) {
 
         fun bind(cartoon: GiteeShareStore.SharedCartoon) {
             val ctx = itemView.context
+            // 同一卡片重绑（如批量模式切换 notifyItemRangeChanged）：仅更新批量态，跳过图片重载
+            if (current?.cartoonId == cartoon.cartoonId) {
+                deleteIcon.visibility = if (batchMode) View.VISIBLE else View.GONE
+                CartoonDesign.liquidGlassToFocused(ctx, card, outer.hasFocus())
+                return
+            }
             current = cartoon
             name.text = cartoon.title
             // 语义徽章三态：有集数 -> INFO（蓝紫）；为 0 或更新中 -> WARN；描述已同步且集数 >= 100 -> 完结 SUCCESS
@@ -1026,19 +1038,26 @@ class CartoonCityPage(context: Context) : BasePage(context) {
             }
             // 批量模式：显示删除图标
             deleteIcon.visibility = if (batchMode) View.VISIBLE else View.GONE
-            image.setImageResource(R.drawable.ic_thumb_default)
-            if (cartoon.cover.isNotBlank()) {
-                pageScope.launch {
-                    val bmp = withContext(Dispatchers.IO) {
-                        try {
-                            val conn = (URL(cartoon.cover).openConnection() as HttpURLConnection).apply {
-                                connectTimeout = 8000; readTimeout = 8000
-                            }
-                            conn.inputStream.use { BitmapFactory.decodeStream(it) }
-                        } catch (_: Throwable) { null }
-                    }
-                    if (bmp != null && current?.cartoonId == cartoon.cartoonId) {
-                        image.setImageBitmap(bmp)
+            // 封面加载：优先取内存缓存，命中则直接设置，未命中才发起网络请求
+            val cached = coverCache.get(cartoon.cover)
+            if (cached != null) {
+                image.setImageBitmap(cached)
+            } else {
+                image.setImageResource(R.drawable.ic_thumb_default)
+                if (cartoon.cover.isNotBlank()) {
+                    pageScope.launch {
+                        val bmp = withContext(Dispatchers.IO) {
+                            try {
+                                val conn = (URL(cartoon.cover).openConnection() as HttpURLConnection).apply {
+                                    connectTimeout = 8000; readTimeout = 8000
+                                }
+                                conn.inputStream.use { BitmapFactory.decodeStream(it) }
+                            } catch (_: Throwable) { null }
+                        }
+                        if (bmp != null && current?.cartoonId == cartoon.cartoonId) {
+                            coverCache.put(cartoon.cover, bmp)
+                            image.setImageBitmap(bmp)
+                        }
                     }
                 }
             }

@@ -1040,6 +1040,7 @@ class NewMainActivity : AppCompatActivity(), SettingsChangeBus.Listener, PageCon
             popOverlayPage(overlayPages.last())
             return
         }
+        if (pageContainer.currentPage?.interceptBackKey() == true) return
         if (!pageContainer.backToHomeOrExit()) super.onBackPressed()
     }
 
