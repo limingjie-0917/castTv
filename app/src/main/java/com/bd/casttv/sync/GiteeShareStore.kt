@@ -124,7 +124,7 @@ object GiteeShareStore {
         }
     }
 
-    private fun fetchAdaptersIndex(): GiteeApi.ApiResult<List<SharedAdapter>> {
+    fun fetchAdaptersIndex(): GiteeApi.ApiResult<List<SharedAdapter>> {
         return when (val result = GiteeApi.getFileResult(ADAPTERS_INDEX)) {
             is GiteeApi.ApiResult.Success -> {
                 val list = parseAdaptersIndex(result.value.content)
@@ -267,17 +267,18 @@ object GiteeShareStore {
             }
         }
 
-        // Step3: 上传记录
+        // Step3: 上传记录（增量：recordId 作为 globalRecordId，存在则覆盖）
         var successCount = 0
         var failCount = 0
         for (item in selected) {
             val h = item.history
-            val globalRecordId = UUID.randomUUID().toString()
+            val globalRecordId = h.recordId.ifBlank { UUID.randomUUID().toString() }
             val isBuiltIn = h.adapterId.isBlank() || isBuiltInAdapter(h.adapterId)
             val globalAdapterId = if (isBuiltIn) null else adapterIdMap[h.adapterId].orEmpty().ifBlank { null }
             val recordJson = buildRecordJson(globalRecordId, h, globalAdapterId, creatorId, deviceName, now)
             val path = "$RECORDS_DIR/$globalRecordId.json"
-            when (val r = GiteeApi.putFileResult(path, recordJson, null, "share record $globalRecordId")) {
+            val existingSha = GiteeApi.getFile(path)?.sha
+            when (val r = GiteeApi.putFileResult(path, recordJson, existingSha, "share record $globalRecordId")) {
                 is GiteeApi.ApiResult.Success -> successCount++
                 is GiteeApi.ApiResult.Error -> { failCount++; errors.add("记录上传失败: ${r.message}") }
                 is GiteeApi.ApiResult.NotFound -> { failCount++; errors.add("记录上传失败: NotFound") }
@@ -391,7 +392,7 @@ object GiteeShareStore {
         val merged = existing.associateBy { it.globalRecordId }.toMutableMap()
         for (item in selected) {
             val h = item.history
-            val globalRecordId = UUID.randomUUID().toString()
+            val globalRecordId = h.recordId.ifBlank { UUID.randomUUID().toString() }
             val isBuiltIn = h.adapterId.isBlank() || isBuiltInAdapter(h.adapterId)
             val globalAdapterId = if (isBuiltIn) null else adapterIdMap[h.adapterId].orEmpty().ifBlank { null }
             merged[globalRecordId] = SharedRecord(
@@ -462,7 +463,7 @@ object GiteeShareStore {
         var adaptersSaved = 0
         var skippedAdapters = 0
 
-        val existingUrls = store.getParseHistory().map { it.url }.toSet()
+        val existingRecordIds = store.getParseHistory().map { it.recordId }.filter { it.isNotBlank() }.toSet()
         val adapterMap = allAdapters.associateBy { it.globalAdapterId }
         val selectedRecords = allRecords.filter { selectedGlobalRecordIds.contains(it.globalRecordId) }
 
@@ -486,12 +487,8 @@ object GiteeShareStore {
             }
         }
 
-        // Step2: 保存记录
+        // Step2: 保存记录（增量：按 globalRecordId，存在则覆盖，不存在则新增）
         for (record in selectedRecords) {
-            if (existingUrls.contains(record.url)) {
-                skippedRecords++
-                continue
-            }
             // adapterId：内置的用 adapterId，自定义的用 globalAdapterId（和写入的 binding adapterId 一致）
             val adapterIdForSave = if (record.adapterKind == "BUILT_IN") {
                 record.localAdapterId.orEmpty()
@@ -506,7 +503,8 @@ object GiteeShareStore {
                     siteTitle = record.siteTitle,
                     frameworkType = record.frameworkType,
                     adapterName = record.adapterName,
-                    adapterId = adapterIdForSave
+                    adapterId = adapterIdForSave,
+                    recordId = record.globalRecordId
                 )
             }.onSuccess { recordsSaved++ }
                 .onFailure { errors.add("记录保存失败: ${record.title}, ${it.message}") }
@@ -697,7 +695,7 @@ object GiteeShareStore {
     }
 
     /** 删除云端适配器文件和索引条目。调用方需先确认无其他引用。 */
-    private fun deleteCloudAdapter(globalAdapterId: String) {
+    fun deleteCloudAdapter(globalAdapterId: String) {
         val adapterPath = "$ADAPTERS_DIR/$globalAdapterId.json"
         val adapterFile = GiteeApi.getFile(adapterPath)
         if (adapterFile != null) {

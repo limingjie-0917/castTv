@@ -36,8 +36,8 @@ import kotlinx.coroutines.withContext
 import java.net.URI
 
 /**
- * 上传解析记录到云端弹窗：
- * - 打开后拉取云端索引，与本地记录做 diff，已上传的标记「已共享」
+ * 上传收藏到云端弹窗：
+ * - 展示本地收藏记录，已上传的标记「已共享」+「取消共享」按钮
  * - 多选记录，底部按钮：全选、取消勾选、上传、取消
  */
 class WebParseShareDialog(
@@ -297,7 +297,7 @@ class WebParseShareDialog(
         }
         setOnClickListener { click() }
 
-        // 顶部行：选中标记 + 标题 + 取消共享按钮
+        // 顶部行：选中标记 + 类型标签 + 标题 + 取消共享按钮
         val topRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -310,9 +310,13 @@ class WebParseShareDialog(
             textSize = 14f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(if (isShared) Color.argb(120, 255, 255, 255) else warm)
-            setPadding(0, 0, dp(10), 0)
+            setPadding(0, 0, dp(8), 0)
         }
         topRow.addView(marker, LinearLayout.LayoutParams(dp(56), ViewGroup.LayoutParams.WRAP_CONTENT))
+        // 类型标签
+        pageTypeTag(history.pageType)?.let { tag ->
+            topRow.addView(tag, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(22)).apply { marginEnd = dp(8) })
+        }
         topRow.addView(TextView(context).apply {
             text = displayTitle(history)
             textSize = 15f
@@ -566,6 +570,27 @@ class WebParseShareDialog(
         }
     }
 
+    private fun pageTypeTag(pageType: String): TextView? {
+        val label = when (pageType.trim().lowercase()) {
+            "list" -> "列表页"
+            "detail" -> "详情页"
+            else -> return null
+        }
+        val color = if (pageType.trim().lowercase() == "list") Color.rgb(255, 152, 56) else Color.rgb(76, 217, 100)
+        return TextView(context).apply {
+            text = label
+            textSize = 10.5f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setPadding(dp(7), 0, dp(7), 0)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(5).toFloat()
+                setColor(color)
+            }
+        }
+    }
+
     private fun displayTitle(history: WebParseStore.ParseHistory): String {
         val title = history.title.trim()
         if (history.pageType.trim().lowercase() != "list") return title
@@ -604,7 +629,7 @@ class WebParseShareDialog(
             foreground = context.getDrawable(R.drawable.fg_sticker_circle_border)
         }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(12) })
         addView(TextView(context).apply {
-            text = "上传解析记录到云端"
+            text = "上传收藏"
             textSize = 20f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(warm)

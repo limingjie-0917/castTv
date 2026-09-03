@@ -201,7 +201,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
     }
     private val scanButton = dialogButton("扫码") { WebParseQrDialog(context, phoneHubUrl.ifBlank { buildPhoneHubUrl(PhoneHubHost.port()) }).show() }
     private val parseButton = dialogButton("立即解析") { showPageTypeDialogFromInput() }
-    private val historyButton = dialogButton("解析记录") {
+    private val historyButton = dialogButton("收藏") {
         WebParseHistoryDialog(context) { history ->
             val url = history.url
             inputEdit.setText(url)
@@ -413,7 +413,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
             addView(scanButton, LinearLayout.LayoutParams(dp(86), dp(46)).apply { marginEnd = dp(12) })
             addView(inputBox, LinearLayout.LayoutParams(0, dp(46), 1f).apply { marginEnd = dp(12) })
             addView(parseButton, LinearLayout.LayoutParams(dp(122), dp(46)).apply { marginEnd = dp(12) })
-            addView(historyButton, LinearLayout.LayoutParams(dp(122), dp(46)).apply { marginEnd = dp(10) })
+            addView(historyButton, LinearLayout.LayoutParams(dp(88), dp(46)).apply { marginEnd = dp(10) })
             addView(adapterSettingsButton, LinearLayout.LayoutParams(dp(46), dp(46)))
         }
         root.addView(inputRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(78)))
@@ -844,7 +844,8 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                 siteTitle = info.siteTitle,
                 frameworkType = info.frameworkType,
                 adapterName = info.adapterName,
-                adapterId = info.adapterId
+                adapterId = info.adapterId,
+                recordId = WebParseStore.generateRecordId(info.url, info.pageType)
             )
             toast("已收藏到解析记录")
         }

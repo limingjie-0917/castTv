@@ -13,7 +13,6 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
-import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -24,6 +23,8 @@ import com.bd.casttv.R
 import com.bd.casttv.ui.ClippedImageView
 import com.bd.casttv.ui.framework.BoundaryFocusHandler
 import com.bd.casttv.ui.framework.FocusFxHelper
+import com.bd.casttv.sync.GiteeApi
+import com.bd.casttv.sync.GiteeShareStore
 import com.bd.casttv.webparse.AdapterInfo
 import com.bd.casttv.webparse.AdapterKind
 import com.bd.casttv.webparse.BuiltInAdapters
@@ -31,7 +32,15 @@ import com.bd.casttv.webparse.ParsePageKind
 import com.bd.casttv.webparse.RuleBasedAdapter
 import com.bd.casttv.webparse.WebFrameworkType
 import com.bd.casttv.webparse.WebParseAdapterStore
+import com.bd.casttv.webparse.WebParseStore
 import com.bd.casttv.util.ThemeManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 class WebParseAdapterSettingsDialog(
     private val context: Context,
@@ -41,13 +50,19 @@ class WebParseAdapterSettingsDialog(
 ) {
     private val warm = Color.parseColor("#FFD700")
     private val store = WebParseAdapterStore(context)
+    private val parseStore = WebParseStore(context)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
     private var dialog: AlertDialog? = null
     private var returnFocusView: View? = null
-    private var currentKind = ParsePageKind.LIST
-    private lateinit var listTab: TextView
-    private lateinit var detailTab: TextView
-    private lateinit var builtInBox: LinearLayout
-    private lateinit var customBox: LinearLayout
+    private var currentTab = 0
+    private var cloudAdapters: List<GiteeShareStore.SharedAdapter> = emptyList()
+    private var cloudRecords: List<GiteeShareStore.SharedRecord> = emptyList()
+
+    private lateinit var cloudTab: TextView
+    private lateinit var localTab: TextView
+    private lateinit var cloudBox: LinearLayout
+    private lateinit var localBox: LinearLayout
 
     fun show() {
         returnFocusView = (context as? android.app.Activity)?.currentFocus
@@ -58,190 +73,431 @@ class WebParseAdapterSettingsDialog(
             clipChildren = false
             clipToPadding = false
         }
-        content.addView(titleView(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        content.addView(titleView(), lparams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
         val tabs = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             clipChildren = false
             clipToPadding = false
         }
-        listTab = tabButton(
-            label = "影片列表解析",
-            selected = true,
-            click = { switchKind(ParsePageKind.LIST) },
-            focusSelect = { switchKind(ParsePageKind.LIST, moveFocusToContent = false) }
-        )
-        detailTab = tabButton(
-            label = "影片详情解析",
-            selected = false,
-            click = { switchKind(ParsePageKind.DETAIL) },
-            focusSelect = { switchKind(ParsePageKind.DETAIL, moveFocusToContent = false) }
-        )
-        tabs.addView(listTab, LinearLayout.LayoutParams(dp(150), dp(42)).apply { marginEnd = dp(8) })
-        tabs.addView(detailTab, LinearLayout.LayoutParams(dp(150), dp(42)))
-        content.addView(tabs, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(42)).apply { topMargin = dp(12) })
+        cloudTab = tabButton("云端适配器", true, { switchTab(0) }, { switchTab(0, false) })
+        localTab = tabButton("本地适配器", false, { switchTab(1) }, { switchTab(1, false) })
+        tabs.addView(cloudTab, lparams(dp(150), dp(42)).apply { marginEnd = dp(8) })
+        tabs.addView(localTab, lparams(dp(150), dp(42)))
+        content.addView(tabs, lparams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(42)).apply { topMargin = dp(12) })
 
-        val columns = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
+        val scroll = ScrollView(context).apply {
+            overScrollMode = ScrollView.OVER_SCROLL_IF_CONTENT_SCROLLS
             clipChildren = false
             clipToPadding = false
         }
-        builtInBox = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; clipChildren = false; clipToPadding = false; setPadding(0, dp(8), 0, dp(10)) }
-        customBox = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; clipChildren = false; clipToPadding = false; setPadding(0, dp(8), 0, dp(10)) }
-        columns.addView(columnView("内置适配器", builtInBox), LinearLayout.LayoutParams(0, dp(300), 1f).apply { marginEnd = dp(8) })
-        columns.addView(columnView("自定义适配器", customBox), LinearLayout.LayoutParams(0, dp(300), 1f))
-        content.addView(columns, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(300)).apply { topMargin = dp(8) })
+        cloudBox = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL; clipChildren = false; clipToPadding = false
+            setPadding(0, dp(8), 0, dp(10))
+        }
+        localBox = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL; clipChildren = false; clipToPadding = false
+            setPadding(0, dp(8), 0, dp(10)); visibility = View.GONE
+        }
+        scroll.addView(LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(cloudBox, lparams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            addView(localBox, lparams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        content.addView(scroll, lparams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply { topMargin = dp(8) })
 
         val footer = LinearLayout(context).apply {
-            gravity = Gravity.END or Gravity.CENTER_VERTICAL
-            clipChildren = false
-            clipToPadding = false
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL; clipChildren = false; clipToPadding = false
         }
         val addButton = dialogButton("新增自定义适配器") {
             JsonAdapterDialog(
-                context = context,
-                currentUrlProvider = currentUrlProvider,
+                context = context, currentUrlProvider = currentUrlProvider,
                 uploadPageUrlProvider = uploadPageUrlProvider,
-                pageKindProvider = { currentKind },
-                onUseRule = { fileName -> refreshContent(); onUseRule(fileName) }
+                pageKindProvider = { ParsePageKind.DETAIL },
+                onUseRule = { fn -> refreshCurrentTab(); onUseRule(fn) }
             ).show()
         }
         val closeButton = dialogButton("关闭") { dialog?.dismiss() }
-        footer.addView(addButton, LinearLayout.LayoutParams(dp(168), dp(42)).apply { marginEnd = dp(10) })
-        footer.addView(closeButton, LinearLayout.LayoutParams(dp(108), dp(42)))
-        content.addView(footer, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46)).apply { topMargin = dp(10) })
+        footer.addView(addButton, lparams(dp(168), dp(42)).apply { marginEnd = dp(10) })
+        footer.addView(closeButton, lparams(dp(108), dp(42)))
+        content.addView(footer, lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46)).apply { topMargin = dp(10) })
         panel.addView(content)
 
-        refreshContent()
+        refreshCloudTab()
         dialog = AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog).setView(panel).create().also { d ->
-            d.setOnShowListener { listTab.requestFocus() }
-            d.setOnDismissListener { returnFocusView?.post { returnFocusView?.requestFocus() } }
+            d.setOnShowListener { cloudTab.requestFocus() }
+            d.setOnDismissListener {
+                scope.cancel()
+                returnFocusView?.post { returnFocusView?.requestFocus() }
+            }
             d.show()
             d.window?.apply {
                 setGravity(Gravity.CENTER)
                 setBackgroundDrawableResource(android.R.color.transparent)
-                setLayout(dp(760), WindowManager.LayoutParams.WRAP_CONTENT)
+                setLayout(dp(760), dp(600))
             }
         }
     }
-    private fun switchKind(kind: ParsePageKind, moveFocusToContent: Boolean = true) {
-        if (currentKind == kind) return
-        currentKind = kind
+
+    private fun switchTab(tab: Int, moveFocus: Boolean = true) {
+        if (currentTab == tab) return
+        currentTab = tab
         refreshTabState()
-        refreshContent()
-        if (moveFocusToContent) {
-            findFirstFocusable(builtInBox)?.requestFocus()
+        cloudBox.visibility = if (tab == 0) View.VISIBLE else View.GONE
+        localBox.visibility = if (tab == 1) View.VISIBLE else View.GONE
+        refreshCurrentTab()
+        if (moveFocus) {
+            val target = if (tab == 0) cloudBox else localBox
+            target.post { findFirstFocusable(target)?.requestFocus() }
         }
     }
 
     private fun refreshTabState() {
-        refreshTab(listTab, currentKind == ParsePageKind.LIST, listTab.hasFocus())
-        refreshTab(detailTab, currentKind == ParsePageKind.DETAIL, detailTab.hasFocus())
+        refreshTab(cloudTab, currentTab == 0, cloudTab.hasFocus())
+        refreshTab(localTab, currentTab == 1, localTab.hasFocus())
     }
 
-    private fun refreshContent() {
-        if (!::builtInBox.isInitialized || !::customBox.isInitialized) return
-        fillBuiltInColumn(builtInBox, currentKind)
-        fillCustomColumn(customBox, currentKind)
+    private fun refreshCurrentTab() {
+        if (currentTab == 0) refreshCloudTab() else refreshLocalTab()
     }
 
-    private fun fillBuiltInColumn(target: LinearLayout, kind: ParsePageKind) {
-        target.removeAllViews()
-        BuiltInAdapters.forPageKind(kind).forEach { adapter ->
-            target.addView(adapterRow(adapter, kind), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(72)).apply { topMargin = dp(8) })
-        }
-    }
+    // ==================== 云端适配器 ====================
 
-    private fun fillCustomColumn(target: LinearLayout, kind: ParsePageKind) {
-        target.removeAllViews()
-        val bindings = runCatching { store.getAllBindings().filter { it.pageKind == kind && it.adapterKind == AdapterKind.CUSTOM_JSON } }.getOrDefault(emptyList())
-        if (bindings.isEmpty()) {
-            target.addView(emptyRow("暂无本地 JSON 自定义适配器，可点击底部新增按钮生成或导入"), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(72)).apply { topMargin = dp(8) })
-        } else {
-            bindings.sortedBy { it.adapterName }.forEach { binding ->
-                val adapter = AdapterInfo(
-                    id = binding.adapterId,
-                    name = binding.adapterName.ifBlank { binding.host },
-                    kind = AdapterKind.CUSTOM_JSON,
-                    frameworkType = WebFrameworkType.CUSTOM,
-                    supportedPageKinds = setOf(kind),
-                    description = "${if (kind == ParsePageKind.LIST) "列表页" else "详情页"} · ${binding.host}"
-                )
-                target.addView(customRow(adapter, binding.ruleFileName, kind), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(72)).apply { topMargin = dp(8) })
+    private fun refreshCloudTab() {
+        if (!::cloudBox.isInitialized) return
+        cloudBox.removeAllViews()
+        cloudBox.addView(loadingRow("正在从云端加载适配器…"))
+        scope.launch {
+            val adapterResult = withContext(Dispatchers.IO) { GiteeShareStore.fetchAdaptersIndex() }
+            val recordResult = withContext(Dispatchers.IO) { GiteeShareStore.fetchRecordsIndex() }
+            if (dialog?.isShowing != true) return@launch
+            cloudBox.removeAllViews()
+            val adapters = (adapterResult as? GiteeApi.ApiResult.Success)?.value ?: emptyList()
+            val records = (recordResult as? GiteeApi.ApiResult.Success)?.value ?: emptyList()
+            cloudAdapters = adapters
+            cloudRecords = records
+            if (adapters.isEmpty()) {
+                cloudBox.addView(emptyRow("暂无云端适配器"), lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(72)).apply { topMargin = dp(8) })
+            } else {
+                adapters.sortedByDescending { it.uploadedAt }.forEach { adapter ->
+                    val refCount = records.count { it.globalAdapterId == adapter.globalAdapterId }
+                    val pageLabel = if (adapter.pageKind == "LIST") "列表页" else "详情页"
+                    cloudBox.addView(cloudAdapterCard(adapter, refCount, pageLabel), lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(72)).apply { topMargin = dp(8) })
+                }
+                cloudBox.post { findFirstFocusable(cloudBox)?.requestFocus() }
             }
         }
     }
 
-    private fun adapterRow(adapter: AdapterInfo, kind: ParsePageKind): LinearLayout = baseRow().apply {
-        addView(rowText(adapter.name, "${adapter.frameworkType.displayName} · ${adapter.description}"), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        addView(dialogButton("编辑网址") { showDomainEditor(adapter, "", kind) }, LinearLayout.LayoutParams(dp(100), dp(38)).apply { marginStart = dp(8) })
+    private fun cloudAdapterCard(adapter: GiteeShareStore.SharedAdapter, refCount: Int, pageLabel: String): LinearLayout = baseRow().apply {
+        addView(rowText(adapter.name.ifBlank { adapter.host }, "已关联${refCount}个网页解析 · $pageLabel · ${adapter.host}"), lparams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addView(dialogButton("下载") { downloadCloudAdapter(adapter) }, lparams(dp(76), dp(38)).apply { marginStart = dp(6) })
+        addView(dialogButton("编辑") { editCloudAdapter(adapter) }, lparams(dp(68), dp(38)).apply { marginStart = dp(6) })
+        addView(dialogButton("删除") { deleteCloudAdapterConfirm(adapter) }, lparams(dp(68), dp(38)).apply { marginStart = dp(6) })
     }
 
-    private fun customRow(adapter: AdapterInfo, fileName: String, kind: ParsePageKind): LinearLayout = baseRow().apply {
-        addView(rowText(adapter.name, adapter.description), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        addView(dialogButton("编辑网址") { showDomainEditor(adapter, fileName, kind) }, LinearLayout.LayoutParams(dp(96), dp(38)).apply { marginStart = dp(8) })
-        addView(dialogButton("编辑") { showRuleEditDialog(fileName) }, LinearLayout.LayoutParams(dp(68), dp(38)).apply { marginStart = dp(6) })
-        addView(dialogButton("删除") { showDeleteRuleConfirm(fileName) }, LinearLayout.LayoutParams(dp(68), dp(38)).apply { marginStart = dp(6) })
+    private fun downloadCloudAdapter(adapter: GiteeShareStore.SharedAdapter) {
+        scope.launch {
+            val result = withContext(Dispatchers.IO) { GiteeShareStore.downloadAdapterById(context, adapter.globalAdapterId, adapter) }
+            when (result) {
+                is GiteeApi.ApiResult.Success -> { toast("已下载到本地"); refreshLocalTab() }
+                is GiteeApi.ApiResult.Error -> toast("下载失败: ${result.message}")
+                is GiteeApi.ApiResult.NotFound -> toast("适配器文件不存在")
+            }
+        }
     }
+
+    private fun editCloudAdapter(adapter: GiteeShareStore.SharedAdapter) {
+        scope.launch {
+            val path = "shared_data/adapters/${adapter.globalAdapterId}.json"
+            val result = withContext(Dispatchers.IO) { GiteeApi.getFileResult(path) }
+            when (result) {
+                is GiteeApi.ApiResult.Success -> {
+                    val ruleText = runCatching {
+                        val obj = JSONObject(result.value.content)
+                        obj.optJSONObject("rule")?.toString(2) ?: result.value.content
+                    }.getOrDefault(result.value.content)
+                    val pageKind = runCatching { ParsePageKind.valueOf(adapter.pageKind) }.getOrDefault(ParsePageKind.DETAIL)
+                    val fwType = runCatching { WebFrameworkType.valueOf(adapter.frameworkType) }.getOrDefault(WebFrameworkType.CUSTOM)
+                    val bindings = store.getAllBindings().filter { it.adapterId == adapter.globalAdapterId }
+                    showEditDialog("编辑云端适配器", adapter.name, ruleText, bindings, pageKind, adapter.globalAdapterId, bindings.firstOrNull()?.ruleFileName.orEmpty(), fwType) { newName, newRule, newHosts ->
+                        scope.launch {
+                            val savedRule = withContext(Dispatchers.IO) { RuleBasedAdapter.saveRule(context, newRule, newName, pageKind) }
+                            removeBindingsForAdapter(adapter.globalAdapterId, pageKind)
+                            val firstHost = newHosts.firstOrNull() ?: adapter.host
+                            newHosts.forEach { host ->
+                                store.forceUpdateBinding(WebParseAdapterStore.DomainBinding(pageKind, host, adapter.globalAdapterId, AdapterKind.CUSTOM_JSON, newName, savedRule.fileName, fwType, System.currentTimeMillis()))
+                            }
+                            val uploadBinding = WebParseAdapterStore.DomainBinding(pageKind, firstHost, adapter.globalAdapterId, AdapterKind.CUSTOM_JSON, newName, savedRule.fileName, fwType, System.currentTimeMillis())
+                            val upResult = withContext(Dispatchers.IO) { GiteeShareStore.upsertSharedAdapter(context, uploadBinding, newRule) }
+                            when (upResult) {
+                                is GiteeApi.ApiResult.Success -> { toast("已保存并上传到云端"); refreshCloudTab() }
+                                is GiteeApi.ApiResult.Error -> toast("已保存本地，上传失败: ${upResult.message}")
+                                is GiteeApi.ApiResult.NotFound -> toast("已保存本地，上传失败")
+                            }
+                        }
+                    }
+                }
+                is GiteeApi.ApiResult.Error -> toast("获取适配器失败: ${result.message}")
+                is GiteeApi.ApiResult.NotFound -> toast("适配器文件不存在")
+            }
+        }
+    }
+
+    private fun deleteCloudAdapterConfirm(adapter: GiteeShareStore.SharedAdapter) {
+        val refCount = cloudRecords.count { it.globalAdapterId == adapter.globalAdapterId }
+        val msg = if (refCount > 0) "确认删除云端适配器「${adapter.name}」吗？\n该适配器已关联${refCount}个网页解析记录，删除后引用将失效。"
+        else "确认删除云端适配器「${adapter.name}」吗？"
+        val box = dialogPanel()
+        box.addView(titleView("删除云端适配器"))
+        box.addView(label(msg), lparams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) })
+        val d = AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog).setView(box).create()
+        val cancel = dialogButton("取消") { d.dismiss() }
+        val ok = dialogButton("删除") {
+            d.dismiss()
+            scope.launch {
+                withContext(Dispatchers.IO) { GiteeShareStore.deleteCloudAdapter(adapter.globalAdapterId) }
+                toast("已从云端删除")
+                refreshCloudTab()
+            }
+        }
+        box.addView(buttonRow(cancel, ok), lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(16) })
+        d.setOnShowListener { cancel.requestFocus() }
+        d.show()
+        d.window?.apply { setGravity(Gravity.CENTER); setBackgroundDrawableResource(android.R.color.transparent); setLayout(dp(560), WindowManager.LayoutParams.WRAP_CONTENT) }
+    }
+
+    // ==================== 本地适配器 ====================
+
+    private fun refreshLocalTab() {
+        if (!::localBox.isInitialized) return
+        localBox.removeAllViews()
+        localBox.addView(sectionTitle("App内置适配器"), lparams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        BuiltInAdapters.all.forEach { adapter ->
+            val refCount = parseStore.getParseHistory().count { it.adapterId == adapter.id }
+            localBox.addView(builtInCard(adapter, refCount), lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(72)).apply { topMargin = dp(8) })
+        }
+        localBox.addView(sectionTitle("自定义适配器"), lparams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(16) })
+        val bindings = store.getAllBindings().filter { it.adapterKind == AdapterKind.CUSTOM_JSON }.distinctBy { it.adapterId }
+        if (bindings.isEmpty()) {
+            localBox.addView(emptyRow("暂无自定义适配器，可点击底部新增按钮"), lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(72)).apply { topMargin = dp(8) })
+        } else {
+            bindings.sortedBy { it.adapterName }.forEach { binding ->
+                val refCount = parseStore.getParseHistory().count { it.adapterId == binding.adapterId }
+                localBox.addView(customCard(binding, refCount), lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(72)).apply { topMargin = dp(8) })
+            }
+        }
+    }
+
+    private fun builtInCard(adapter: AdapterInfo, refCount: Int): LinearLayout = baseRow().apply {
+        addView(tagView("App内置", Color.argb(180, 100, 160, 255)), lparams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(24)).apply { marginEnd = dp(8) })
+        addView(rowText(adapter.name, "已关联${refCount}个网页解析 · ${adapter.frameworkType.displayName}"), lparams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addView(dialogButton("编辑网址") { showDomainEditor(adapter, "", ParsePageKind.DETAIL) }, lparams(dp(96), dp(38)).apply { marginStart = dp(8) })
+    }
+
+    private fun customCard(binding: WebParseAdapterStore.DomainBinding, refCount: Int): LinearLayout = baseRow().apply {
+        addView(tagView("自定义", Color.argb(180, 255, 170, 80)), lparams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(24)).apply { marginEnd = dp(8) })
+        addView(rowText(binding.adapterName.ifBlank { binding.host }, "已关联${refCount}个网页解析 · ${binding.host}"), lparams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addView(dialogButton("编辑") { editLocalAdapter(binding) }, lparams(dp(68), dp(38)).apply { marginStart = dp(6) })
+        addView(dialogButton("删除") { deleteLocalConfirm(binding) }, lparams(dp(68), dp(38)).apply { marginStart = dp(6) })
+        addView(dialogButton("上传") { uploadLocalAdapter(binding) }, lparams(dp(68), dp(38)).apply { marginStart = dp(6) })
+    }
+
+    private fun editLocalAdapter(binding: WebParseAdapterStore.DomainBinding) {
+        val ruleText = RuleBasedAdapter.readRuleText(context, binding.ruleFileName)
+        val bindings = store.getAllBindings().filter { it.adapterId == binding.adapterId && it.pageKind == binding.pageKind }
+        showEditDialog("编辑自定义适配器", binding.adapterName, ruleText, bindings, binding.pageKind, binding.adapterId, binding.ruleFileName, binding.frameworkType) { newName, newRule, newHosts ->
+            val savedRule = runCatching { RuleBasedAdapter.saveRule(context, newRule, newName, binding.pageKind) }.getOrElse {
+                toast(it.message ?: "JSON 格式错误"); return@showEditDialog
+            }
+            if (binding.ruleFileName.isNotBlank() && binding.ruleFileName != savedRule.fileName) {
+                RuleBasedAdapter.deleteRule(context, binding.ruleFileName)
+            }
+            removeBindingsForAdapter(binding.adapterId, binding.pageKind)
+            newHosts.forEach { host ->
+                store.forceUpdateBinding(WebParseAdapterStore.DomainBinding(binding.pageKind, host, binding.adapterId, AdapterKind.CUSTOM_JSON, newName, savedRule.fileName, binding.frameworkType, System.currentTimeMillis()))
+            }
+            toast("已保存")
+            refreshLocalTab()
+        }
+    }
+
+    private fun deleteLocalConfirm(binding: WebParseAdapterStore.DomainBinding) {
+        val box = dialogPanel()
+        box.addView(titleView("删除自定义适配器"))
+        box.addView(label("确认删除「${binding.adapterName}」吗？删除后规则文件和域名绑定将从本地移除。"), lparams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) })
+        val d = AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog).setView(box).create()
+        val cancel = dialogButton("取消") { d.dismiss() }
+        val ok = dialogButton("删除") {
+            d.dismiss()
+            RuleBasedAdapter.deleteRule(context, binding.ruleFileName)
+            removeBindingsForAdapter(binding.adapterId, binding.pageKind)
+            toast("已删除")
+            refreshLocalTab()
+        }
+        box.addView(buttonRow(cancel, ok), lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(16) })
+        d.setOnShowListener { cancel.requestFocus() }
+        d.show()
+        d.window?.apply { setGravity(Gravity.CENTER); setBackgroundDrawableResource(android.R.color.transparent); setLayout(dp(560), WindowManager.LayoutParams.WRAP_CONTENT) }
+    }
+
+    private fun uploadLocalAdapter(binding: WebParseAdapterStore.DomainBinding) {
+        val ruleText = RuleBasedAdapter.readRuleText(context, binding.ruleFileName)
+        if (ruleText.isBlank()) { toast("规则文件为空"); return }
+        toast("正在上传…")
+        scope.launch {
+            val result = withContext(Dispatchers.IO) { GiteeShareStore.upsertSharedAdapter(context, binding, ruleText) }
+            when (result) {
+                is GiteeApi.ApiResult.Success -> toast("已上传到云端")
+                is GiteeApi.ApiResult.Error -> toast("上传失败: ${result.message}")
+                is GiteeApi.ApiResult.NotFound -> toast("上传失败")
+            }
+        }
+    }
+
+    // ==================== 编辑弹窗（名称+网址+JSON） ====================
+
+    private fun showEditDialog(
+        title: String,
+        adapterName: String,
+        ruleText: String,
+        bindings: List<WebParseAdapterStore.DomainBinding>,
+        pageKind: ParsePageKind,
+        adapterId: String,
+        ruleFileName: String,
+        frameworkType: WebFrameworkType,
+        onSave: (newName: String, newRule: String, newHosts: List<String>) -> Unit
+    ) {
+        val box = dialogPanel()
+        box.addView(titleView(title))
+
+        // 名称
+        box.addView(label("名称"), lparams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
+        val nameInput = EditText(context).apply {
+            setText(adapterName); setSingleLine(true)
+            setTextColor(Color.WHITE); setHintTextColor(Color.argb(170, 255, 255, 255))
+            setPadding(dp(12), 0, dp(12), 0); background = inputBg(false)
+            showSoftInputOnFocus = false; isFocusable = true; isFocusableInTouchMode = true
+            setOnClickListener { showKeyboard(this) }
+            setOnFocusChangeListener { v, has -> background = inputBg(has); FocusFxHelper.applyFocusFxState(v, has, cornerRadiusDp = 10) }
+        }
+        box.addView(nameInput, lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(6) })
+
+        // 网址绑定
+        box.addView(label("关联网址"), lparams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) })
+        val bindingList = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        val currentHosts = bindings.map { it.host }.toMutableList()
+        fun redrawBindings() {
+            bindingList.removeAllViews()
+            if (currentHosts.isEmpty()) {
+                bindingList.addView(label("暂无绑定域名"), lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)))
+            }
+            currentHosts.toList().forEach { host ->
+                bindingList.addView(LinearLayout(context).apply {
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(0, dp(4), 0, dp(4))
+                    addView(label(host), lparams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                    addView(dialogButton("删除") { currentHosts.remove(host); redrawBindings() }, lparams(dp(76), dp(34)))
+                }, lparams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            }
+        }
+        redrawBindings()
+        box.addView(bindingList, lparams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
+
+        val hostInput = EditText(context).apply {
+            hint = "输入域名或网址"; setSingleLine(true)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            setTextColor(Color.WHITE); setHintTextColor(Color.argb(170, 255, 255, 255))
+            setPadding(dp(12), 0, dp(12), 0); background = inputBg(false)
+            showSoftInputOnFocus = false; isFocusable = true; isFocusableInTouchMode = true
+            setOnClickListener { showKeyboard(this) }
+            setOnFocusChangeListener { v, has -> background = inputBg(has); FocusFxHelper.applyFocusFxState(v, has, cornerRadiusDp = 10) }
+        }
+        val addHostBtn = dialogButton("添加") {
+            val host = store.normalizeHost(hostInput.text?.toString().orEmpty())
+            if (host.isNotBlank() && host !in currentHosts) { currentHosts.add(host); hostInput.setText(""); redrawBindings() }
+        }
+        box.addView(LinearLayout(context).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            addView(hostInput, lparams(0, dp(40), 1f))
+            addView(addHostBtn, lparams(dp(76), dp(40)).apply { marginStart = dp(8) })
+        }, lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(6) })
+
+        // JSON 规则
+        box.addView(label("JSON 规则"), lparams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) })
+        val ruleInput = EditText(context).apply {
+            setText(ruleText); setSelection(text.length)
+            minLines = 8; maxLines = 12; gravity = Gravity.TOP or Gravity.START
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setTextColor(Color.WHITE); setHintTextColor(Color.argb(170, 255, 255, 255))
+            setPadding(dp(12), dp(10), dp(12), dp(10)); background = inputBg(false)
+            showSoftInputOnFocus = false; typeface = Typeface.MONOSPACE
+            setOnClickListener { showKeyboard(this) }
+            setOnFocusChangeListener { v, has -> background = inputBg(has); FocusFxHelper.applyFocusFxState(v, has, cornerRadiusDp = 10) }
+        }
+        box.addView(ruleInput, lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(220)).apply { topMargin = dp(6) })
+
+        val d = AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog).setView(box).create()
+        val cancel = dialogButton("取消") { d.dismiss() }
+        val save = dialogButton("保存") {
+            val newName = nameInput.text?.toString().orEmpty().ifBlank { adapterName }
+            val newRule = ruleInput.text?.toString().orEmpty()
+            val newHosts = currentHosts.toList()
+            d.dismiss()
+            onSave(newName, newRule, newHosts)
+        }
+        box.addView(buttonRow(cancel, save), lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(14) })
+        d.setOnShowListener { nameInput.requestFocus() }
+        d.show()
+        d.window?.apply {
+            setGravity(Gravity.CENTER); setBackgroundDrawableResource(android.R.color.transparent)
+            setLayout(dp(680), WindowManager.LayoutParams.WRAP_CONTENT)
+            decorView.setOnKeyListener { _, keyCode, ev ->
+                if (keyCode == KeyEvent.KEYCODE_BACK && ev.action == KeyEvent.ACTION_DOWN) { cancel.performClick(); true } else false
+            }
+        }
+    }
+
+    // ==================== 域名编辑器（内置适配器用） ====================
 
     private fun showDomainEditor(adapter: AdapterInfo, ruleFileName: String, pageKind: ParsePageKind) {
         val box = dialogPanel()
         box.addView(titleView("编辑网址绑定"))
         box.addView(TextView(context).apply {
-            text = "当前适配器：${adapter.name}"
-            textSize = 14f
-            setTextColor(Color.argb(220, 255, 255, 255))
-            setPadding(0, dp(12), 0, 0)
+            text = "当前适配器：${adapter.name}"; textSize = 14f
+            setTextColor(Color.argb(220, 255, 255, 255)); setPadding(0, dp(12), 0, 0)
         })
         val bindingList = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         fun redrawBindings() {
             bindingList.removeAllViews()
             val bindings = store.getAllBindings().filter { it.pageKind == pageKind && it.adapterId == adapter.id }
             if (bindings.isEmpty()) {
-                bindingList.addView(label("暂无绑定域名"), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42)))
+                bindingList.addView(label("暂无绑定域名"), lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42)))
             } else {
                 bindings.forEach { binding ->
                     bindingList.addView(LinearLayout(context).apply {
                         gravity = Gravity.CENTER_VERTICAL
-                        addView(label(binding.host), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                        addView(dialogButton("删除") {
-                            store.removeBinding(pageKind, binding.host)
-                            redrawBindings()
-                        }, LinearLayout.LayoutParams(dp(76), dp(36)))
-                    }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(6) })
+                        addView(label(binding.host), lparams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                        addView(dialogButton("删除") { store.removeBinding(pageKind, binding.host); redrawBindings() }, lparams(dp(76), dp(36)))
+                    }, lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(6) })
                 }
             }
         }
         redrawBindings()
-        box.addView(bindingList, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
+        box.addView(bindingList, lparams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
         val input = EditText(context).apply {
-            hint = "输入域名或网址"
-            setText(store.normalizeHost(currentUrlProvider()))
-            setSingleLine(true)
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.argb(170, 255, 255, 255))
-            setPadding(dp(12), 0, dp(12), 0)
-            background = inputBg(false)
-            isFocusable = true
-            isFocusableInTouchMode = true
-            showSoftInputOnFocus = false
+            hint = "输入域名或网址"; setText(store.normalizeHost(currentUrlProvider()))
+            setSingleLine(true); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            setTextColor(Color.WHITE); setHintTextColor(Color.argb(170, 255, 255, 255))
+            setPadding(dp(12), 0, dp(12), 0); background = inputBg(false)
+            showSoftInputOnFocus = false; isFocusable = true; isFocusableInTouchMode = true
             setOnClickListener { showKeyboard(this) }
             setOnFocusChangeListener { v, has -> background = inputBg(has); FocusFxHelper.applyFocusFxState(v, has, cornerRadiusDp = 10) }
         }
-        box.addView(input, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(14) })
+        box.addView(input, lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(14) })
         val childDialog = AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog).setView(box).create()
         val add = dialogButton("添加绑定") {
-            val binding = WebParseAdapterStore.DomainBinding(
-                pageKind = pageKind,
-                host = input.text?.toString().orEmpty(),
-                adapterId = adapter.id,
-                adapterKind = adapter.kind,
-                adapterName = adapter.name,
-                ruleFileName = ruleFileName,
-                frameworkType = adapter.frameworkType,
-                updatedAt = System.currentTimeMillis()
-            )
+            val binding = WebParseAdapterStore.DomainBinding(pageKind, input.text?.toString().orEmpty(), adapter.id, adapter.kind, adapter.name, ruleFileName, adapter.frameworkType, System.currentTimeMillis())
             when (val result = store.saveBinding(binding)) {
                 WebParseAdapterStore.SaveResult.Success -> { toast("绑定已保存"); redrawBindings() }
                 WebParseAdapterStore.SaveResult.Duplicate -> toast("该域名已绑定到当前适配器")
@@ -249,224 +505,104 @@ class WebParseAdapterSettingsDialog(
             }
         }
         val close = dialogButton("关闭") { childDialog.dismiss() }
-        box.addView(LinearLayout(context).apply {
-            gravity = Gravity.END
-            addView(add, LinearLayout.LayoutParams(dp(112), dp(40)).apply { marginEnd = dp(8) })
-            addView(close, LinearLayout.LayoutParams(dp(88), dp(40)))
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(14) })
+        box.addView(buttonRow(add, close, dp(112), dp(88)), lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(14) })
         childDialog.setOnShowListener { input.requestFocus() }
         childDialog.show()
-        childDialog.window?.apply {
-            setGravity(Gravity.CENTER)
-            setBackgroundDrawableResource(android.R.color.transparent)
-            setLayout(dp(600), WindowManager.LayoutParams.WRAP_CONTENT)
-        }
+        childDialog.window?.apply { setGravity(Gravity.CENTER); setBackgroundDrawableResource(android.R.color.transparent); setLayout(dp(600), WindowManager.LayoutParams.WRAP_CONTENT) }
     }
 
     private fun showReplaceBindingConfirm(binding: WebParseAdapterStore.DomainBinding, existingName: String, done: () -> Unit) {
         val box = dialogPanel()
         box.addView(titleView("替换网址绑定"))
-        box.addView(label("该域名已绑定到「$existingName」，是否替换为「${binding.adapterName}」？"), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) })
+        box.addView(label("该域名已绑定到「$existingName」，是否替换为「${binding.adapterName}」？"), lparams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) })
         val d = AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog).setView(box).create()
         val cancel = dialogButton("取消") { d.dismiss() }
         val ok = dialogButton("替换") { store.forceUpdateBinding(binding); d.dismiss(); done(); toast("绑定已替换") }
-        box.addView(LinearLayout(context).apply {
-            gravity = Gravity.END
-            addView(cancel, LinearLayout.LayoutParams(dp(88), dp(40)).apply { marginEnd = dp(8) })
-            addView(ok, LinearLayout.LayoutParams(dp(88), dp(40)))
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(16) })
+        box.addView(buttonRow(cancel, ok), lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(16) })
         d.setOnShowListener { cancel.requestFocus() }
         d.show()
         d.window?.apply { setGravity(Gravity.CENTER); setBackgroundDrawableResource(android.R.color.transparent); setLayout(dp(560), WindowManager.LayoutParams.WRAP_CONTENT) }
     }
 
-    private fun showRuleEditDialog(fileName: String) {
-        val input = EditText(context).apply {
-            setText(RuleBasedAdapter.readRuleText(context, fileName))
-            setSelection(text.length)
-            minLines = 8
-            maxLines = 10
-            gravity = Gravity.TOP or Gravity.START
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-            setTextColor(Color.WHITE)
-            setHintTextColor(Color.argb(170, 255, 255, 255))
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            background = inputBg(false)
-            showSoftInputOnFocus = false
-            setOnClickListener { showKeyboard(this) }
-            setOnFocusChangeListener { v, has -> background = inputBg(has); FocusFxHelper.applyFocusFxState(v, has, cornerRadiusDp = 10) }
-        }
-        val box = dialogPanel().apply {
-            addView(titleView("编辑自定义适配器"))
-            addView(input, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(260)).apply { topMargin = dp(14) })
-        }
-        val d = AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog).setView(box).create()
-        val cancel = dialogButton("取消") { d.dismiss() }
-        val save = dialogButton("保存") {
-            try {
-                RuleBasedAdapter.deleteRule(context, fileName)
-                RuleBasedAdapter.saveRule(context, input.text?.toString().orEmpty())
-                d.dismiss()
-                refreshContent()
-                toast("适配器已保存")
-            } catch (t: Throwable) {
-                toast(t.message ?: "JSON 格式错误，请检查内容")
-            }
-        }
-        box.addView(LinearLayout(context).apply {
-            gravity = Gravity.END
-            addView(cancel, LinearLayout.LayoutParams(dp(88), dp(40)).apply { marginEnd = dp(8) })
-            addView(save, LinearLayout.LayoutParams(dp(88), dp(40)))
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(14) })
-        d.setOnShowListener { input.requestFocus() }
-        d.show()
-        d.window?.apply { setGravity(Gravity.CENTER); setBackgroundDrawableResource(android.R.color.transparent); setLayout(dp(680), WindowManager.LayoutParams.WRAP_CONTENT) }
-    }
+    // ==================== 辅助方法 ====================
 
-    private fun showDeleteRuleConfirm(fileName: String) {
-        val box = dialogPanel()
-        box.addView(titleView("删除自定义适配器"))
-        box.addView(label("确认删除「$fileName」吗？删除后该自定义适配器文件将从本地移除。"), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) })
-        val d = AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog).setView(box).create()
-        val cancel = dialogButton("取消") { d.dismiss() }
-        val ok = dialogButton("删除") {
-            RuleBasedAdapter.deleteRule(context, fileName)
-            d.dismiss()
-            refreshContent()
-            toast("自定义适配器已删除")
-        }
-        box.addView(LinearLayout(context).apply {
-            gravity = Gravity.END
-            addView(cancel, LinearLayout.LayoutParams(dp(88), dp(40)).apply { marginEnd = dp(8) })
-            addView(ok, LinearLayout.LayoutParams(dp(88), dp(40)))
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(16) })
-        d.setOnShowListener { cancel.requestFocus() }
-        d.show()
-        d.window?.apply { setGravity(Gravity.CENTER); setBackgroundDrawableResource(android.R.color.transparent); setLayout(dp(560), WindowManager.LayoutParams.WRAP_CONTENT) }
+    private fun removeBindingsForAdapter(adapterId: String, pageKind: ParsePageKind) {
+        store.getAllBindings().filter { it.adapterId == adapterId && it.pageKind == pageKind }
+            .forEach { store.removeBinding(pageKind, it.host) }
     }
 
     private fun dialogPanel(): LinearLayout = LinearLayout(context).apply {
         orientation = LinearLayout.VERTICAL
         setPadding(dp(18), dp(16), dp(18), dp(18))
         background = GradientDrawable(GradientDrawable.Orientation.TL_BR, ThemeManager.currentPalette(context).dialogTitleGradient).apply {
-            cornerRadius = dp(18).toFloat()
-            setStroke(dp(2), warm)
+            cornerRadius = dp(18).toFloat(); setStroke(dp(2), warm)
         }
-        clipChildren = false
-        clipToPadding = false
-    }
-
-    private fun columnView(title: String, body: LinearLayout): LinearLayout = LinearLayout(context).apply {
-        orientation = LinearLayout.VERTICAL
-        clipChildren = false
-        clipToPadding = false
-        setPadding(dp(12), dp(10), dp(12), dp(10))
-        background = rowBg(false)
-        addView(TextView(context).apply {
-            text = title
-            textSize = 17f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(32)))
-        addView(ScrollView(context).apply {
-            overScrollMode = ScrollView.OVER_SCROLL_IF_CONTENT_SCROLLS
-            clipChildren = false
-            clipToPadding = false
-            addView(body, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply { topMargin = dp(8) })
-    }
-
-    private fun findFirstFocusable(root: View): View? {
-        if (root.visibility != View.VISIBLE) return null
-        if (root.isFocusable) return root
-        if (root is ViewGroup) {
-            for (i in 0 until root.childCount) findFirstFocusable(root.getChildAt(i))?.let { return it }
-        }
-        return null
+        clipChildren = false; clipToPadding = false
     }
 
     private fun titleView(title: String = "影片解析适配器"): View = LinearLayout(context).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        clipChildren = false
-        clipToPadding = false
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+        clipChildren = false; clipToPadding = false
         addView(ClippedImageView(context).apply {
-            setCircle(true)
-            setImageResource(R.drawable.sticker_shinchan)
-            scaleType = ImageView.ScaleType.CENTER_CROP
-            foreground = context.getDrawable(R.drawable.fg_sticker_circle_border)
-        }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(12) })
+            setCircle(true); setImageResource(R.drawable.sticker_shinchan)
+            scaleType = ImageView.ScaleType.CENTER_CROP; foreground = context.getDrawable(R.drawable.fg_sticker_circle_border)
+        }, lparams(dp(44), dp(44)).apply { marginEnd = dp(12) })
         addView(TextView(context).apply {
-            text = title
-            textSize = 21f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(warm)
-            setShadowLayer(2f, 0f, 1f, Color.argb(130, 0, 0, 0))
-        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            text = title; textSize = 21f; typeface = Typeface.DEFAULT_BOLD
+            setTextColor(warm); setShadowLayer(2f, 0f, 1f, Color.argb(130, 0, 0, 0))
+        }, lparams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
     }
 
     private fun sectionTitle(text: String): TextView = TextView(context).apply {
-        this.text = text
-        textSize = 17f
-        typeface = Typeface.DEFAULT_BOLD
-        setTextColor(warm)
-        setPadding(dp(2), dp(8), dp(2), dp(4))
+        this.text = text; textSize = 16f; typeface = Typeface.DEFAULT_BOLD
+        setTextColor(warm); setPadding(dp(2), dp(8), dp(2), dp(4))
     }
 
     private fun baseRow(): LinearLayout = LinearLayout(context).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        setPadding(dp(14), dp(8), dp(14), dp(8))
-        background = rowBg(false)
-        clipChildren = false
-        clipToPadding = false
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(14), dp(8), dp(14), dp(8)); background = rowBg(false)
+        clipChildren = false; clipToPadding = false
     }
 
     private fun rowText(title: String, desc: String): LinearLayout = LinearLayout(context).apply {
-        orientation = LinearLayout.VERTICAL
-        gravity = Gravity.CENTER_VERTICAL
+        orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL
         addView(TextView(context).apply {
-            text = title
-            textSize = 15.5f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.WHITE)
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
+            text = title; textSize = 15.5f; typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE); maxLines = 1; ellipsize = TextUtils.TruncateAt.END
         })
         addView(TextView(context).apply {
-            text = desc
-            textSize = 12.5f
-            setTextColor(Color.argb(190, 255, 255, 255))
-            maxLines = 1
-            ellipsize = TextUtils.TruncateAt.END
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
+            text = desc; textSize = 12.5f; setTextColor(Color.argb(190, 255, 255, 255))
+            maxLines = 1; ellipsize = TextUtils.TruncateAt.END
+        }, lparams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
+    }
+
+    private fun tagView(text: String, color: Int): TextView = TextView(context).apply {
+        this.text = text; textSize = 11f; typeface = Typeface.DEFAULT_BOLD
+        setTextColor(Color.WHITE); gravity = Gravity.CENTER
+        background = GradientDrawable().apply {
+            cornerRadius = dp(6).toFloat(); setColor(color)
+            setStroke(dp(1), Color.argb(200, 255, 255, 255))
+        }
     }
 
     private fun emptyRow(text: String): TextView = label(text).apply { gravity = Gravity.CENTER; background = rowBg(false) }
 
+    private fun loadingRow(text: String): TextView = TextView(context).apply {
+        this.text = text; textSize = 14f; setTextColor(Color.argb(200, 245, 245, 245))
+        gravity = Gravity.CENTER; background = rowBg(false)
+    }
+
     private fun label(text: String): TextView = TextView(context).apply {
-        this.text = text
-        textSize = 14f
-        setTextColor(Color.argb(225, 245, 245, 245))
-        maxLines = 3
+        this.text = text; textSize = 14f
+        setTextColor(Color.argb(225, 245, 245, 245)); maxLines = 3
     }
 
     private fun tabButton(label: String, selected: Boolean, click: () -> Unit, focusSelect: () -> Unit): TextView = TextView(context).apply {
-        text = label
-        textSize = 15f
-        typeface = Typeface.DEFAULT_BOLD
-        gravity = Gravity.CENTER
-        isSelected = selected
-        isFocusable = true
-        isClickable = true
+        text = label; textSize = 15f; typeface = Typeface.DEFAULT_BOLD; gravity = Gravity.CENTER
+        isSelected = selected; isFocusable = true; isClickable = true
         refreshTab(this, selected, false)
         setOnClickListener { click() }
-        setOnFocusChangeListener { v, has ->
-            if (has) focusSelect()
-            refreshTab(this, isSelected, has)
-            FocusFxHelper.applyFocusFxState(v, has, cornerRadiusDp = 10)
-        }
+        setOnFocusChangeListener { v, has -> if (has) focusSelect(); refreshTab(this, isSelected, has); FocusFxHelper.applyFocusFxState(v, has, cornerRadiusDp = 10) }
         setOnKeyListener { v, _, e -> boundaryKey(v, e) }
     }
 
@@ -481,19 +617,13 @@ class WebParseAdapterSettingsDialog(
     }
 
     private fun dialogButton(label: String, click: () -> Unit): TextView = TextView(context).apply {
-        text = label
-        textSize = 14f
-        typeface = Typeface.DEFAULT_BOLD
-        gravity = Gravity.CENTER
-        maxLines = 1
-        ellipsize = TextUtils.TruncateAt.END
-        isFocusable = true
-        isClickable = true
+        text = label; textSize = 14f; typeface = Typeface.DEFAULT_BOLD
+        gravity = Gravity.CENTER; maxLines = 1; ellipsize = TextUtils.TruncateAt.END
+        isFocusable = true; isClickable = true
         fun refresh(focused: Boolean) {
             setTextColor(Color.argb(238, 245, 245, 245))
             background = GradientDrawable().apply {
-                cornerRadius = dp(10).toFloat()
-                setColor(Color.argb(52, 32, 34, 40))
+                cornerRadius = dp(10).toFloat(); setColor(Color.argb(52, 32, 34, 40))
                 setStroke(dp(if (focused) 3 else 1), if (focused) warm else Color.argb(170, 210, 214, 222))
             }
         }
@@ -503,15 +633,19 @@ class WebParseAdapterSettingsDialog(
         setOnKeyListener { v, _, e -> boundaryKey(v, e) }
     }
 
+    private fun buttonRow(left: TextView, right: TextView, leftW: Int = dp(88), rightW: Int = dp(88)): LinearLayout = LinearLayout(context).apply {
+        gravity = Gravity.END or Gravity.CENTER_VERTICAL; clipChildren = false; clipToPadding = false
+        addView(left, lparams(leftW, dp(40)).apply { marginEnd = dp(8) })
+        addView(right, lparams(rightW, dp(40)))
+    }
+
     private fun inputBg(focused: Boolean) = GradientDrawable().apply {
-        cornerRadius = dp(10).toFloat()
-        setColor(Color.argb(32, 32, 34, 40))
+        cornerRadius = dp(10).toFloat(); setColor(Color.argb(32, 32, 34, 40))
         setStroke(dp(if (focused) 3 else 1), if (focused) warm else Color.argb(170, 210, 214, 222))
     }
 
     private fun rowBg(focused: Boolean) = GradientDrawable().apply {
-        cornerRadius = dp(14).toFloat()
-        setColor(Color.argb(22, 255, 255, 255))
+        cornerRadius = dp(14).toFloat(); setColor(Color.argb(22, 255, 255, 255))
         setStroke(dp(if (focused) 3 else 1), if (focused) warm else Color.argb(80, 255, 255, 255))
     }
 
@@ -526,8 +660,16 @@ class WebParseAdapterSettingsDialog(
         }
         val next = v.focusSearch(direction)
         if (next != null && next !== v && next.visibility == View.VISIBLE && next.isFocusable) return false
-        BoundaryFocusHandler.shake(v)
-        return true
+        BoundaryFocusHandler.shake(v); return true
+    }
+
+    private fun findFirstFocusable(root: View): View? {
+        if (root.visibility != View.VISIBLE) return null
+        if (root.isFocusable) return root
+        if (root is ViewGroup) {
+            for (i in 0 until root.childCount) findFirstFocusable(root.getChildAt(i))?.let { return it }
+        }
+        return null
     }
 
     private fun showKeyboard(view: View) {
@@ -538,4 +680,6 @@ class WebParseAdapterSettingsDialog(
 
     private fun toast(text: String) = Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
     private fun dp(v: Int): Int = (v * context.resources.displayMetrics.density).toInt()
+    private fun lparams(width: Int, height: Int) = LinearLayout.LayoutParams(width, height)
+    private fun lparams(width: Int, height: Int, weight: Float) = LinearLayout.LayoutParams(width, height, weight)
 }

@@ -33,10 +33,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * 从云端解析记录下载弹窗：
+ * 下载收藏弹窗：
  * - 从云端拉取记录数据，按创建者（creatorId + deviceName）分组展示
  * - 「我的共享」分组排在首位
- * - 勾选记录可下载，增量保存到本地
+ * - 勾选记录可下载，按 recordId 增量保存（存在则覆盖，不存在则新增）
  * - 底部按钮：全选、取消勾选、下载、取消（右对齐）
  */
 class CloudShareRecordsDialog(
@@ -319,9 +319,13 @@ class CloudShareRecordsDialog(
             textSize = 14f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(warm)
-            setPadding(0, 0, dp(10), 0)
+            setPadding(0, 0, dp(8), 0)
         }
         topRow.addView(marker, LinearLayout.LayoutParams(dp(56), ViewGroup.LayoutParams.WRAP_CONTENT))
+        // 类型标签
+        pageTypeTag(record.pageType)?.let { tag ->
+            topRow.addView(tag, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(22)).apply { marginEnd = dp(8) })
+        }
         topRow.addView(TextView(context).apply {
             text = record.title.ifBlank { "无标题" }
             textSize = 15f
@@ -346,19 +350,25 @@ class CloudShareRecordsDialog(
             ellipsize = TextUtils.TruncateAt.END
             setPadding(dp(56), dp(4), 0, 0)
         })
-        if (record.pageType.isNotBlank()) {
-            val label = when (record.pageType.lowercase()) {
-                "list" -> "列表页"
-                "detail" -> "详情页"
-                else -> ""
-            }
-            if (label.isNotBlank()) {
-                addView(TextView(context).apply {
-                    text = label
-                    textSize = 11f
-                    setTextColor(Color.argb(165, 255, 255, 255))
-                    setPadding(dp(56), dp(3), 0, 0)
-                })
+    }
+
+    private fun pageTypeTag(pageType: String): TextView? {
+        val label = when (pageType.trim().lowercase()) {
+            "list" -> "列表页"
+            "detail" -> "详情页"
+            else -> return null
+        }
+        val color = if (pageType.trim().lowercase() == "list") Color.rgb(255, 152, 56) else Color.rgb(76, 217, 100)
+        return TextView(context).apply {
+            text = label
+            textSize = 10.5f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setPadding(dp(7), 0, dp(7), 0)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(5).toFloat()
+                setColor(color)
             }
         }
     }
@@ -472,7 +482,7 @@ class CloudShareRecordsDialog(
             foreground = context.getDrawable(R.drawable.fg_sticker_circle_border)
         }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(12) })
         addView(TextView(context).apply {
-            text = "从云端解析记录下载"
+            text = "下载收藏"
             textSize = 20f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(warm)

@@ -34,6 +34,9 @@ class WebParseHistoryDialog(
     private val store = WebParseStore(context)
     private var dialog: AlertDialog? = null
 
+    private val orangeTag = Color.rgb(255, 152, 56)
+    private val greenTag = Color.rgb(76, 217, 100)
+
     fun show() {
         val histories = store.getParseHistory()
         val panel = LinearLayout(context).apply {
@@ -55,10 +58,13 @@ class WebParseHistoryDialog(
             clipToPadding = false
         }
         val focusRows = mutableListOf<View>()
-        val clearButton = dialogButton("清空记录", warning = true) { showClearConfirm() }
-        val shareButton = dialogButton("上传共享", warning = false) { showShareDialog() }
-        val fetchButton = dialogButton("云端获取", warning = false) { showCloudFetchDialog() }
-        content.addView(titleView(clearButton, shareButton, fetchButton), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+
+        val clearButton = dialogButton("清空", warning = true) { showClearConfirm() }
+        val downloadButton = dialogButton("下载") { showCloudFetchDialog() }
+        val uploadButton = dialogButton("上传") { showShareDialog() }
+
+        content.addView(titleView(clearButton, uploadButton, downloadButton), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+
         val list = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             clipChildren = false
@@ -66,7 +72,7 @@ class WebParseHistoryDialog(
         }
         if (histories.isEmpty()) {
             val empty = TextView(context).apply {
-                text = "暂无解析记录\n解析成功后可点击「收藏网站」手动保存"
+                text = "暂无收藏\n解析成功后可点击「收藏网站」手动保存"
                 textSize = 15f
                 setTextColor(Color.argb(210, 255, 255, 255))
                 gravity = Gravity.CENTER
@@ -82,7 +88,7 @@ class WebParseHistoryDialog(
                     onSelected(history)
                 }
                 focusRows.add(row)
-                list.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(if (history.pageType.isBlank()) 66 else 86)).apply { topMargin = if (index == 0) dp(16) else dp(8) })
+                list.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(96)).apply { topMargin = if (index == 0) dp(16) else dp(8) })
             }
         }
 
@@ -94,9 +100,11 @@ class WebParseHistoryDialog(
             addView(list, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
         content.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(360)))
+
         focusRows.add(clearButton)
-        focusRows.add(shareButton)
-        focusRows.add(fetchButton)
+        focusRows.add(uploadButton)
+        focusRows.add(downloadButton)
+
         contentInset.addView(content, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         panel.addView(contentInset, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
@@ -117,48 +125,77 @@ class WebParseHistoryDialog(
         gravity = Gravity.CENTER_VERTICAL
         isFocusable = true
         isClickable = true
-        setPadding(dp(14), dp(8), dp(14), dp(8))
+        setPadding(dp(14), dp(10), dp(14), dp(10))
         background = rowBg(false)
         setOnFocusChangeListener { v, has ->
             background = rowBg(has)
             FocusFxHelper.applyFocusFxState(v, has, cornerRadiusDp = 14)
         }
         setOnClickListener { click() }
-        addView(TextView(context).apply {
+
+        // 顶部行：类型标签 + 标题
+        val topRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            clipChildren = false
+        }
+        pageTypeTag(history.pageType)?.let { tag ->
+            topRow.addView(tag, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(24)).apply { marginEnd = dp(8) })
+        }
+        topRow.addView(TextView(context).apply {
             text = displayTitle(history)
-            textSize = 16f
+            textSize = 15.5f
             setTextColor(Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        val summary = buildList {
-            add(WebParseHtml.shortUrl(history.url))
-            if (history.frameworkType.isNotBlank()) add("框架：${history.frameworkType}")
-            if (history.adapterName.isNotBlank()) add("适配器：${history.adapterName}")
-        }.joinToString("  ·  ")
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addView(topRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+
+        // 第1行：网址
         addView(TextView(context).apply {
-            text = summary
-            textSize = 12f
-            setTextColor(Color.argb(190, 255, 255, 255))
+            text = "网址：${WebParseHtml.shortUrl(history.url)}"
+            textSize = 12.5f
+            setTextColor(Color.argb(200, 255, 255, 255))
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
-        pageTypeLabel(history.pageType)?.let { label ->
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
+
+        // 第2行：框架 + 适配器
+        val line2 = buildList {
+            if (history.frameworkType.isNotBlank()) add("框架：${history.frameworkType}")
+            if (history.adapterName.isNotBlank()) add("适配器：${history.adapterName}")
+        }
+        if (line2.isNotEmpty()) {
             addView(TextView(context).apply {
-                text = label
-                textSize = 11f
-                setTextColor(Color.argb(165, 255, 255, 255))
+                text = line2.joinToString("  ·  ")
+                textSize = 12f
+                setTextColor(Color.argb(170, 255, 255, 255))
                 maxLines = 1
                 ellipsize = TextUtils.TruncateAt.END
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(3) })
         }
     }
 
-    private fun pageTypeLabel(pageType: String): String? = when (pageType.trim().lowercase()) {
-        "list" -> "列表页"
-        "detail" -> "详情页"
-        else -> null
+    private fun pageTypeTag(pageType: String): TextView? {
+        val label = when (pageType.trim().lowercase()) {
+            "list" -> "列表页"
+            "detail" -> "详情页"
+            else -> return null
+        }
+        val color = if (pageType.trim().lowercase() == "list") orangeTag else greenTag
+        return TextView(context).apply {
+            text = label
+            textSize = 11f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setPadding(dp(8), 0, dp(8), 0)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(6).toFloat()
+                setColor(color)
+            }
+        }
     }
 
     private fun displayTitle(history: WebParseStore.ParseHistory): String {
@@ -190,7 +227,7 @@ class WebParseHistoryDialog(
         }.getOrDefault("")
     }
 
-    private fun titleView(clearButton: View, shareButton: View, fetchButton: View): View = LinearLayout(context).apply {
+    private fun titleView(clearButton: View, uploadButton: View, downloadButton: View): View = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         clipChildren = false
@@ -201,18 +238,18 @@ class WebParseHistoryDialog(
             scaleType = ImageView.ScaleType.CENTER_CROP
             foreground = context.getDrawable(R.drawable.fg_sticker_circle_border)
         }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(12) })
+        addView(clearButton, LinearLayout.LayoutParams(dp(88), dp(40)).apply { marginEnd = dp(8) })
         addView(TextView(context).apply {
-            text = "解析记录"
+            text = "我的收藏"
             textSize = 20f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(warm)
             gravity = Gravity.CENTER_VERTICAL
             setShadowLayer(2f, 0f, 1f, Color.argb(130, 0, 0, 0))
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        // 顺序（左→右）：云端获取 | 上传共享 | 清空记录
-        addView(fetchButton, LinearLayout.LayoutParams(dp(110), dp(40)).apply { marginEnd = dp(8) })
-        addView(shareButton, LinearLayout.LayoutParams(dp(110), dp(40)).apply { marginEnd = dp(8) })
-        addView(clearButton, LinearLayout.LayoutParams(dp(110), dp(40)))
+        // 右下角按钮：下载 | 上传
+        addView(downloadButton, LinearLayout.LayoutParams(dp(96), dp(40)).apply { marginEnd = dp(8) })
+        addView(uploadButton, LinearLayout.LayoutParams(dp(96), dp(40)))
     }
 
     private fun showShareDialog() {
@@ -225,7 +262,6 @@ class WebParseHistoryDialog(
     private fun showCloudFetchDialog() {
         dialog?.dismiss()
         CloudShareRecordsDialog(context) {
-            // 下载成功后局部刷新解析记录弹窗
             show()
         }.show()
     }
@@ -249,14 +285,14 @@ class WebParseHistoryDialog(
             foreground = context.getDrawable(R.drawable.fg_sticker_circle_border)
         }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(12) })
         header.addView(TextView(context).apply {
-            text = "清空解析记录"
+            text = "清空收藏"
             textSize = 20f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(warm)
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         panel.addView(header, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         panel.addView(TextView(context).apply {
-            text = "确认清空全部解析历史吗？清空后将无法恢复。"
+            text = "确认清空全部收藏吗？清空后将无法恢复。"
             textSize = 14f
             setTextColor(Color.argb(224, 255, 255, 255))
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14); bottomMargin = dp(16) })
@@ -267,7 +303,7 @@ class WebParseHistoryDialog(
             store.clearHistory()
             confirmDialog?.dismiss()
             dialog?.dismiss()
-            Toast.makeText(context, "解析记录已清空", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "收藏已清空", Toast.LENGTH_SHORT).show()
             show()
         }
         panel.addView(LinearLayout(context).apply {
@@ -287,21 +323,15 @@ class WebParseHistoryDialog(
         }
     }
 
-    private fun dialogButton(label: String, warning: Boolean = false, selected: Boolean = false, click: () -> Unit): TextView = TextView(context).apply {
+    private fun dialogButton(label: String, warning: Boolean = false, click: () -> Unit): TextView = TextView(context).apply {
         text = label
-        textSize = 15f
+        textSize = 14f
         typeface = Typeface.DEFAULT_BOLD
         gravity = Gravity.CENTER
         isFocusable = true
         isClickable = true
         fun refresh(focused: Boolean) {
-            setTextColor(
-                when {
-                    selected -> warm
-                    warning -> Color.rgb(255, 138, 128)
-                    else -> Color.argb(235, 245, 245, 245)
-                }
-            )
+            setTextColor(if (warning) Color.rgb(255, 138, 128) else Color.argb(235, 245, 245, 245))
             background = GradientDrawable().apply {
                 cornerRadius = dp(10).toFloat()
                 setStroke(dp(if (focused) 2 else 1), if (focused) warm else Color.argb(170, 210, 214, 222))

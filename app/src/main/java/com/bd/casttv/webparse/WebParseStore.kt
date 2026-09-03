@@ -3,6 +3,7 @@ package com.bd.casttv.webparse
 import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
+import java.security.MessageDigest
 
 class WebParseStore(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -16,8 +17,11 @@ class WebParseStore(context: Context) {
         val siteTitle: String = "",
         val frameworkType: String = "",
         val adapterName: String = "",
-        val adapterId: String = ""
+        val adapterId: String = "",
+        val recordId: String = ""
     )
+
+
 
     fun saveProgress(url: String, sourceIndex: Int, episodeIndex: Int, positionSec: Long) {
         if (url.isBlank()) return
@@ -47,23 +51,27 @@ class WebParseStore(context: Context) {
         siteTitle: String = "",
         frameworkType: String = "",
         adapterName: String = "",
-        adapterId: String = ""
+        adapterId: String = "",
+        recordId: String = ""
     ) {
         val normalizedUrl = url.trim()
         if (normalizedUrl.isBlank()) return
         val displayTitle = title.trim().ifBlank { WebParseHtml.shortUrl(normalizedUrl) }
+        val normalizedType = normalizePageType(pageType)
+        val rid = recordId.ifBlank { generateRecordId(normalizedUrl, normalizedType) }
         val updated = ParseHistory(
             title = displayTitle,
             url = normalizedUrl,
             updatedAt = System.currentTimeMillis(),
-            pageType = normalizePageType(pageType),
+            pageType = normalizedType,
             siteTitle = siteTitle.trim(),
             frameworkType = frameworkType.trim(),
             adapterName = adapterName.trim(),
-            adapterId = adapterId.trim()
+            adapterId = adapterId.trim(),
+            recordId = rid
         )
         val histories = getParseHistory()
-            .filterNot { it.url == normalizedUrl }
+            .filterNot { it.recordId == rid }
             .toMutableList()
             .apply { add(0, updated) }
             .take(MAX_HISTORY_COUNT)
@@ -84,6 +92,7 @@ class WebParseStore(context: Context) {
                     val item = array.optJSONObject(i) ?: continue
                     val url = item.optString("url").trim()
                     if (url.isBlank()) continue
+                    val rid = item.optString("recordId", "").trim()
                     add(
                         ParseHistory(
                             title = item.optString("title").trim().ifBlank { WebParseHtml.shortUrl(url) },
@@ -93,11 +102,12 @@ class WebParseStore(context: Context) {
                             siteTitle = item.optString("siteTitle").trim(),
                             frameworkType = item.optString("frameworkType").trim(),
                             adapterName = item.optString("adapterName").trim(),
-                            adapterId = item.optString("adapterId").trim()
+                            adapterId = item.optString("adapterId").trim(),
+                            recordId = rid
                         )
                     )
                 }
-            }.distinctBy { it.url }.take(MAX_HISTORY_COUNT)
+            }.distinctBy { it.recordId.ifBlank { it.url } }.take(MAX_HISTORY_COUNT)
         }.getOrElse { emptyList() }
     }
 
@@ -119,6 +129,7 @@ class WebParseStore(context: Context) {
                 put("frameworkType", history.frameworkType)
                 put("adapterName", history.adapterName)
                 put("adapterId", history.adapterId)
+                put("recordId", history.recordId)
             })
         }
         return array.toString()
@@ -128,6 +139,18 @@ class WebParseStore(context: Context) {
         fun extractSiteTitle(html: String): String = WebParseHtml.tagText(html, "<title[^>]*>([\\s\\S]*?)</title>")
             .replace(Regex("\\s+"), " ")
             .trim()
+
+        fun generateRecordId(url: String, pageType: String): String {
+            val raw = "${pageType.trim().lowercase()}|${url.trim().lowercase()}"
+            val bytes = MessageDigest.getInstance("SHA-256").digest(raw.toByteArray(Charsets.UTF_8))
+            return buildString(bytes.size * 2) {
+                for (b in bytes) {
+                    val v = b.toInt() and 0xFF
+                    if (v < 0x10) append('0')
+                    append(Integer.toHexString(v))
+                }
+            }.take(16)
+        }
 
         private const val PREFS = "web_parse_store"
         private const val KEY_URL = "current_url"
