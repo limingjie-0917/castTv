@@ -33,12 +33,18 @@ class WebParseHistoryDialog(
     private val warm: Int get() = ThemeManager.currentPalette(context).accent
     private val store = WebParseStore(context)
     private var dialog: AlertDialog? = null
+    private var batchMode = false
+    private val selectedHistoryKeys = linkedSetOf<String>()
 
     private val orangeTag = Color.rgb(255, 152, 56)
     private val greenTag = Color.rgb(76, 217, 100)
 
     fun show() {
+        dialog?.dismiss()
         val histories = store.getParseHistory()
+        val validKeys = histories.mapTo(hashSetOf()) { historyKey(it) }
+        selectedHistoryKeys.retainAll(validKeys)
+
         val panel = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             background = bottomSheetPanelBg()
@@ -58,12 +64,46 @@ class WebParseHistoryDialog(
             clipToPadding = false
         }
         val focusRows = mutableListOf<View>()
-
-        val clearButton = dialogButton("清空", warning = true) { showClearConfirm() }
         val downloadButton = dialogButton("下载") { showCloudFetchDialog() }
-        val uploadButton = dialogButton("上传") { showShareDialog() }
+        val batchButton = batchModeButton(batchMode) {
+            batchMode = !batchMode
+            selectedHistoryKeys.clear()
+            show()
+        }
+        content.addView(
+            titleView(downloadButton, batchButton),
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        )
 
-        content.addView(titleView(clearButton, uploadButton, downloadButton), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        val uploadButton = dialogButton("上传") {
+            val selectedHistories = histories.filter { historyKey(it) in selectedHistoryKeys }
+            if (selectedHistories.isNotEmpty()) {
+                WebParseShareDialog(context) {
+                    selectedHistoryKeys.clear()
+                    batchMode = false
+                    show()
+                }.uploadHistories(selectedHistories)
+            }
+        }
+        val deleteButton = dialogButton("删除", warning = true) {
+            val count = selectedHistoryKeys.size
+            if (count > 0) {
+                store.deleteHistories(selectedHistoryKeys)
+                selectedHistoryKeys.clear()
+                batchMode = false
+                Toast.makeText(context, "已删除 $count 条收藏", Toast.LENGTH_SHORT).show()
+                show()
+            }
+        }
+        fun refreshBatchActions() {
+            val enabled = selectedHistoryKeys.isNotEmpty()
+            listOf(uploadButton, deleteButton).forEach { button ->
+                button.isEnabled = enabled
+                button.isFocusable = enabled
+                button.alpha = if (enabled) 1f else 0.4f
+            }
+        }
+        refreshBatchActions()
 
         val list = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -83,10 +123,24 @@ class WebParseHistoryDialog(
             list.addView(empty, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(120)).apply { topMargin = dp(16) })
         } else {
             histories.forEachIndexed { index, history ->
-                val row = historyRow(history) {
-                    dialog?.dismiss()
-                    onSelected(history)
-                }
+                val key = historyKey(history)
+                lateinit var refreshRow: () -> Unit
+                val row = historyRow(
+                    history = history,
+                    showCheckBox = batchMode,
+                    selected = key in selectedHistoryKeys,
+                    click = {
+                        if (batchMode) {
+                            if (!selectedHistoryKeys.add(key)) selectedHistoryKeys.remove(key)
+                            refreshRow()
+                            refreshBatchActions()
+                        } else {
+                            dialog?.dismiss()
+                            onSelected(history)
+                        }
+                    },
+                    onRefreshReady = { refreshRow = it }
+                )
                 focusRows.add(row)
                 list.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(96)).apply { topMargin = if (index == 0) dp(16) else dp(8) })
             }
@@ -101,9 +155,27 @@ class WebParseHistoryDialog(
         }
         content.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(360)))
 
-        focusRows.add(clearButton)
-        focusRows.add(uploadButton)
-        focusRows.add(downloadButton)
+        if (batchMode) {
+            val cancelButton = dialogButton("取消") {
+                batchMode = false
+                selectedHistoryKeys.clear()
+                show()
+            }
+            val actions = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                addView(cancelButton, LinearLayout.LayoutParams(dp(96), dp(42)).apply { marginEnd = dp(8) })
+                addView(uploadButton, LinearLayout.LayoutParams(dp(96), dp(42)).apply { marginEnd = dp(8) })
+                addView(deleteButton, LinearLayout.LayoutParams(dp(96), dp(42)))
+            }
+            content.addView(actions, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42)).apply { topMargin = dp(12) })
+            focusRows.add(cancelButton)
+            focusRows.add(uploadButton)
+            focusRows.add(deleteButton)
+        } else {
+            focusRows.add(downloadButton)
+        }
+        focusRows.add(batchButton)
 
         contentInset.addView(content, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         panel.addView(contentInset, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -120,20 +192,48 @@ class WebParseHistoryDialog(
         }
     }
 
-    private fun historyRow(history: WebParseStore.ParseHistory, click: () -> Unit): LinearLayout = LinearLayout(context).apply {
-        orientation = LinearLayout.VERTICAL
-        gravity = Gravity.CENTER_VERTICAL
-        isFocusable = true
-        isClickable = true
-        setPadding(dp(14), dp(10), dp(14), dp(10))
-        background = rowBg(false)
-        setOnFocusChangeListener { v, has ->
-            background = rowBg(has)
-            FocusFxHelper.applyFocusFxState(v, has, cornerRadiusDp = 14)
+    private fun historyRow(
+        history: WebParseStore.ParseHistory,
+        showCheckBox: Boolean,
+        selected: Boolean,
+        click: () -> Unit,
+        onRefreshReady: (() -> Unit) -> Unit
+    ): LinearLayout {
+        var checked = selected
+        val root = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            isFocusable = true
+            isClickable = true
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            background = rowBg(false)
         }
-        setOnClickListener { click() }
+        val check = TextView(context).apply {
+            text = "✓"
+            textSize = 20f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+        }
+        fun refreshCheck() {
+            val color = if (checked) warm else Color.WHITE
+            check.setTextColor(if (checked) warm else Color.TRANSPARENT)
+            check.background = GradientDrawable().apply {
+                cornerRadius = dp(4).toFloat()
+                setColor(Color.TRANSPARENT)
+                setStroke(dp(if (checked) 3 else 2), color)
+            }
+        }
+        refreshCheck()
+        if (showCheckBox) {
+            root.addView(check, LinearLayout.LayoutParams(dp(28), dp(28)).apply { marginEnd = dp(12) })
+        }
 
-        // 顶部行：类型标签 + 标题
+        val textContent = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_VERTICAL
+            clipChildren = false
+        }
         val topRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -150,10 +250,8 @@ class WebParseHistoryDialog(
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        addView(topRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-
-        // 第1行：网址
-        addView(TextView(context).apply {
+        textContent.addView(topRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        textContent.addView(TextView(context).apply {
             text = "网址：${WebParseHtml.shortUrl(history.url)}"
             textSize = 12.5f
             setTextColor(Color.argb(200, 255, 255, 255))
@@ -161,13 +259,12 @@ class WebParseHistoryDialog(
             ellipsize = TextUtils.TruncateAt.END
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
 
-        // 第2行：框架 + 适配器
         val line2 = buildList {
             if (history.frameworkType.isNotBlank()) add("框架：${history.frameworkType}")
             if (history.adapterName.isNotBlank()) add("适配器：${history.adapterName}")
         }
         if (line2.isNotEmpty()) {
-            addView(TextView(context).apply {
+            textContent.addView(TextView(context).apply {
                 text = line2.joinToString("  ·  ")
                 textSize = 12f
                 setTextColor(Color.argb(170, 255, 255, 255))
@@ -175,6 +272,21 @@ class WebParseHistoryDialog(
                 ellipsize = TextUtils.TruncateAt.END
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(3) })
         }
+        root.addView(textContent, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f))
+        root.setOnFocusChangeListener { v, has ->
+            root.background = rowBg(has)
+            FocusFxHelper.applyFocusFxState(v, has, cornerRadiusDp = 14)
+        }
+        root.setOnClickListener {
+            click()
+            checked = historyKey(history) in selectedHistoryKeys
+            refreshCheck()
+        }
+        onRefreshReady {
+            checked = historyKey(history) in selectedHistoryKeys
+            refreshCheck()
+        }
+        return root
     }
 
     private fun pageTypeTag(pageType: String): TextView? {
@@ -197,6 +309,8 @@ class WebParseHistoryDialog(
             }
         }
     }
+
+    private fun historyKey(history: WebParseStore.ParseHistory): String = history.recordId.ifBlank { history.url }
 
     private fun displayTitle(history: WebParseStore.ParseHistory): String {
         val title = history.title.trim()
@@ -227,7 +341,7 @@ class WebParseHistoryDialog(
         }.getOrDefault("")
     }
 
-    private fun titleView(clearButton: View, uploadButton: View, downloadButton: View): View = LinearLayout(context).apply {
+    private fun titleView(downloadButton: View, batchButton: View): View = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
         clipChildren = false
@@ -238,7 +352,6 @@ class WebParseHistoryDialog(
             scaleType = ImageView.ScaleType.CENTER_CROP
             foreground = context.getDrawable(R.drawable.fg_sticker_circle_border)
         }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(12) })
-        addView(clearButton, LinearLayout.LayoutParams(dp(88), dp(40)).apply { marginEnd = dp(8) })
         addView(TextView(context).apply {
             text = "我的收藏"
             textSize = 20f
@@ -247,16 +360,38 @@ class WebParseHistoryDialog(
             gravity = Gravity.CENTER_VERTICAL
             setShadowLayer(2f, 0f, 1f, Color.argb(130, 0, 0, 0))
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        // 右下角按钮：下载 | 上传
-        addView(downloadButton, LinearLayout.LayoutParams(dp(96), dp(40)).apply { marginEnd = dp(8) })
-        addView(uploadButton, LinearLayout.LayoutParams(dp(96), dp(40)))
+        if (!batchMode) {
+            addView(downloadButton, LinearLayout.LayoutParams(dp(88), dp(40)).apply { marginEnd = dp(8) })
+        }
+        addView(batchButton, LinearLayout.LayoutParams(dp(112), dp(40)))
     }
 
-    private fun showShareDialog() {
-        dialog?.dismiss()
-        WebParseShareDialog(context) {
-            show()
-        }.show()
+    private fun batchModeButton(showExit: Boolean, click: () -> Unit): LinearLayout = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER
+        isFocusable = true
+        isClickable = true
+        setPadding(dp(8), 0, dp(8), 0)
+        addView(TextView(context).apply {
+            text = if (showExit) "退出" else "批量操作"
+            textSize = 14f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.argb(235, 245, 245, 245))
+            gravity = Gravity.CENTER
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        fun refresh(focused: Boolean) {
+            background = GradientDrawable().apply {
+                cornerRadius = dp(10).toFloat()
+                setStroke(dp(if (focused) 2 else 1), if (focused) warm else Color.argb(170, 210, 214, 222))
+                setColor(Color.argb(52, 32, 34, 40))
+            }
+        }
+        refresh(false)
+        setOnFocusChangeListener { v, has ->
+            refresh(has)
+            FocusFxHelper.applyFocusFxState(v, has, cornerRadiusDp = 10)
+        }
+        setOnClickListener { click() }
     }
 
     private fun showCloudFetchDialog() {

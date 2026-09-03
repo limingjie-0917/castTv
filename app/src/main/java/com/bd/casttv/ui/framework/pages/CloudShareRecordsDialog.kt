@@ -121,8 +121,11 @@ class CloudShareRecordsDialog(
         val downloadButton = dialogButton("下载", warning = false) {
             performDownload()
         }
-        val selectAllButton = dialogButton("全选") { toggleAll(true) }
-        val deselectButton = dialogButton("取消勾选") { toggleAll(false) }
+        val deleteButton = dialogButton("从云端删除", warning = true) {
+            performCloudDelete()
+        }.apply { visibility = View.GONE }
+        val selectAllButton = dialogButton("全选") { toggleAll(true, downloadButton, deleteButton) }
+        val deselectButton = dialogButton("取消勾选") { toggleAll(false, downloadButton, deleteButton) }
         val countTip = TextView(context).apply {
             text = ""
             textSize = 13f
@@ -140,6 +143,7 @@ class CloudShareRecordsDialog(
         bottomBar.addView(countTip, LinearLayout.LayoutParams(0, dp(40), 1f))
         bottomBar.addView(selectAllButton, LinearLayout.LayoutParams(dp(100), dp(40)).apply { marginEnd = dp(8) })
         bottomBar.addView(deselectButton, LinearLayout.LayoutParams(dp(110), dp(40)).apply { marginEnd = dp(8) })
+        bottomBar.addView(deleteButton, LinearLayout.LayoutParams(dp(130), dp(40)).apply { marginEnd = dp(8) })
         bottomBar.addView(downloadButton, LinearLayout.LayoutParams(dp(100), dp(40)).apply { marginEnd = dp(8) })
         bottomBar.addView(cancelButton, LinearLayout.LayoutParams(dp(100), dp(40)))
         content.addView(bottomBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12) })
@@ -152,7 +156,7 @@ class CloudShareRecordsDialog(
             d.setOnShowListener {
                 cancelButton.requestFocus()
                 // 拉取云端数据
-                fetchCloudData(statusView, loadingBar, listContainer, scroll, focusRows, selectAllButton, deselectButton, downloadButton)
+                fetchCloudData(statusView, loadingBar, listContainer, scroll, focusRows, selectAllButton, deselectButton, downloadButton, deleteButton)
             }
             d.show()
             d.window?.apply {
@@ -171,7 +175,8 @@ class CloudShareRecordsDialog(
         focusRows: MutableList<View>,
         selectAllButton: View,
         deselectButton: View,
-        downloadButton: View
+        downloadButton: View,
+        deleteButton: View
     ) {
         CoroutineScope(Dispatchers.Main).launch {
             val myCreatorId = withContext(Dispatchers.IO) { CreatorIdProvider.get(context) }
@@ -199,12 +204,12 @@ class CloudShareRecordsDialog(
                     listContainer.visibility = View.VISIBLE
                     rowMap.clear()
                     groupMap.clear()
-                    fillGroupViews(listContainer, groups, myCreatorId, focusRows, downloadButton)
+                    fillGroupViews(listContainer, groups, myCreatorId, focusRows, downloadButton, deleteButton)
 
-                    val allFocusable = focusRows + listOf(selectAllButton, deselectButton, downloadButton)
+                    val allFocusable = focusRows + listOf(selectAllButton, deselectButton, deleteButton, downloadButton)
                     bindBoundary(scroll, allFocusable)
 
-                    updateDownloadButton(downloadButton)
+                    updateActionButtons(downloadButton, deleteButton)
                 }
                 is GiteeApi.ApiResult.Error -> {
                     statusView.text = "云端数据拉取失败：${result.message}"
@@ -242,7 +247,8 @@ class CloudShareRecordsDialog(
         groups: List<CreatorGroup>,
         myCreatorId: String,
         focusRows: MutableList<View>,
-        downloadButton: View
+        downloadButton: View,
+        deleteButton: View
     ) {
         groups.forEachIndexed { gi, group ->
             val isMine = group.creatorId == myCreatorId
@@ -285,7 +291,7 @@ class CloudShareRecordsDialog(
                     }
                     updateRowSelection(record.globalRecordId)
                     updateGroupCountTip(group.creatorId)
-                    updateDownloadButton(downloadButton)
+                    updateActionButtons(downloadButton, deleteButton)
                 }
                 rowMap[record.globalRecordId] = row
                 focusRows.add(row)
@@ -315,13 +321,14 @@ class CloudShareRecordsDialog(
             gravity = Gravity.CENTER_VERTICAL
         }
         val marker = TextView(context).apply {
-            text = if (selected.contains(record.globalRecordId)) "✓" else "○"
-            textSize = 14f
+            text = "✓"
+            textSize = 20f
             typeface = Typeface.DEFAULT_BOLD
-            setTextColor(warm)
-            setPadding(0, 0, dp(8), 0)
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+            refreshCheckbox(this, selected.contains(record.globalRecordId))
         }
-        topRow.addView(marker, LinearLayout.LayoutParams(dp(56), ViewGroup.LayoutParams.WRAP_CONTENT))
+        topRow.addView(marker, LinearLayout.LayoutParams(dp(28), dp(28)).apply { marginEnd = dp(12) })
         // 类型标签
         pageTypeTag(record.pageType)?.let { tag ->
             topRow.addView(tag, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(22)).apply { marginEnd = dp(8) })
@@ -348,7 +355,7 @@ class CloudShareRecordsDialog(
             setTextColor(Color.argb(190, 255, 255, 255))
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
-            setPadding(dp(56), dp(4), 0, 0)
+            setPadding(dp(40), dp(4), 0, 0)
         })
     }
 
@@ -377,7 +384,18 @@ class CloudShareRecordsDialog(
         val row = rowMap[globalRecordId] as? LinearLayout ?: return
         val topRow = row.getChildAt(0) as? LinearLayout ?: return
         val marker = topRow.getChildAt(0) as? TextView ?: return
-        marker.text = if (selected.contains(globalRecordId)) "✓" else "○"
+        marker.setPadding(0, 0, 0, 0)
+        refreshCheckbox(marker, selected.contains(globalRecordId))
+    }
+
+    private fun refreshCheckbox(check: TextView, checked: Boolean) {
+        val borderColor = if (checked) warm else Color.WHITE
+        check.setTextColor(if (checked) warm else Color.TRANSPARENT)
+        check.background = GradientDrawable().apply {
+            cornerRadius = dp(4).toFloat()
+            setColor(Color.TRANSPARENT)
+            setStroke(dp(if (checked) 3 else 2), borderColor)
+        }
     }
 
     private fun updateGroupCountTip(groupKey: String) {
@@ -386,16 +404,87 @@ class CloudShareRecordsDialog(
 
     private var downloadCountTip: TextView? = null
 
-    private fun updateDownloadButton(button: View) {
-        button.isEnabled = selected.isNotEmpty()
-        button.alpha = if (selected.isEmpty()) 0.4f else 1f
-        downloadCountTip?.text = if (selected.isEmpty()) "" else "已选 ${selected.size} 条"
+    private fun updateActionButtons(downloadButton: View, deleteButton: View) {
+        val hasSelection = selected.isNotEmpty()
+        downloadButton.isEnabled = hasSelection
+        downloadButton.isFocusable = hasSelection
+        downloadButton.alpha = if (hasSelection) 1f else 0.4f
+        deleteButton.visibility = if (hasSelection) View.VISIBLE else View.GONE
+        deleteButton.isEnabled = hasSelection
+        deleteButton.isFocusable = hasSelection
+        deleteButton.alpha = if (hasSelection) 1f else 0.4f
+        downloadCountTip?.text = if (hasSelection) "已选 ${selected.size} 条" else ""
     }
 
-    private fun toggleAll(select: Boolean) {
+    private fun toggleAll(select: Boolean, downloadButton: View, deleteButton: View) {
         selected.clear()
         if (select) allRecords.forEach { selected.add(it.globalRecordId) }
         allRecords.forEach { updateRowSelection(it.globalRecordId) }
+        updateActionButtons(downloadButton, deleteButton)
+    }
+
+    private fun performCloudDelete() {
+        if (selected.isEmpty()) {
+            Toast.makeText(context, "请先选择要从云端删除的记录", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val selectedIds = selected.toList()
+        val progressPanel = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            background = bottomSheetPanelBg()
+            setPadding(dp(40), dp(30), dp(40), dp(30))
+        }
+        val progressText = TextView(context).apply {
+            text = "正在从云端删除..."
+            textSize = 15f
+            setTextColor(warm)
+            gravity = Gravity.CENTER
+        }
+        progressPanel.addView(progressText, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(16) })
+        progressPanel.addView(ProgressBar(context).apply { isIndeterminate = true }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        val progressDialog = AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog).setView(progressPanel).create().also { d ->
+            d.setCancelable(false)
+            d.show()
+            d.window?.apply {
+                setGravity(Gravity.CENTER)
+                setBackgroundDrawableResource(android.R.color.transparent)
+                setLayout(dp(360), WindowManager.LayoutParams.WRAP_CONTENT)
+            }
+        }
+
+        CoroutineScope(Dispatchers.Main).launch {
+            val (successCount, errors, remainingRecords) = withContext(Dispatchers.IO) {
+                var remaining = allRecords
+                var success = 0
+                val failures = mutableListOf<String>()
+                selectedIds.forEach { recordId ->
+                    when (val result = GiteeShareStore.deleteSharedRecord(recordId, remaining)) {
+                        is GiteeApi.ApiResult.Success -> {
+                            success++
+                            remaining = remaining.filterNot { it.globalRecordId == recordId }
+                        }
+                        is GiteeApi.ApiResult.Error -> failures.add(result.message)
+                        is GiteeApi.ApiResult.NotFound -> failures.add("记录不存在")
+                    }
+                }
+                Triple(success, failures, remaining)
+            }
+            progressDialog.dismiss()
+            allRecords = remainingRecords
+            if (successCount > 0) {
+                val message = buildString {
+                    append("已从云端删除 $successCount 条收藏")
+                    if (errors.isNotEmpty()) append("，失败 ${errors.size} 条")
+                }
+                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                selected.clear()
+                dialog?.dismiss()
+                show()
+            } else {
+                Toast.makeText(context, "删除失败：${errors.firstOrNull().orEmpty().ifBlank { "未知错误" }}", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     private fun performDownload() {

@@ -59,6 +59,13 @@ class WebParseShareDialog(
     // 本用户云端记录的 url -> SharedRecord 映射
     private val cloudRecordMap = mutableMapOf<String, SharedRecord>()
 
+    /** 复用原上传流程，直接上传收藏页批量模式中已勾选的记录。 */
+    fun uploadHistories(histories: List<WebParseStore.ParseHistory>) {
+        selected.clear()
+        histories.indices.forEach(selected::add)
+        performUpload(histories)
+    }
+
     fun show() {
         val histories = store.getParseHistory()
         val panel = LinearLayout(context).apply {
@@ -306,13 +313,24 @@ class WebParseShareDialog(
         }
         // 选中标记
         val marker = TextView(context).apply {
-            text = if (isShared) "已共享" else if (selected.contains(index)) "✓" else "○"
-            textSize = 14f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(if (isShared) Color.argb(120, 255, 255, 255) else warm)
-            setPadding(0, 0, dp(8), 0)
+            if (isShared) {
+                text = "已共享"
+                textSize = 14f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(Color.argb(120, 255, 255, 255))
+                gravity = Gravity.CENTER_VERTICAL
+            } else {
+                text = "✓"
+                textSize = 20f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                refreshCheckbox(this, selected.contains(index))
+            }
         }
-        topRow.addView(marker, LinearLayout.LayoutParams(dp(56), ViewGroup.LayoutParams.WRAP_CONTENT))
+        topRow.addView(marker, LinearLayout.LayoutParams(if (isShared) dp(56) else dp(28), if (isShared) ViewGroup.LayoutParams.WRAP_CONTENT else dp(28)).apply {
+            marginEnd = dp(if (isShared) 0 else 12)
+        })
         // 类型标签
         pageTypeTag(history.pageType)?.let { tag ->
             topRow.addView(tag, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(22)).apply { marginEnd = dp(8) })
@@ -358,7 +376,7 @@ class WebParseShareDialog(
             setTextColor(Color.argb(if (isShared) 90 else 190, 255, 255, 255))
             maxLines = 1
             ellipsize = TextUtils.TruncateAt.END
-            setPadding(dp(56), dp(4), 0, 0)
+            setPadding(dp(if (isShared) 56 else 40), dp(4), 0, 0)
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
     }
 
@@ -367,8 +385,18 @@ class WebParseShareDialog(
         val row = rowViews[index] as? LinearLayout ?: return
         val topRow = row.getChildAt(0) as? LinearLayout ?: return
         val marker = topRow.getChildAt(0) as? TextView ?: return
-        marker.text = if (selected.contains(index)) "✓" else "○"
-        marker.setTextColor(warm)
+        marker.setPadding(0, 0, 0, 0)
+        refreshCheckbox(marker, selected.contains(index))
+    }
+
+    private fun refreshCheckbox(check: TextView, checked: Boolean) {
+        val borderColor = if (checked) warm else Color.WHITE
+        check.setTextColor(if (checked) warm else Color.TRANSPARENT)
+        check.background = GradientDrawable().apply {
+            cornerRadius = dp(4).toFloat()
+            setColor(Color.TRANSPARENT)
+            setStroke(dp(if (checked) 3 else 2), borderColor)
+        }
     }
 
     private var uploadCountTip: TextView? = null

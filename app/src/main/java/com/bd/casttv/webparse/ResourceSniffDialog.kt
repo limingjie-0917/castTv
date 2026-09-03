@@ -3,6 +3,7 @@ package com.bd.casttv.webparse
 import android.annotation.SuppressLint
 import android.app.Dialog
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Typeface
 import android.net.Uri
@@ -42,10 +43,14 @@ import kotlin.math.abs
  */
 class ResourceSniffDialog(
     private val context: Context,
-    private val listUrl: String,
-    private val onSniffed: (SniffedApi) -> Unit,
+    private val pageUrl: String,
+    private val entry: Entry,
+    private val onDomSnapshot: (pageUrl: String, html: String, reportNewCount: (Int) -> Unit) -> Unit,
+    private val onSniffed: (SniffedApi) -> Unit = {},
     private val onClosed: () -> Unit = {}
 ) {
+    /** 嗅探入口决定 DOM 变化后由调用方使用列表适配器还是详情适配器解析。 */
+    enum class Entry { LIST, DETAIL }
     /** 嗅探到的影片列表接口信息 */
     data class SniffedApi(
         val url: String,
@@ -86,6 +91,8 @@ class ResourceSniffDialog(
     private var webView: WebView? = null
     private var statusText: TextView? = null
     private var progressBar: ProgressBar? = null
+    private var incrementBanner: TextView? = null
+    private var bannerHideRunnable: Runnable? = null
     private var winner: SniffedApi? = null
     private var scrollTriggerCount = 0
 
@@ -207,7 +214,56 @@ class ResourceSniffDialog(
                 };
             }
 
-            // 通知原生层注入完成
+            // 用户在页面内手动翻页/点击加载后，将 DOM 快照节流上报给原生层。
+            // 不能使用纯防抖：持续动画/倒计时会不断重置 timer，导致永远没有快照上报。
+            var domTimer = null;
+            var domDirty = false;
+            var lastDomSnapshot = '';
+            function flushDomChanged() {
+                domTimer = null;
+                if (!domDirty) return;
+                domDirty = false;
+                safeCall(function() {
+                    var html = document.documentElement ? document.documentElement.outerHTML : '';
+                    if (!html || html === lastDomSnapshot) return;
+                    lastDomSnapshot = html;
+                    AndroidSniffer.onDomChanged(location.href || '', html);
+                });
+            }
+            function reportDomChanged() {
+                domDirty = true;
+                if (!domTimer) domTimer = setTimeout(flushDomChanged, 1000);
+            }
+            window.__sniffReportDomChanged = reportDomChanged;
+
+            // SPA 页面不会触发 WebView.onPageFinished，需要额外监听 History API 和前进/后退。
+            var origPushState = history.pushState;
+            var origReplaceState = history.replaceState;
+            history.pushState = function() {
+                var result = origPushState.apply(this, arguments);
+                reportDomChanged();
+                return result;
+            };
+            history.replaceState = function() {
+                var result = origReplaceState.apply(this, arguments);
+                reportDomChanged();
+                return result;
+            };
+            window.addEventListener('popstate', reportDomChanged);
+            window.addEventListener('hashchange', reportDomChanged);
+
+            if (document.documentElement && window.MutationObserver) {
+                var domObserver = new MutationObserver(function() { reportDomChanged(); });
+                domObserver.observe(document.documentElement, {
+                    childList: true,
+                    subtree: true,
+                    attributes: true,
+                    characterData: true
+                });
+            }
+
+            // 注入完成后主动上报首屏快照，覆盖刷新/跳转后 DOM 不再变化的页面。
+            reportDomChanged();
             safeCall(function() { AndroidSniffer.onInjected(); });
         })();
     """.trimIndent()
@@ -235,20 +291,18 @@ class ResourceSniffDialog(
                 } else if (event.action == KeyEvent.ACTION_UP && keyCode == KeyEvent.KEYCODE_DPAD_UP) {
                     webView?.scrollBy(0, -300)
                     true
-                } else if (event.action == KeyEvent.ACTION_UP &&
-                    (keyCode == KeyEvent.KEYCODE_DPAD_CENTER || keyCode == KeyEvent.KEYCODE_ENTER)) {
-                    // OK 键也触发滚动
-                    webView?.scrollBy(0, 400)
-                    onUserScroll()
-                    true
                 } else {
+                    // OK/Enter 等按键交给 WebView，用户可手动点击网页中的翻页/加载控件。
                     false
                 }
             }
         }
         this.dialog = dialog
         dialog.show()
-        webView?.loadUrl(listUrl)
+        webView?.apply {
+            requestFocus()
+            loadUrl(pageUrl)
+        }
     }
 
     private fun buildContentView(): View {
@@ -272,7 +326,7 @@ class ResourceSniffDialog(
         }
 
         val title = TextView(context).apply {
-            text = "资源嗅探"
+            text = if (entry == Entry.LIST) "资源嗅探 · 影片列表" else "资源嗅探 · 影片详情"
             textSize = 18f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.rgb(245, 196, 81))
@@ -320,13 +374,30 @@ class ResourceSniffDialog(
             // 注入 JS 拦截脚本
             addJavascriptInterface(SniffBridge(), "AndroidSniffer")
             webViewClient = object : WebViewClient() {
+                override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                    super.onPageStarted(view, url, favicon)
+                    handler.post {
+                        progressBar?.visibility = View.VISIBLE
+                        updateStatus(if (entry == Entry.LIST) "页面刷新或跳转中，加载完成后将自动解析影片…" else "页面刷新或跳转中，加载完成后将自动解析播放地址…")
+                    }
+                }
+
+                override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
+                    super.doUpdateVisitedHistory(view, url, isReload)
+                    // 覆盖 reload、History API 导航及同文档 URL 变化；脚本尚未注入时安全忽略。
+                    view?.evaluateJavascript("window.__sniffReportDomChanged && window.__sniffReportDomChanged();", null)
+                }
+
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
                     // 页面加载完成后注入拦截脚本
                     view?.evaluateJavascript(injectScript, null)
                     handler.post {
                         progressBar?.visibility = View.GONE
-                        updateStatus("页面已加载，请按↓键或OK键上滑触发加载更多")
+                        updateStatus(
+                            if (entry == Entry.LIST) "页面已加载，请手动翻页或加载更多"
+                            else "页面已加载，请手动切换剧集或加载资源"
+                        )
                     }
                 }
 
@@ -344,7 +415,11 @@ class ResourceSniffDialog(
 
         // 底部提示
         val footer = TextView(context).apply {
-            text = "按↓/OK键上滑触发加载更多 · 连续触发两次可确认翻页参数 · 按 Back 退出"
+            text = if (entry == Entry.LIST) {
+                "请在网页内手动翻页或加载更多 · 新影片会自动追加 · 按 Back 退出"
+            } else {
+                "请在网页内手动切换/加载资源 · 新播放地址会自动追加 · 按 Back 退出"
+            }
             textSize = 12f
             setTextColor(Color.argb(150, 255, 255, 255))
             gravity = Gravity.CENTER
@@ -356,6 +431,29 @@ class ResourceSniffDialog(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.MATCH_PARENT
         ).apply { setMargins(dp(24), dp(24), dp(24), dp(24)) })
+
+        incrementBanner = TextView(context).apply {
+            visibility = View.GONE
+            alpha = 0f
+            translationY = -dp(16).toFloat()
+            textSize = 15f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+            setTextColor(Color.rgb(255, 244, 194))
+            setPadding(dp(20), dp(10), dp(20), dp(10))
+            elevation = dp(16).toFloat()
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = dp(18).toFloat()
+                setColor(Color.argb(242, 44, 38, 22))
+                setStroke(dp(2), Color.rgb(245, 196, 81))
+            }
+        }.also { banner ->
+            root.addView(banner, FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP or Gravity.CENTER_HORIZONTAL
+            ).apply { topMargin = dp(82) })
+        }
         return root
     }
 
@@ -377,7 +475,38 @@ class ResourceSniffDialog(
         statusText?.text = msg
     }
 
+    /** 在 WebView 顶部居中显示原生增量提醒，不注入网页 DOM，也不抢占遥控器焦点。 */
+    private fun showIncrementBanner(count: Int) {
+        if (count <= 0) return
+        handler.post {
+            val banner = incrementBanner ?: return@post
+            bannerHideRunnable?.let { handler.removeCallbacks(it) }
+            banner.animate().cancel()
+            banner.text = "解析到 ${count} 条新数据"
+            banner.visibility = View.VISIBLE
+            banner.alpha = 0f
+            banner.translationY = -dp(16).toFloat()
+            banner.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setDuration(180L)
+                .start()
+            bannerHideRunnable = Runnable {
+                banner.animate()
+                    .alpha(0f)
+                    .translationY(-dp(12).toFloat())
+                    .setDuration(220L)
+                    .withEndAction { banner.visibility = View.GONE }
+                    .start()
+            }.also { handler.postDelayed(it, 2200L) }
+        }
+    }
+
     private fun dismissAndClose() {
+        bannerHideRunnable?.let { handler.removeCallbacks(it) }
+        bannerHideRunnable = null
+        incrementBanner?.animate()?.cancel()
+        incrementBanner = null
         webView?.apply {
             stopLoading()
             removeJavascriptInterface("AndroidSniffer")
@@ -407,7 +536,31 @@ class ResourceSniffDialog(
         @JavascriptInterface
         fun onInjected() {
             handler.post {
-                updateStatus("已注入嗅探脚本，请上滑触发加载更多")
+                updateStatus(
+                    if (entry == Entry.LIST) "请手动翻页或加载更多，DOM 变化后将自动解析影片"
+                    else "请手动切换或加载资源，DOM 变化后将自动解析播放地址"
+                )
+            }
+        }
+
+        @JavascriptInterface
+        fun onDomChanged(url: String, html: String) {
+            if (html.isBlank()) return
+            handler.post {
+                if (dialog == null) return@post
+                progressBar?.visibility = View.VISIBLE
+                updateStatus(if (entry == Entry.LIST) "检测到页面变化，正在解析影片…" else "检测到页面变化，正在解析播放地址…")
+                onDomSnapshot(url.ifBlank { pageUrl }, html) { count ->
+                    handler.post {
+                        progressBar?.visibility = View.GONE
+                        if (count > 0) {
+                            updateStatus("已追加 $count 条新数据，请继续操作网页或按 Back 退出")
+                            showIncrementBanner(count)
+                        } else {
+                            updateStatus("页面已变化，暂未解析到新数据，请继续操作")
+                        }
+                    }
+                }
             }
         }
 
@@ -420,7 +573,7 @@ class ResourceSniffDialog(
             responseText: String,
             status: Int
         ) {
-            if (status !in 200..299) return
+            if (entry != Entry.LIST || status !in 200..299) return
             // 过滤静态资源（图片/CSS/JS）
             val lowerUrl = url.lowercase()
             if (lowerUrl.endsWith(".jpg") || lowerUrl.endsWith(".png") || lowerUrl.endsWith(".gif") ||

@@ -31,6 +31,17 @@ class WebParseListExtractor {
         ParsedListResult(movies, nextPageUrl)
     }
 
+    /**
+     * 解析 WebView 当前 DOM，用于资源嗅探过程中提取动态加载出的影片条目。
+     * 不发起网络请求，也不要求一定存在下一页。
+     */
+    fun parseDom(baseUrl: String, html: String): ParsedListResult {
+        val movies = parseList(baseUrl, html)
+        val nextPageUrl = extractNextPageUrl(baseUrl, html)
+        Log.d(TAG, "parseDom url=$baseUrl htmlLength=${html.length} movies=${movies.size} nextPageUrl=$nextPageUrl")
+        return ParsedListResult(movies, nextPageUrl)
+    }
+
     fun parseWithJsonRule(html: String, jsonRule: String, baseUrl: String): ParsedListResult {
         val json = JSONObject(jsonRule)
         if (json.optString("type") != "list") error("JSON 校验失败：type 必须为 list")

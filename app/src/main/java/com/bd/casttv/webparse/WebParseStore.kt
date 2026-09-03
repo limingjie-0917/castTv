@@ -82,6 +82,14 @@ class WebParseStore(context: Context) {
         prefs.edit().remove(KEY_PARSE_HISTORY).apply()
     }
 
+    fun deleteHistories(keys: Set<String>) {
+        if (keys.isEmpty()) return
+        val remaining = getParseHistory().filterNot { history ->
+            history.recordId.ifBlank { history.url } in keys
+        }
+        prefs.edit().putString(KEY_PARSE_HISTORY, encodeHistory(remaining)).apply()
+    }
+
     fun getParseHistory(): List<ParseHistory> {
         val raw = prefs.getString(KEY_PARSE_HISTORY, "").orEmpty()
         if (raw.isBlank()) return emptyList()

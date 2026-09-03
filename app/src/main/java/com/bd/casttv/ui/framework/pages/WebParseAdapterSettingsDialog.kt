@@ -17,6 +17,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.RelativeLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -84,9 +85,9 @@ class WebParseAdapterSettingsDialog(
         }
         cloudTab = tabButton("云端适配器", true, { switchTab(0) }, { switchTab(0, false) })
         localTab = tabButton("本地适配器", false, { switchTab(1) }, { switchTab(1, false) })
-        tabs.addView(cloudTab, lparams(dp(150), dp(42)).apply { marginEnd = dp(8) })
-        tabs.addView(localTab, lparams(dp(150), dp(42)))
-        content.addView(tabs, lparams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(42)).apply { topMargin = dp(12) })
+        tabs.addView(cloudTab, lparams(0, dp(42), 1f).apply { marginEnd = dp(4) })
+        tabs.addView(localTab, lparams(0, dp(42), 1f).apply { marginStart = dp(4) })
+        content.addView(tabs, lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42)).apply { topMargin = dp(12) })
 
         val scroll = ScrollView(context).apply {
             overScrollMode = ScrollView.OVER_SCROLL_IF_CONTENT_SCROLLS
@@ -101,10 +102,17 @@ class WebParseAdapterSettingsDialog(
             orientation = LinearLayout.VERTICAL; clipChildren = false; clipToPadding = false
             setPadding(0, dp(8), 0, dp(10)); visibility = View.GONE
         }
-        scroll.addView(LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            addView(cloudBox, lparams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-            addView(localBox, lparams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        scroll.addView(RelativeLayout(context).apply {
+            clipChildren = false
+            clipToPadding = false
+            addView(cloudBox, RelativeLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { addRule(RelativeLayout.ALIGN_PARENT_TOP) })
+            addView(localBox, RelativeLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { addRule(RelativeLayout.ALIGN_PARENT_TOP) })
         }, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         content.addView(scroll, lparams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply { topMargin = dp(8) })
 
@@ -127,7 +135,7 @@ class WebParseAdapterSettingsDialog(
             d.window?.apply {
                 setGravity(Gravity.CENTER)
                 setBackgroundDrawableResource(android.R.color.transparent)
-                setLayout(dp(760), dp(600))
+                setLayout(dp(532), dp(600))
             }
         }
     }
@@ -273,7 +281,7 @@ class WebParseAdapterSettingsDialog(
         localBox.addView(sectionTitle("自定义适配器"), lparams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(16) })
         val bindings = store.getAllBindings().filter { it.adapterKind == AdapterKind.CUSTOM_JSON }.distinctBy { it.adapterId }
         if (bindings.isEmpty()) {
-            localBox.addView(emptyRow("暂无自定义适配器，可点击底部新增按钮"), lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(72)).apply { topMargin = dp(8) })
+            localBox.addView(emptyRow("暂无自定义适配器"), lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(72)).apply { topMargin = dp(8) })
         } else {
             bindings.sortedBy { it.adapterName }.forEach { binding ->
                 val refCount = parseStore.getParseHistory().count { it.adapterId == binding.adapterId }
@@ -283,14 +291,12 @@ class WebParseAdapterSettingsDialog(
     }
 
     private fun builtInCard(adapter: AdapterInfo, refCount: Int): LinearLayout = baseRow().apply {
-        addView(tagView("App内置", Color.argb(180, 100, 160, 255)), lparams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(24)).apply { marginEnd = dp(8) })
-        addView(rowText(adapter.name, "已关联${refCount}个网页解析 · ${adapter.frameworkType.displayName}"), lparams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addView(taggedRowText("App内置", Color.argb(180, 100, 160, 255), adapter.name, "已关联${refCount}个网页解析 · ${adapter.frameworkType.displayName}"), lparams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         addView(dialogButton("编辑网址") { showDomainEditor(adapter, "", ParsePageKind.DETAIL) }, lparams(dp(96), dp(38)).apply { marginStart = dp(8) })
     }
 
     private fun customCard(binding: WebParseAdapterStore.DomainBinding, refCount: Int): LinearLayout = baseRow().apply {
-        addView(tagView("自定义", Color.argb(180, 255, 170, 80)), lparams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(24)).apply { marginEnd = dp(8) })
-        addView(rowText(binding.adapterName.ifBlank { binding.host }, "已关联${refCount}个网页解析 · ${binding.host}"), lparams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addView(taggedRowText("自定义", Color.argb(180, 255, 170, 80), binding.adapterName.ifBlank { binding.host }, "已关联${refCount}个网页解析 · ${binding.host}"), lparams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         addView(dialogButton("编辑") { editLocalAdapter(binding) }, lparams(dp(68), dp(38)).apply { marginStart = dp(6) })
         addView(dialogButton("删除") { deleteLocalConfirm(binding) }, lparams(dp(68), dp(38)).apply { marginStart = dp(6) })
         addView(dialogButton("上传") { uploadLocalAdapter(binding) }, lparams(dp(68), dp(38)).apply { marginStart = dp(6) })
@@ -563,6 +569,24 @@ class WebParseAdapterSettingsDialog(
             text = title; textSize = 15.5f; typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.WHITE); maxLines = 1; ellipsize = TextUtils.TruncateAt.END
         })
+        addView(TextView(context).apply {
+            text = desc; textSize = 12.5f; setTextColor(Color.argb(190, 255, 255, 255))
+            maxLines = 1; ellipsize = TextUtils.TruncateAt.END
+        }, lparams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) })
+    }
+
+    private fun taggedRowText(tag: String, tagColor: Int, title: String, desc: String): LinearLayout = LinearLayout(context).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER_VERTICAL
+        addView(LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(tagView(tag, tagColor), lparams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(19)).apply { marginEnd = dp(6) })
+            addView(TextView(context).apply {
+                text = title; textSize = 15.5f; typeface = Typeface.DEFAULT_BOLD
+                setTextColor(Color.WHITE); maxLines = 1; ellipsize = TextUtils.TruncateAt.END
+            }, lparams(0, dp(19), 1f))
+        }, lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(19)))
         addView(TextView(context).apply {
             text = desc; textSize = 12.5f; setTextColor(Color.argb(190, 255, 255, 255))
             maxLines = 1; ellipsize = TextUtils.TruncateAt.END

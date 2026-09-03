@@ -43,6 +43,7 @@ import com.bd.casttv.webparse.ResourceSniffDialog
 import com.bd.casttv.webparse.ParseStep
 import com.bd.casttv.webparse.ParsedListMovie
 import com.bd.casttv.webparse.ParsedMovie
+import com.bd.casttv.webparse.ParsedSource
 import com.bd.casttv.webparse.RuleBasedAdapter
 import com.bd.casttv.webparse.WebFrameworkType
 import com.bd.casttv.sync.GiteeShareStore
@@ -91,7 +92,9 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
     private var listMovies: List<ParsedListMovie> = emptyList()
     private var listNextPageUrl: String? = null
     private var listNextPageJob: Job? = null
+    private var sniffDomParseJob: Job? = null
     private var listJsonRule: String? = null
+    private var listCountView: TextView? = null
     private var listGrid: LinearLayout? = null
     private var listFooter: LinearLayout? = null
     private var sniffedApi: ResourceSniffDialog.SniffedApi? = null
@@ -227,41 +230,18 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
     }
     private val saveButton = dialogButton("保存到合集") { movie?.let { WebParseSaveDialog(context, it) { url -> extractor.resolve(url) }.show() } }
     private val addToCartoonButton = dialogButton("添加到动画城") { onAddToCartoon() }
+    private val detailSniffButton = dialogButton("资源嗅探") { showResourceSniffDialog(ResourceSniffDialog.Entry.DETAIL) }
     private val jsonButton = dialogButton("JSON解析") { showJsonAdapterDialog() }
+    private val listSniffButton = dialogButton("资源嗅探") { showResourceSniffDialog(ResourceSniffDialog.Entry.LIST) }
     private val listJsonButton = dialogButton("JSON 解析") { showListJsonAdapterDialog() }
     private val bookmarkButton = dialogButton("收藏网站") { detailSiteInfo?.let { showBookmarkConfirmDialog(it) } }
     private val listBookmarkButton = dialogButton("收藏网站") { listSiteInfo?.let { showBookmarkConfirmDialog(it) } }
-    private val jsonTip = TextView(context).apply {
-        text = "解析结果异常？试试AI生成JSON解析"
-        textSize = 14f
-        setTextColor(Color.argb(225, 255, 215, 0))
-        gravity = Gravity.CENTER_VERTICAL
-        isFocusable = true
-        isClickable = true
-        setPadding(dp(10), 0, dp(10), 0)
-        background = GradientDrawable().apply {
-            cornerRadius = dp(10).toFloat()
-            setColor(Color.argb(28, 255, 215, 0))
-            setStroke(dp(1), Color.argb(120, 255, 215, 0))
-        }
-        setOnClickListener { showJsonAdapterDialog() }
-        setOnFocusChangeListener { v, has ->
-            setTextColor(if (has) warm else Color.argb(225, 255, 215, 0))
-            background = GradientDrawable().apply {
-                cornerRadius = dp(10).toFloat()
-                setColor(Color.argb(36, 32, 34, 40))
-                setStroke(dp(if (has) 3 else 1), if (has) warm else Color.argb(120, 255, 215, 0))
-            }
-            FocusFxHelper.applyFocusFxState(v, has, cornerRadiusDp = 10)
-        }
-        setOnKeyListener { v, _, e -> boundaryKey(v, e) }
-    }
     private val bottomButtons = LinearLayout(context).apply {
         gravity = Gravity.END or Gravity.CENTER_VERTICAL
         clipChildren = false
         clipToPadding = false
         visibility = View.GONE
-        addView(jsonTip, LinearLayout.LayoutParams(dp(270), dp(42)).apply { marginEnd = dp(10) })
+        addView(detailSniffButton, LinearLayout.LayoutParams(dp(118), dp(42)).apply { marginEnd = dp(10) })
         addView(jsonButton, LinearLayout.LayoutParams(dp(118), dp(42)).apply { marginEnd = dp(10) })
         addView(addToCartoonButton, LinearLayout.LayoutParams(dp(150), dp(42)).apply { marginEnd = dp(10) })
         addView(saveButton, LinearLayout.LayoutParams(dp(132), dp(42)).apply { marginEnd = dp(10) })
@@ -280,6 +260,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         JsonAdapterEventBus.removeListener(this)
         parseJob?.cancel()
         progressJob?.cancel()
+        sniffDomParseJob?.cancel()
         scope.cancel()
         super.onDetachedFromWindow()
     }
@@ -541,6 +522,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         sniffExhausted = false
         selectedSourceIndex = 0
         selectedEpisodeIndex = 0
+        sniffDomParseJob?.cancel()
         parseJob?.cancel()
         progressJob?.cancel()
         val progressDialog = WebParseProgressDialog(
@@ -617,6 +599,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         listMovies = emptyList()
         selectedSourceIndex = 0
         selectedEpisodeIndex = 0
+        sniffDomParseJob?.cancel()
         parseJob?.cancel()
         val progressDialog = WebParseProgressDialog(context) { parseJob?.cancel() }
         progressDialog.show()
@@ -690,6 +673,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         inputEdit.setSelection(inputEdit.text?.length ?: 0)
         selectedSourceIndex = 0
         selectedEpisodeIndex = 0
+        sniffDomParseJob?.cancel()
         parseJob?.cancel()
         val progressDialog = WebParseProgressDialog(context) { parseJob?.cancel() }
         progressDialog.show()
@@ -886,6 +870,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         listMovies = emptyList()
         selectedSourceIndex = 0
         selectedEpisodeIndex = 0
+        sniffDomParseJob?.cancel()
         parseJob?.cancel()
         val progressDialog = WebParseProgressDialog(context) { parseJob?.cancel() }
         progressDialog.show()
@@ -972,6 +957,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         sniffExhausted = false
         selectedSourceIndex = 0
         selectedEpisodeIndex = 0
+        sniffDomParseJob?.cancel()
         parseJob?.cancel()
         progressJob?.cancel()
         val progressDialog = WebParseProgressDialog(context) { parseJob?.cancel() }
@@ -1140,9 +1126,11 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                     setTextColor(warm)
                     maxLines = 1
                     ellipsize = TextUtils.TruncateAt.END
-                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                }.also { listCountView = it }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                detachFromParent(listSniffButton)
+                addView(listSniffButton, LinearLayout.LayoutParams(dp(118), dp(36)).apply { marginStart = dp(12) })
                 detachFromParent(listJsonButton)
-                addView(listJsonButton, LinearLayout.LayoutParams(dp(118), dp(36)).apply { marginStart = dp(12) })
+                addView(listJsonButton, LinearLayout.LayoutParams(dp(118), dp(36)).apply { marginStart = dp(10) })
                 detachFromParent(listBookmarkButton)
                 addView(listBookmarkButton, LinearLayout.LayoutParams(dp(118), dp(36)).apply { marginStart = dp(10) })
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -1205,7 +1193,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                 when {
                     hasMore && !loading -> loadNextPage()
                     hasSniffedApi && !loading -> loadNextPage()
-                    canSniff -> showResourceSniffDialog()
+                    canSniff -> showResourceSniffDialog(ResourceSniffDialog.Entry.LIST)
                 }
             }
             setOnFocusChangeListener { _, hasFocus ->
@@ -1213,7 +1201,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                 when {
                     hasMore && !loading -> loadNextPage()
                     hasSniffedApi && !loading -> loadNextPage()
-                    canSniff -> showResourceSniffDialog()
+                    canSniff -> showResourceSniffDialog(ResourceSniffDialog.Entry.LIST)
                 }
             }
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -1308,19 +1296,120 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
 
     // ---- 资源嗅探 ----
 
-    private fun showResourceSniffDialog() {
+    private fun showResourceSniffDialog(entry: ResourceSniffDialog.Entry) {
+        val expectedEntry = if (movie != null) ResourceSniffDialog.Entry.DETAIL else ResourceSniffDialog.Entry.LIST
+        if (entry != expectedEntry) {
+            toast("当前解析结果已变化，请重新打开资源嗅探")
+            return
+        }
         ResourceSniffDialog(
             context = context,
-            listUrl = currentUrl,
+            pageUrl = currentUrl,
+            entry = entry,
+            onDomSnapshot = { domUrl, html, reportNewCount ->
+                parseSniffedDom(entry, domUrl, html, reportNewCount)
+            },
             onSniffed = { api ->
-                sniffedApi = api
-                sniffNextPageValue = api.paging?.startValue ?: 0
-                sniffExhausted = false
-                updateListFooter()
-                Toast.makeText(context, "已获取到刷新接口，可上滑加载更多", Toast.LENGTH_SHORT).show()
+                if (entry == ResourceSniffDialog.Entry.LIST) {
+                    sniffedApi = api
+                    sniffNextPageValue = api.paging?.startValue ?: 0
+                    sniffExhausted = false
+                    updateListFooter()
+                }
             },
             onClosed = {}
         ).show()
+    }
+
+    /** DOM 变化只负责触发；新增内容统一交给当前页面对应的适配器解析。 */
+    private fun parseSniffedDom(
+        entry: ResourceSniffDialog.Entry,
+        domUrl: String,
+        html: String,
+        reportNewCount: (Int) -> Unit
+    ) {
+        // DOM 持续变化时不能取消正在进行的重解析，否则重页面上的解析任务会一直被饿死。
+        // 串行等待上一轮完成，确保每次已上报的稳定快照最终都能进入适配器。
+        val previousJob = sniffDomParseJob
+        sniffDomParseJob = scope.launch {
+            previousJob?.join()
+            val count = runCatching {
+                when (entry) {
+                    ResourceSniffDialog.Entry.LIST -> {
+                        val parsed = withContext(Dispatchers.Default) {
+                            val rule = listJsonRule
+                            if (rule != null) listExtractor.parseWithJsonRule(html, rule, domUrl)
+                            else listExtractor.parseDom(domUrl, html)
+                        }
+                        appendSniffedListMovies(parsed.movies)
+                    }
+                    ResourceSniffDialog.Entry.DETAIL -> {
+                        val adapter = extractor.lastAdapter ?: error("详情页适配器不可用，请先完成详情解析")
+                        val parsed = withContext(Dispatchers.Default) { adapter.parseDetail(domUrl, html) }
+                        appendSniffedPlayAddresses(parsed.sources)
+                    }
+                }
+            }.onFailure { Log.w(TAG, "parse sniffed DOM failed entry=$entry: ${it.message}") }
+                .getOrDefault(0)
+            reportNewCount(count)
+        }
+    }
+
+    /** 将列表适配器识别出的新影片增量追加到底层数据与卡片列表。 */
+    private fun appendSniffedListMovies(parsed: List<ParsedListMovie>): Int {
+        val existing = listMovies
+        val existingUrls = existing.map { it.detailUrl }.toHashSet()
+        val incremental = parsed.filter { it.detailUrl.isNotBlank() && existingUrls.add(it.detailUrl) }
+        if (incremental.isEmpty()) return 0
+
+        val merged = existing + incremental
+        listMovies = merged
+        listCountView?.text = "已解析到 ${merged.size} 个影片条目"
+        val oldGrid = listGrid
+        val oldFooter = listFooter
+        if (oldGrid != null) contentArea.removeView(oldGrid)
+        if (oldFooter != null) contentArea.removeView(oldFooter)
+        val newGrid = listMovieGrid(merged)
+        val newFooter = listFooterView()
+        listGrid = newGrid
+        listFooter = newFooter
+        contentArea.addView(newGrid, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        contentArea.addView(newFooter, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        return incremental.size
+    }
+
+    /** 详情页使用当前适配器解析 DOM，只按播放地址去重并追加线路/剧集。 */
+    private fun appendSniffedPlayAddresses(parsedSources: List<ParsedSource>): Int {
+        val current = movie ?: return 0
+        val knownAddresses = current.sources
+            .flatMap { it.episodes }
+            .map { it.resolvedUrl.orEmpty().ifBlank { it.playPageUrl } }
+            .filter { it.isNotBlank() }
+            .toHashSet()
+        var added = 0
+        val mergedSources = current.sources.toMutableList()
+
+        parsedSources.forEach { parsedSource ->
+            val newEpisodes = parsedSource.episodes.filter { episode ->
+                val address = episode.resolvedUrl.orEmpty().ifBlank { episode.playPageUrl }
+                address.isNotBlank() && knownAddresses.add(address)
+            }
+            if (newEpisodes.isEmpty()) return@forEach
+            added += newEpisodes.size
+            val sourceIndex = mergedSources.indexOfFirst { it.name == parsedSource.name }
+            if (sourceIndex >= 0) {
+                val oldSource = mergedSources[sourceIndex]
+                mergedSources[sourceIndex] = oldSource.copy(episodes = oldSource.episodes + newEpisodes)
+            } else {
+                mergedSources.add(parsedSource.copy(episodes = newEpisodes))
+            }
+        }
+
+        if (added > 0) {
+            movie = current.copy(sources = mergedSources)
+            render()
+        }
+        return added
     }
 
     /**
@@ -1545,7 +1634,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                     loading -> { /* 加载中，忽略重复触发 */ }
                     hasMore -> loadNextPage()
                     hasSniffedApi -> loadNextPage()
-                    canSniff -> showResourceSniffDialog()
+                    canSniff -> showResourceSniffDialog(ResourceSniffDialog.Entry.LIST)
                     else -> BoundaryFocusHandler.shake(v)
                 }
                 return true
