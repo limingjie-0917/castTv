@@ -594,12 +594,12 @@ class WebParseAdapterSettingsDialog(
         addView(LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            addView(tagView(tag, tagColor), lparams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(19)).apply { marginEnd = dp(6) })
+            addView(tagView(tag, tagColor), lparams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(6) })
             addView(TextView(context).apply {
                 text = title; textSize = 15.5f; typeface = Typeface.DEFAULT_BOLD
                 setTextColor(Color.WHITE); maxLines = 1; ellipsize = TextUtils.TruncateAt.END
-            }, lparams(0, dp(19), 1f))
-        }, lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(19)))
+            }, lparams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        }, lparams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         addView(TextView(context).apply {
             text = desc; textSize = 12.5f; setTextColor(Color.argb(190, 255, 255, 255))
             maxLines = 1; ellipsize = TextUtils.TruncateAt.END
@@ -608,7 +608,10 @@ class WebParseAdapterSettingsDialog(
 
     private fun tagView(text: String, color: Int): TextView = TextView(context).apply {
         this.text = text; textSize = 11f; typeface = Typeface.DEFAULT_BOLD
+        setTypeface(typeface, Typeface.BOLD)
+        paint.isFakeBoldText = true
         setTextColor(Color.WHITE); gravity = Gravity.CENTER
+        setPadding(dp(8), dp(3), dp(8), dp(3))
         background = GradientDrawable().apply {
             cornerRadius = dp(6).toFloat(); setColor(color)
             setStroke(dp(1), Color.argb(200, 255, 255, 255))
