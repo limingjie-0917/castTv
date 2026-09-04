@@ -114,15 +114,27 @@ class WebParseAdapterSettingsDialog(
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { addRule(RelativeLayout.ALIGN_PARENT_TOP) })
         }, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        content.addView(scroll, lparams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply { topMargin = dp(8) })
+        // Tab 以下区域按剩余高度的百分比分配，避免固定高度在不同屏幕上挤压列表或按钮栏。
+        val tabContent = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            weightSum = 100f
+            clipChildren = false
+            clipToPadding = false
+        }
+        tabContent.addView(scroll, lparams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 84f).apply {
+            topMargin = dp(8)
+        })
 
         val footer = LinearLayout(context).apply {
             gravity = Gravity.END or Gravity.CENTER_VERTICAL; clipChildren = false; clipToPadding = false
         }
         val closeButton = dialogButton("关闭") { dialog?.dismiss() }
         footer.addView(closeButton, lparams(dp(108), dp(42)))
-        content.addView(footer, lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46)).apply { topMargin = dp(10) })
-        panel.addView(content)
+        tabContent.addView(footer, lparams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 16f).apply {
+            topMargin = dp(6)
+        })
+        content.addView(tabContent, lparams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        panel.addView(content, lparams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
 
         refreshCloudTab()
         dialog = AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog).setView(panel).create().also { d ->
@@ -135,7 +147,8 @@ class WebParseAdapterSettingsDialog(
             d.window?.apply {
                 setGravity(Gravity.CENTER)
                 setBackgroundDrawableResource(android.R.color.transparent)
-                setLayout(dp(532), dp(600))
+                val maxDialogHeight = (context.resources.displayMetrics.heightPixels * 0.9f).toInt()
+                setLayout(dp(532), minOf(dp(600), maxDialogHeight))
             }
         }
     }

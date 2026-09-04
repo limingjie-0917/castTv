@@ -204,7 +204,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
     }
     private val scanButton = dialogButton("扫码") { WebParseQrDialog(context, phoneHubUrl.ifBlank { buildPhoneHubUrl(PhoneHubHost.port()) }).show() }
     private val parseButton = dialogButton("立即解析") { showPageTypeDialogFromInput() }
-    private val historyButton = dialogButton("收藏") {
+    private val historyButton = iconButton(R.drawable.ic_dock_favorite) {
         WebParseHistoryDialog(context) { history ->
             val url = history.url
             inputEdit.setText(url)
@@ -216,6 +216,8 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                 else -> showPageTypeDialogForUrl(url, parseButton)
             }
         }.show()
+    }.apply {
+        contentDescription = "收藏"
     }
     private val adapterSettingsButton = iconButton(R.drawable.ic_settings_tv) {
         WebParseAdapterSettingsDialog(
@@ -394,7 +396,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
             addView(scanButton, LinearLayout.LayoutParams(dp(86), dp(46)).apply { marginEnd = dp(12) })
             addView(inputBox, LinearLayout.LayoutParams(0, dp(46), 1f).apply { marginEnd = dp(12) })
             addView(parseButton, LinearLayout.LayoutParams(dp(122), dp(46)).apply { marginEnd = dp(12) })
-            addView(historyButton, LinearLayout.LayoutParams(dp(88), dp(46)).apply { marginEnd = dp(10) })
+            addView(historyButton, LinearLayout.LayoutParams(dp(46), dp(46)).apply { marginEnd = dp(10) })
             addView(adapterSettingsButton, LinearLayout.LayoutParams(dp(46), dp(46)))
         }
         root.addView(inputRow, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(78)))
