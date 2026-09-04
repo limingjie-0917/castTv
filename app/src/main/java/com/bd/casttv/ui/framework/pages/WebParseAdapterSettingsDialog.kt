@@ -114,14 +114,13 @@ class WebParseAdapterSettingsDialog(
                 ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { addRule(RelativeLayout.ALIGN_PARENT_TOP) })
         }, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        // Tab 以下区域按剩余高度的百分比分配，避免固定高度在不同屏幕上挤压列表或按钮栏。
+        // Tab 以下区域占满剩余高度：按钮栏按内容自适应，滚动容器填充其余空间。
         val tabContent = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            weightSum = 100f
             clipChildren = true
             clipToPadding = false
         }
-        tabContent.addView(scroll, lparams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 84f).apply {
+        tabContent.addView(scroll, lparams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply {
             topMargin = dp(8)
         })
 
@@ -130,7 +129,10 @@ class WebParseAdapterSettingsDialog(
         }
         val closeButton = dialogButton("关闭") { dialog?.dismiss() }
         footer.addView(closeButton, lparams(dp(108), dp(42)))
-        tabContent.addView(footer, lparams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 16f).apply {
+        tabContent.addView(footer, lparams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply {
             topMargin = dp(6)
         })
         content.addView(tabContent, lparams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
@@ -147,8 +149,8 @@ class WebParseAdapterSettingsDialog(
             d.window?.apply {
                 setGravity(Gravity.CENTER)
                 setBackgroundDrawableResource(android.R.color.transparent)
-                val maxDialogHeight = (context.resources.displayMetrics.heightPixels * 0.9f).toInt()
-                setLayout(dp(532), minOf(dp(600), maxDialogHeight))
+                val dialogHeight = (context.resources.displayMetrics.heightPixels * 0.9f).toInt()
+                setLayout(dp(532), dialogHeight)
             }
         }
     }
