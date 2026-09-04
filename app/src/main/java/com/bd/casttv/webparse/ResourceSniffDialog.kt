@@ -2,11 +2,14 @@ package com.bd.casttv.webparse
 
 import android.annotation.SuppressLint
 import android.app.Dialog
+import android.content.ActivityNotFoundException
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Typeface
 import android.net.Uri
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
@@ -18,6 +21,7 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
@@ -49,6 +53,48 @@ class ResourceSniffDialog(
     private val onSniffed: (SniffedApi) -> Unit = {},
     private val onClosed: () -> Unit = {}
 ) {
+    companion object {
+        private const val MOBILE_USER_AGENT = "Mozilla/5.0 (Linux; Android 12; Chromecast) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
+
+        /**
+         * 在纯 WebView 场景下尽量弱化自动化标记，降低被 Cloudflare 立即识别为 bot 的概率。
+         * 该脚本会在页面完成后注入；若站点首屏脚本已先运行，仍建议配合系统浏览器兜底。
+         */
+        private val automationMitigationScript = """
+            (function() {
+                try {
+                    if (window.__cfAutomationPatched) return;
+                    window.__cfAutomationPatched = true;
+                    var patch = function(target, key, value) {
+                        try {
+                            Object.defineProperty(target, key, {
+                                configurable: true,
+                                enumerable: false,
+                                get: function() { return value; }
+                            });
+                        } catch (e) {}
+                    };
+                    patch(navigator, 'webdriver', undefined);
+                    patch(navigator, 'platform', 'Linux armv8l');
+                    patch(navigator, 'maxTouchPoints', 1);
+                    patch(navigator, 'pdfViewerEnabled', true);
+                    if (!window.chrome) {
+                        window.chrome = { runtime: {} };
+                    } else if (!window.chrome.runtime) {
+                        window.chrome.runtime = {};
+                    }
+                    if (!navigator.permissions || !navigator.permissions.query) return;
+                    var originQuery = navigator.permissions.query.bind(navigator.permissions);
+                    navigator.permissions.query = function(parameters) {
+                        if (parameters && parameters.name === 'notifications') {
+                            return Promise.resolve({ state: Notification.permission });
+                        }
+                        return originQuery(parameters);
+                    };
+                } catch (e) {}
+            })();
+        """.trimIndent()
+    }
     /** 嗅探入口决定 DOM 变化后由调用方使用列表适配器还是详情适配器解析。 */
     enum class Entry { LIST, DETAIL }
     /** 嗅探到的影片列表接口信息 */
@@ -283,6 +329,9 @@ class ResourceSniffDialog(
                 if (event.action == KeyEvent.ACTION_UP && (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_ESCAPE)) {
                     dismissAndClose()
                     true
+                } else if (event.action == KeyEvent.ACTION_UP && keyCode == KeyEvent.KEYCODE_MENU) {
+                    openInExternalBrowser()
+                    true
                 } else if (event.action == KeyEvent.ACTION_UP && keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
                     // 模拟上滑：让 WebView 内容向下滚动，触发页面加载更多
                     webView?.scrollBy(0, 300)
@@ -363,14 +412,23 @@ class ResourceSniffDialog(
             settings.apply {
                 javaScriptEnabled = true
                 domStorageEnabled = true
+                databaseEnabled = true
+                javaScriptCanOpenWindowsAutomatically = true
+                loadsImagesAutomatically = true
+                mediaPlaybackRequiresUserGesture = false
                 useWideViewPort = true
                 loadWithOverviewMode = true
-                userAgentString = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-                cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
+                mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+                userAgentString = MOBILE_USER_AGENT
+                cacheMode = WebSettings.LOAD_DEFAULT
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    safeBrowsingEnabled = true
+                }
             }
             // 允许记录 cookie 以便回放
             CookieManager.getInstance().setAcceptCookie(true)
             CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+            CookieManager.getInstance().flush()
             // 注入 JS 拦截脚本
             addJavascriptInterface(SniffBridge(), "AndroidSniffer")
             webViewClient = object : WebViewClient() {
@@ -390,8 +448,10 @@ class ResourceSniffDialog(
 
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
-                    // 页面加载完成后注入拦截脚本
+                    // 页面加载完成后先注入自动化特征缓解脚本，再注入嗅探脚本。
+                    view?.evaluateJavascript(automationMitigationScript, null)
                     view?.evaluateJavascript(injectScript, null)
+                    CookieManager.getInstance().flush()
                     handler.post {
                         progressBar?.visibility = View.GONE
                         updateStatus(
@@ -416,9 +476,9 @@ class ResourceSniffDialog(
         // 底部提示
         val footer = TextView(context).apply {
             text = if (entry == Entry.LIST) {
-                "请在网页内手动翻页或加载更多 · 新影片会自动追加 · 按 Back 退出"
+                "请在网页内手动翻页或加载更多 · 新影片会自动追加 · 按菜单键可改用系统浏览器 · 按 Back 退出"
             } else {
-                "请在网页内手动切换/加载资源 · 新播放地址会自动追加 · 按 Back 退出"
+                "请在网页内手动切换/加载资源 · 新播放地址会自动追加 · 按菜单键可改用系统浏览器 · 按 Back 退出"
             }
             textSize = 12f
             setTextColor(Color.argb(150, 255, 255, 255))
@@ -507,6 +567,7 @@ class ResourceSniffDialog(
         bannerHideRunnable = null
         incrementBanner?.animate()?.cancel()
         incrementBanner = null
+        runCatching { CookieManager.getInstance().flush() }
         webView?.apply {
             stopLoading()
             removeJavascriptInterface("AndroidSniffer")
@@ -517,6 +578,20 @@ class ResourceSniffDialog(
         dialog = null
         winner?.let { onSniffed(it) }
         onClosed()
+    }
+
+    private fun openInExternalBrowser() {
+        val targetUrl = webView?.url?.takeIf { it.isNotBlank() } ?: pageUrl
+        runCatching { CookieManager.getInstance().flush() }
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            context.startActivity(intent)
+            Toast.makeText(context, "已切换到系统浏览器，请在浏览器中完成验证", Toast.LENGTH_SHORT).show()
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(context, "当前设备没有可用的浏览器", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun createPanelBg(): android.graphics.drawable.GradientDrawable {
@@ -757,6 +832,7 @@ class ResourceSniffDialog(
 
     private fun safeGetCookie(url: String): String {
         return try {
+            CookieManager.getInstance().flush()
             CookieManager.getInstance().getCookie(url) ?: ""
         } catch (e: Exception) {
             ""
