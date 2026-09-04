@@ -13,8 +13,10 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
@@ -109,16 +111,7 @@ class WebParseAdapterSettingsDialog(
         val footer = LinearLayout(context).apply {
             gravity = Gravity.END or Gravity.CENTER_VERTICAL; clipChildren = false; clipToPadding = false
         }
-        val addButton = dialogButton("新增自定义适配器") {
-            JsonAdapterDialog(
-                context = context, currentUrlProvider = currentUrlProvider,
-                uploadPageUrlProvider = uploadPageUrlProvider,
-                pageKindProvider = { ParsePageKind.DETAIL },
-                onUseRule = { fn -> refreshCurrentTab(); onUseRule(fn) }
-            ).show()
-        }
         val closeButton = dialogButton("关闭") { dialog?.dismiss() }
-        footer.addView(addButton, lparams(dp(168), dp(42)).apply { marginEnd = dp(10) })
         footer.addView(closeButton, lparams(dp(108), dp(42)))
         content.addView(footer, lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(46)).apply { topMargin = dp(10) })
         panel.addView(content)
@@ -166,7 +159,7 @@ class WebParseAdapterSettingsDialog(
     private fun refreshCloudTab() {
         if (!::cloudBox.isInitialized) return
         cloudBox.removeAllViews()
-        cloudBox.addView(loadingRow("正在从云端加载适配器…"))
+        cloudBox.addView(circularLoadingView(), lparams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         scope.launch {
             val adapterResult = withContext(Dispatchers.IO) { GiteeShareStore.fetchAdaptersIndex() }
             val recordResult = withContext(Dispatchers.IO) { GiteeShareStore.fetchRecordsIndex() }
@@ -590,6 +583,19 @@ class WebParseAdapterSettingsDialog(
     private fun loadingRow(text: String): TextView = TextView(context).apply {
         this.text = text; textSize = 14f; setTextColor(Color.argb(200, 245, 245, 245))
         gravity = Gravity.CENTER; background = rowBg(false)
+    }
+
+    private fun circularLoadingView(): View = FrameLayout(context).apply {
+        minimumHeight = dp(400)
+        addView(ProgressBar(context, null, android.R.attr.progressBarStyleLarge).apply {
+            indeterminateDrawable.colorFilter = android.graphics.PorterDuffColorFilter(warm, android.graphics.PorterDuff.Mode.SRC_IN)
+        }, FrameLayout.LayoutParams(dp(48), dp(48)).apply { gravity = Gravity.CENTER })
+        addView(TextView(context).apply {
+            text = "正在从云端加载…"; textSize = 13f
+            setTextColor(Color.argb(180, 245, 245, 245))
+        }, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            gravity = Gravity.CENTER; topMargin = dp(72)
+        })
     }
 
     private fun label(text: String): TextView = TextView(context).apply {
