@@ -73,7 +73,7 @@ class WebParseAdapterSettingsDialog(
         val content = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(4), dp(4), dp(4), dp(4))
-            clipChildren = false
+            clipChildren = true
             clipToPadding = false
         }
         content.addView(titleView(), lparams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -91,7 +91,7 @@ class WebParseAdapterSettingsDialog(
 
         val scroll = ScrollView(context).apply {
             overScrollMode = ScrollView.OVER_SCROLL_IF_CONTENT_SCROLLS
-            clipChildren = false
+            clipChildren = true
             clipToPadding = false
         }
         cloudBox = LinearLayout(context).apply {
@@ -118,7 +118,7 @@ class WebParseAdapterSettingsDialog(
         val tabContent = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             weightSum = 100f
-            clipChildren = false
+            clipChildren = true
             clipToPadding = false
         }
         tabContent.addView(scroll, lparams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 84f).apply {
@@ -304,12 +304,12 @@ class WebParseAdapterSettingsDialog(
     }
 
     private fun builtInCard(adapter: AdapterInfo, refCount: Int): LinearLayout = baseRow().apply {
-        addView(taggedRowText("App内置", Color.argb(180, 100, 160, 255), adapter.name, "已关联${refCount}个网页解析 · ${adapter.frameworkType.displayName}"), lparams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addView(taggedRowText("App内置", Color.argb(180, 76, 175, 80), adapter.name, "已关联${refCount}个网页解析 · ${adapter.frameworkType.displayName}"), lparams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         addView(dialogButton("编辑网址") { showDomainEditor(adapter, "", ParsePageKind.DETAIL) }, lparams(dp(96), dp(38)).apply { marginStart = dp(8) })
     }
 
     private fun customCard(binding: WebParseAdapterStore.DomainBinding, refCount: Int): LinearLayout = baseRow().apply {
-        addView(taggedRowText("自定义", Color.argb(180, 255, 170, 80), binding.adapterName.ifBlank { binding.host }, "已关联${refCount}个网页解析 · ${binding.host}"), lparams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addView(taggedRowText("自定义", Color.argb(180, 255, 152, 0), binding.adapterName.ifBlank { binding.host }, "已关联${refCount}个网页解析 · ${binding.host}"), lparams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         addView(dialogButton("编辑") { editLocalAdapter(binding) }, lparams(dp(68), dp(38)).apply { marginStart = dp(6) })
         addView(dialogButton("删除") { deleteLocalConfirm(binding) }, lparams(dp(68), dp(38)).apply { marginStart = dp(6) })
         addView(dialogButton("上传") { uploadLocalAdapter(binding) }, lparams(dp(68), dp(38)).apply { marginStart = dp(6) })
@@ -549,7 +549,7 @@ class WebParseAdapterSettingsDialog(
         background = GradientDrawable(GradientDrawable.Orientation.TL_BR, ThemeManager.currentPalette(context).dialogTitleGradient).apply {
             cornerRadius = dp(18).toFloat(); setStroke(dp(2), warm)
         }
-        clipChildren = false; clipToPadding = false
+        clipChildren = true; clipToPadding = false
     }
 
     private fun titleView(title: String = "影片解析适配器"): View = LinearLayout(context).apply {

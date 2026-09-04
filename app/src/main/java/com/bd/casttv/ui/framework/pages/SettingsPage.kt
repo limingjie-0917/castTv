@@ -2005,12 +2005,12 @@ class SettingsPage(context: Context) : BasePage(context) {
             orientation = LinearLayout.VERTICAL
             clipChildren = false
             clipToPadding = false
-            setPadding(dp(40), dp(8), dp(40), dp(8))
+            setPadding(dp(60), dp(8), dp(60), dp(8))
         }
         val scroll = ScrollView(context).apply {
             isFillViewport = false
             clipChildren = true
-            clipToPadding = false
+            clipToPadding = true
             setPadding(dp(10), dp(0), dp(10), dp(0))
             addView(listContainer, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         }

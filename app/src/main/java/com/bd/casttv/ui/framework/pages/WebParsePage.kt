@@ -198,7 +198,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         clipToPadding = false
         addView(inputEdit, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
     }
-    private val backToListButton = dialogButton("←") { returnToListResult() }.apply {
+    private val backToListButton = backToListButton { returnToListResult() }.apply {
         visibility = View.GONE
         contentDescription = "返回上一级"
     }
@@ -392,7 +392,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
             background = panelBg(false)
             clipChildren = false
             clipToPadding = false
-            addView(backToListButton, LinearLayout.LayoutParams(dp(54), dp(46)).apply { marginEnd = dp(10) })
+            addView(backToListButton, LinearLayout.LayoutParams(dp(46), dp(46)).apply { marginEnd = dp(10) })
             addView(scanButton, LinearLayout.LayoutParams(dp(86), dp(46)).apply { marginEnd = dp(12) })
             addView(inputBox, LinearLayout.LayoutParams(0, dp(46), 1f).apply { marginEnd = dp(12) })
             addView(parseButton, LinearLayout.LayoutParams(dp(122), dp(46)).apply { marginEnd = dp(12) })
@@ -1838,6 +1838,31 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
     private fun hasFocusableInDirection(v: View, direction: Int): Boolean {
         val next = v.focusSearch(direction)
         return next != null && next !== v && next.visibility == View.VISIBLE && next.isFocusable && isChildOf(next, contentContainer)
+    }
+
+    private fun backToListButton(click: () -> Unit): TextView = TextView(context).apply {
+        text = "←"
+        textSize = 24f
+        typeface = Typeface.create("sans-serif-black", Typeface.NORMAL)
+        gravity = Gravity.CENTER
+        includeFontPadding = false
+        isFocusable = true
+        isClickable = true
+        fun refresh(focused: Boolean) {
+            setTextColor(Color.argb(235, 245, 245, 245))
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.argb(52, 32, 34, 40))
+                setStroke(dp(if (focused) 3 else 1), if (focused) warm else Color.argb(170, 210, 214, 222))
+            }
+        }
+        refresh(false)
+        setOnFocusChangeListener { v, has ->
+            refresh(has)
+            FocusFxHelper.applyFocusFxState(v, has, cornerRadiusDp = 23)
+        }
+        setOnClickListener { click() }
+        setOnKeyListener { v, _, e -> boundaryKey(v, e) }
     }
 
     private fun dialogButton(label: String, click: () -> Unit): TextView = TextView(context).apply {
