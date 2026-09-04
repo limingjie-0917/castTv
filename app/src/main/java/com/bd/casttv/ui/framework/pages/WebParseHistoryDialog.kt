@@ -40,7 +40,6 @@ class WebParseHistoryDialog(
     private val greenTag = Color.rgb(76, 217, 100)
 
     fun show() {
-        dialog?.dismiss()
         val histories = store.getParseHistory()
         val validKeys = histories.mapTo(hashSetOf()) { historyKey(it) }
         selectedHistoryKeys.retainAll(validKeys)
@@ -180,14 +179,27 @@ class WebParseHistoryDialog(
         contentInset.addView(content, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         panel.addView(contentInset, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 
-        dialog = AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog).setView(panel).create().also { d ->
+        val currentDialog = dialog
+        if (currentDialog?.isShowing == true) {
+            // 批量模式切换时直接刷新当前弹窗内容，避免 dismiss 后导致「我的收藏」关闭。
+            currentDialog.setContentView(panel)
             bindBoundary(panel, focusRows)
-            d.setOnShowListener { focusRows.firstOrNull()?.requestFocus() }
-            d.show()
-            d.window?.apply {
+            currentDialog.window?.apply {
                 setGravity(Gravity.CENTER)
                 setBackgroundDrawableResource(android.R.color.transparent)
                 setLayout(dp(680), WindowManager.LayoutParams.WRAP_CONTENT)
+            }
+            panel.post { focusRows.firstOrNull()?.requestFocus() }
+        } else {
+            dialog = AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog).setView(panel).create().also { d ->
+                bindBoundary(panel, focusRows)
+                d.setOnShowListener { focusRows.firstOrNull()?.requestFocus() }
+                d.show()
+                d.window?.apply {
+                    setGravity(Gravity.CENTER)
+                    setBackgroundDrawableResource(android.R.color.transparent)
+                    setLayout(dp(680), WindowManager.LayoutParams.WRAP_CONTENT)
+                }
             }
         }
     }
@@ -395,7 +407,7 @@ class WebParseHistoryDialog(
     }
 
     private fun showCloudFetchDialog() {
-        dialog?.dismiss()
+        // 保留「我的收藏」作为底层弹窗，下载弹窗关闭后直接回到收藏列表。
         CloudShareRecordsDialog(context) {
             show()
         }.show()
