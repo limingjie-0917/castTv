@@ -235,8 +235,23 @@ class WebParseAdapterSettingsDialog(
                     }.getOrDefault(result.value.content)
                     val pageKind = runCatching { ParsePageKind.valueOf(adapter.pageKind) }.getOrDefault(ParsePageKind.DETAIL)
                     val fwType = runCatching { WebFrameworkType.valueOf(adapter.frameworkType) }.getOrDefault(WebFrameworkType.CUSTOM)
-                    val bindings = store.getAllBindings().filter { it.adapterId == adapter.globalAdapterId }
-                    showEditDialog("编辑云端适配器", adapter.name, ruleText, bindings, pageKind, adapter.globalAdapterId, bindings.firstOrNull()?.ruleFileName.orEmpty(), fwType) { newName, newRule, newHosts ->
+                    val localBindings = store.getAllBindings().filter { it.adapterId == adapter.globalAdapterId }
+                    val bindings = localBindings.ifEmpty {
+                        val host = store.normalizeHost(adapter.host)
+                        if (host.isBlank()) emptyList() else listOf(
+                            WebParseAdapterStore.DomainBinding(
+                                pageKind,
+                                host,
+                                adapter.globalAdapterId,
+                                AdapterKind.CUSTOM_JSON,
+                                adapter.name,
+                                "",
+                                fwType,
+                                adapter.uploadedAt
+                            )
+                        )
+                    }
+                    showEditDialog("编辑云端适配器", adapter.name, ruleText, bindings, pageKind, adapter.globalAdapterId, localBindings.firstOrNull()?.ruleFileName.orEmpty(), fwType) { newName, newRule, newHosts ->
                         scope.launch {
                             val savedRule = withContext(Dispatchers.IO) { RuleBasedAdapter.saveRule(context, newRule, newName, pageKind) }
                             removeBindingsForAdapter(adapter.globalAdapterId, pageKind)
@@ -319,7 +334,7 @@ class WebParseAdapterSettingsDialog(
 
     private fun editLocalAdapter(binding: WebParseAdapterStore.DomainBinding) {
         val ruleText = RuleBasedAdapter.readRuleText(context, binding.ruleFileName)
-        val bindings = store.getAllBindings().filter { it.adapterId == binding.adapterId && it.pageKind == binding.pageKind }
+        val bindings = store.getAllBindings().filter { it.adapterId == binding.adapterId }
         showEditDialog("编辑自定义适配器", binding.adapterName, ruleText, bindings, binding.pageKind, binding.adapterId, binding.ruleFileName, binding.frameworkType) { newName, newRule, newHosts ->
             val savedRule = runCatching { RuleBasedAdapter.saveRule(context, newRule, newName, binding.pageKind) }.getOrElse {
                 toast(it.message ?: "JSON 格式错误"); return@showEditDialog

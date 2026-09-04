@@ -392,8 +392,8 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
             background = panelBg(false)
             clipChildren = false
             clipToPadding = false
-            addView(backToListButton, LinearLayout.LayoutParams(dp(46), dp(46)).apply { marginEnd = dp(10) })
             addView(scanButton, LinearLayout.LayoutParams(dp(86), dp(46)).apply { marginEnd = dp(12) })
+            addView(backToListButton, LinearLayout.LayoutParams(dp(46), dp(46)).apply { marginEnd = dp(10) })
             addView(inputBox, LinearLayout.LayoutParams(0, dp(46), 1f).apply { marginEnd = dp(12) })
             addView(parseButton, LinearLayout.LayoutParams(dp(122), dp(46)).apply { marginEnd = dp(12) })
             addView(historyButton, LinearLayout.LayoutParams(dp(46), dp(46)).apply { marginEnd = dp(10) })

@@ -83,7 +83,7 @@ class JsonAdapterDialog(
             setPadding(0, 0, 0, dp(16))
             addView(scrollContent, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
-        content.addView(stepsScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
+        content.addView(stepsScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply { topMargin = dp(10) })
 
         val copyBtn = dialogButton("下载 AI 规范") { saveAiSpecToDownloads() }
         val openDownloadsBtn = dialogButton("📁") { openDownloadsDir() }
@@ -172,7 +172,7 @@ class JsonAdapterDialog(
 
         val close = dialogButton("关闭") { dialog?.dismiss() }
         content.addView(LinearLayout(context).apply { gravity = Gravity.END; addView(close, LinearLayout.LayoutParams(dp(112), dp(42))) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) })
-        panel.addView(content)
+        panel.addView(content, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         refreshRules()
 
         dialog = AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog).setView(panel).create().also { d ->
@@ -181,7 +181,8 @@ class JsonAdapterDialog(
             d.window?.apply {
                 setGravity(Gravity.CENTER)
                 setBackgroundDrawableResource(android.R.color.transparent)
-                setLayout(dp(720), WindowManager.LayoutParams.WRAP_CONTENT)
+                val screenHeight = context.resources.displayMetrics.heightPixels
+                setLayout(dp(720), (screenHeight * 0.85f).toInt())
             }
         }
     }
