@@ -1290,82 +1290,12 @@ class CartoonCityPage(context: Context) : BasePage(context) {
         }
     }
 
-    // ---- 批量模式删除图标：深色半透明背景圆 + 白色垃圾桶（小米 MIUI 风格） ----
+    // ---- 批量模式删除图标：圆形边框 + 内部线性垃圾桶，按参考图还原 ----
 
-    private class DeleteIconView(context: Context) : View(context) {
-        private val density = resources.displayMetrics.density
-        private val BG_DARK = Color.argb(210, 30, 35, 45)         // 深色半透明背景
-        private val BORDER_SUBTLE = Color.argb(80, 180, 185, 195)  // 淡灰边框
-        private val ICON_WHITE = Color.argb(250, 255, 255, 255)   // 纯白图标
-
-        private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            color = BG_DARK
-        }
-        private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = 1f * density
-            color = BORDER_SUBTLE
-        }
-        private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = 2.2f * density
-            strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
-            color = ICON_WHITE
-        }
-        private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.FILL
-            color = ICON_WHITE
-        }
-        private val bodyPath = Path()
-
-        override fun onDraw(canvas: Canvas) {
-            super.onDraw(canvas)
-            val cx = width / 2f
-            val cy = height / 2f
-            val r = (minOf(width, height) / 2f - borderPaint.strokeWidth).coerceAtLeast(0f)
-
-            // 深色半透明背景圆
-            canvas.drawCircle(cx, cy, r, bgPaint)
-            // 淡灰圆边框
-            canvas.drawCircle(cx, cy, r, borderPaint)
-
-            // 垃圾桶图标（小米 MIUI 风格）
-            val iconSize = r * 0.46f
-            val halfW = iconSize * 0.72f          // 桶身上宽
-            val halfWNarrow = iconSize * 0.60f    // 桶身下宽（梯形收窄）
-            val lidHalfW = iconSize * 0.92f       // 桶盖半宽（比桶身宽）
-            val lidY = cy - iconSize * 0.65f
-            val bodyTop = cy - iconSize * 0.48f
-            val bodyBottom = cy + iconSize * 0.82f
-
-            // 1. 盖子顶部把手（填充小圆角矩形）
-            val handleHalfW = iconSize * 0.16f
-            canvas.drawRoundRect(
-                RectF(cx - handleHalfW, lidY - iconSize * 0.30f,
-                      cx + handleHalfW, lidY - iconSize * 0.08f),
-                iconSize * 0.05f, iconSize * 0.05f, fillPaint
-            )
-            // 2. 桶盖（填充厚条，比桶身宽）
-            canvas.drawRoundRect(
-                RectF(cx - lidHalfW, lidY - iconSize * 0.08f,
-                      cx + lidHalfW, lidY + iconSize * 0.10f),
-                iconSize * 0.04f, iconSize * 0.04f, fillPaint
-            )
-            // 3. 桶身（梯形描边，上宽下窄）
-            bodyPath.reset()
-            bodyPath.moveTo(cx - halfW, bodyTop)
-            bodyPath.lineTo(cx + halfW, bodyTop)
-            bodyPath.lineTo(cx + halfWNarrow, bodyBottom)
-            bodyPath.lineTo(cx - halfWNarrow, bodyBottom)
-            bodyPath.close()
-            canvas.drawPath(bodyPath, strokePaint)
-            // 4. 桶身竖线纹路（2条，随梯形轻微收敛）
-            val lineTop = bodyTop + iconSize * 0.16f
-            val lineBottom = bodyBottom - iconSize * 0.18f
-            canvas.drawLine(cx - iconSize * 0.25f, lineTop, cx - iconSize * 0.21f, lineBottom, strokePaint)
-            canvas.drawLine(cx + iconSize * 0.25f, lineTop, cx + iconSize * 0.21f, lineBottom, strokePaint)
+    private class DeleteIconView(context: Context) : androidx.appcompat.widget.AppCompatImageView(context) {
+        init {
+            setImageResource(R.drawable.ic_batch_delete_outline)
+            scaleType = ScaleType.FIT_CENTER
         }
     }
 
