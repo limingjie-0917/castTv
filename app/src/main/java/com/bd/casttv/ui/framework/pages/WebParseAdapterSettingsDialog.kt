@@ -35,7 +35,6 @@ import com.bd.casttv.webparse.ParsePageKind
 import com.bd.casttv.webparse.RuleBasedAdapter
 import com.bd.casttv.webparse.WebFrameworkType
 import com.bd.casttv.webparse.WebParseAdapterStore
-import com.bd.casttv.webparse.WebParseStore
 import com.bd.casttv.util.ThemeManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -53,7 +52,6 @@ class WebParseAdapterSettingsDialog(
 ) {
     private val warm = Color.parseColor("#FFD700")
     private val store = WebParseAdapterStore(context)
-    private val parseStore = WebParseStore(context)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     private var dialog: AlertDialog? = null
@@ -196,7 +194,9 @@ class WebParseAdapterSettingsDialog(
                 cloudBox.addView(emptyRow("暂无云端适配器"), lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(72)).apply { topMargin = dp(8) })
             } else {
                 adapters.sortedByDescending { it.uploadedAt }.forEach { adapter ->
-                    val refCount = records.count { it.globalAdapterId == adapter.globalAdapterId }
+                    val localBindings = store.getBindingsForAdapter(adapter.globalAdapterId)
+                    val refCount = localBindings.size.takeIf { it > 0 }
+                        ?: if (store.normalizeHost(adapter.host).isNotBlank()) 1 else 0
                     val pageLabel = if (adapter.pageKind == "LIST") "列表页" else "详情页"
                     cloudBox.addView(cloudAdapterCard(adapter, refCount, pageLabel), lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(72)).apply { topMargin = dp(8) })
                 }
@@ -206,7 +206,7 @@ class WebParseAdapterSettingsDialog(
     }
 
     private fun cloudAdapterCard(adapter: GiteeShareStore.SharedAdapter, refCount: Int, pageLabel: String): LinearLayout = baseRow().apply {
-        addView(rowText(adapter.name.ifBlank { adapter.host }, "已关联${refCount}个网页解析 · $pageLabel · ${adapter.host}"), lparams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addView(rowText(adapter.name.ifBlank { adapter.host }, "已关联${refCount}个网址 · $pageLabel · ${adapter.host}"), lparams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         addView(dialogButton("下载") { downloadCloudAdapter(adapter) }, lparams(dp(76), dp(38)).apply { marginStart = dp(6) })
         addView(dialogButton("编辑") { editCloudAdapter(adapter) }, lparams(dp(68), dp(38)).apply { marginStart = dp(6) })
         addView(dialogButton("删除") { deleteCloudAdapterConfirm(adapter) }, lparams(dp(68), dp(38)).apply { marginStart = dp(6) })
@@ -235,7 +235,7 @@ class WebParseAdapterSettingsDialog(
                     }.getOrDefault(result.value.content)
                     val pageKind = runCatching { ParsePageKind.valueOf(adapter.pageKind) }.getOrDefault(ParsePageKind.DETAIL)
                     val fwType = runCatching { WebFrameworkType.valueOf(adapter.frameworkType) }.getOrDefault(WebFrameworkType.CUSTOM)
-                    val localBindings = store.getAllBindings().filter { it.adapterId == adapter.globalAdapterId }
+                    val localBindings = store.getBindingsForAdapter(adapter.globalAdapterId)
                     val bindings = localBindings.ifEmpty {
                         val host = store.normalizeHost(adapter.host)
                         if (host.isBlank()) emptyList() else listOf(
@@ -305,7 +305,7 @@ class WebParseAdapterSettingsDialog(
         localBox.removeAllViews()
         localBox.addView(sectionTitle("App内置适配器"), lparams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         BuiltInAdapters.all.forEach { adapter ->
-            val refCount = parseStore.getParseHistory().count { it.adapterId == adapter.id }
+            val refCount = store.getBindingCount(adapter.id, ParsePageKind.DETAIL)
             localBox.addView(builtInCard(adapter, refCount), lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(72)).apply { topMargin = dp(8) })
         }
         localBox.addView(sectionTitle("自定义适配器"), lparams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(16) })
@@ -314,19 +314,19 @@ class WebParseAdapterSettingsDialog(
             localBox.addView(emptyRow("暂无自定义适配器"), lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(72)).apply { topMargin = dp(8) })
         } else {
             bindings.sortedBy { it.adapterName }.forEach { binding ->
-                val refCount = parseStore.getParseHistory().count { it.adapterId == binding.adapterId }
+                val refCount = store.getBindingCount(binding.adapterId)
                 localBox.addView(customCard(binding, refCount), lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(72)).apply { topMargin = dp(8) })
             }
         }
     }
 
     private fun builtInCard(adapter: AdapterInfo, refCount: Int): LinearLayout = baseRow().apply {
-        addView(taggedRowText("App内置", Color.argb(180, 76, 175, 80), adapter.name, "已关联${refCount}个网页解析 · ${adapter.frameworkType.displayName}"), lparams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addView(taggedRowText("App内置", Color.argb(180, 76, 175, 80), adapter.name, "已关联${refCount}个网址 · ${adapter.frameworkType.displayName}"), lparams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         addView(dialogButton("编辑网址") { showDomainEditor(adapter, "", ParsePageKind.DETAIL) }, lparams(dp(96), dp(38)).apply { marginStart = dp(8) })
     }
 
     private fun customCard(binding: WebParseAdapterStore.DomainBinding, refCount: Int): LinearLayout = baseRow().apply {
-        addView(taggedRowText("自定义", Color.argb(180, 255, 152, 0), binding.adapterName.ifBlank { binding.host }, "已关联${refCount}个网页解析 · ${binding.host}"), lparams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        addView(taggedRowText("自定义", Color.argb(180, 255, 152, 0), binding.adapterName.ifBlank { binding.host }, "已关联${refCount}个网址 · ${binding.host}"), lparams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         addView(dialogButton("编辑") { editLocalAdapter(binding) }, lparams(dp(68), dp(38)).apply { marginStart = dp(6) })
         addView(dialogButton("删除") { deleteLocalConfirm(binding) }, lparams(dp(68), dp(38)).apply { marginStart = dp(6) })
         addView(dialogButton("上传") { uploadLocalAdapter(binding) }, lparams(dp(68), dp(38)).apply { marginStart = dp(6) })
@@ -334,7 +334,7 @@ class WebParseAdapterSettingsDialog(
 
     private fun editLocalAdapter(binding: WebParseAdapterStore.DomainBinding) {
         val ruleText = RuleBasedAdapter.readRuleText(context, binding.ruleFileName)
-        val bindings = store.getAllBindings().filter { it.adapterId == binding.adapterId }
+        val bindings = store.getBindingsForAdapter(binding.adapterId)
         showEditDialog("编辑自定义适配器", binding.adapterName, ruleText, bindings, binding.pageKind, binding.adapterId, binding.ruleFileName, binding.frameworkType) { newName, newRule, newHosts ->
             val savedRule = runCatching { RuleBasedAdapter.saveRule(context, newRule, newName, binding.pageKind) }.getOrElse {
                 toast(it.message ?: "JSON 格式错误"); return@showEditDialog
@@ -499,7 +499,7 @@ class WebParseAdapterSettingsDialog(
         val bindingList = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         fun redrawBindings() {
             bindingList.removeAllViews()
-            val bindings = store.getAllBindings().filter { it.pageKind == pageKind && it.adapterId == adapter.id }
+            val bindings = store.getBindingsForAdapter(adapter.id, pageKind)
             if (bindings.isEmpty()) {
                 bindingList.addView(label("暂无绑定域名"), lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42)))
             } else {
@@ -536,6 +536,7 @@ class WebParseAdapterSettingsDialog(
         val close = dialogButton("关闭") { childDialog.dismiss() }
         box.addView(buttonRow(add, close, dp(112), dp(88)), lparams(ViewGroup.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(14) })
         childDialog.setOnShowListener { input.requestFocus() }
+        childDialog.setOnDismissListener { refreshLocalTab() }
         childDialog.show()
         childDialog.window?.apply { setGravity(Gravity.CENTER); setBackgroundDrawableResource(android.R.color.transparent); setLayout(dp(600), WindowManager.LayoutParams.WRAP_CONTENT) }
     }
@@ -556,7 +557,7 @@ class WebParseAdapterSettingsDialog(
     // ==================== 辅助方法 ====================
 
     private fun removeBindingsForAdapter(adapterId: String, pageKind: ParsePageKind) {
-        store.getAllBindings().filter { it.adapterId == adapterId && it.pageKind == pageKind }
+        store.getBindingsForAdapter(adapterId, pageKind)
             .forEach { store.removeBinding(pageKind, it.host) }
     }
 

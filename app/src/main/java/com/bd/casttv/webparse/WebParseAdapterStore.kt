@@ -89,6 +89,17 @@ class WebParseAdapterStore(context: Context) {
         saveAll(bindings)
     }
 
+    fun getBindingsForAdapter(adapterId: String, pageKind: ParsePageKind? = null): List<DomainBinding> {
+        val normalizedAdapterId = adapterId.trim()
+        if (normalizedAdapterId.isBlank()) return emptyList()
+        return getAllBindings().filter {
+            it.adapterId == normalizedAdapterId && (pageKind == null || it.pageKind == pageKind)
+        }
+    }
+
+    fun getBindingCount(adapterId: String, pageKind: ParsePageKind? = null): Int =
+        getBindingsForAdapter(adapterId, pageKind).size
+
     fun getAllBindings(): List<DomainBinding> {
         val raw = prefs.getString(KEY_DOMAIN_BINDINGS, "").orEmpty()
         if (raw.isBlank()) return emptyList()

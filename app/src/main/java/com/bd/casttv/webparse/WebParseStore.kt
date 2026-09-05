@@ -74,7 +74,6 @@ class WebParseStore(context: Context) {
             .filterNot { it.recordId == rid }
             .toMutableList()
             .apply { add(0, updated) }
-            .take(MAX_HISTORY_COUNT)
         prefs.edit().putString(KEY_PARSE_HISTORY, encodeHistory(histories)).apply()
     }
 
@@ -115,7 +114,7 @@ class WebParseStore(context: Context) {
                         )
                     )
                 }
-            }.distinctBy { it.recordId.ifBlank { it.url } }.take(MAX_HISTORY_COUNT)
+            }.distinctBy { it.recordId.ifBlank { it.url } }
         }.getOrElse { emptyList() }
     }
 
@@ -127,7 +126,7 @@ class WebParseStore(context: Context) {
 
     private fun encodeHistory(histories: List<ParseHistory>): String {
         val array = JSONArray()
-        histories.take(MAX_HISTORY_COUNT).forEach { history ->
+        histories.forEach { history ->
             array.put(JSONObject().apply {
                 put("title", history.title)
                 put("url", history.url)
@@ -166,6 +165,5 @@ class WebParseStore(context: Context) {
         private const val KEY_EPISODE_INDEX = "episode_index"
         private const val KEY_POSITION_SEC = "position_sec"
         private const val KEY_PARSE_HISTORY = "parse_history"
-        private const val MAX_HISTORY_COUNT = 20
     }
 }
