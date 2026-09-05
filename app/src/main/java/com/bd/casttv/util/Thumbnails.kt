@@ -39,10 +39,10 @@ object Thumbnails {
 
     private const val TAG = "Thumbnails"
 
-    /** 目标缩略图尺寸（16:9），与列表项 120x68dp 相匹配。 */
-    const val TARGET_WIDTH = 320
-    const val TARGET_HEIGHT = 180
-    private const val JPEG_QUALITY = 80
+    /** 目标缩略图尺寸（16:9），兼顾电视端展示清晰度与内存占用。 */
+    const val TARGET_WIDTH = 640
+    const val TARGET_HEIGHT = 360
+    private const val JPEG_QUALITY = 90
 
     /** 历史记录缩略图目录（临时缓存，App 卸载 / 清理即消失）。 */
     fun historyDir(cacheDir: File): File =
@@ -509,7 +509,7 @@ object Thumbnails {
         val sample = calculateInSampleSize(opt.outWidth, opt.outHeight, reqW, reqH)
         val opt2 = BitmapFactory.Options().apply {
             inSampleSize = sample
-            inPreferredConfig = Bitmap.Config.RGB_565 // 缩略图节省内存
+            inPreferredConfig = Bitmap.Config.ARGB_8888 // 保留完整色彩精度，提升电视端显示质量
         }
         BitmapFactory.decodeFile(file.absolutePath, opt2)
     } catch (t: Throwable) {
