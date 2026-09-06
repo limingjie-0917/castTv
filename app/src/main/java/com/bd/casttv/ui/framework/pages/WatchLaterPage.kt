@@ -1,9 +1,12 @@
 package com.bd.casttv.ui.framework.pages
 
+import android.app.Activity
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.Handler
+import android.os.Looper
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.KeyEvent
@@ -36,6 +39,7 @@ class WatchLaterPage(context: Context) : BasePage(context) {
     override val useContentPanel: Boolean get() = true
     override val pageStickerRes: Int get() = R.drawable.sticker_shinchan
 
+    private val handler = Handler(Looper.getMainLooper())
     private val queueStore: PlayQueueStore by lazy { PlayQueueStore.get(context.applicationContext) }
     private val favoritesStore: FavoritesStore by lazy { FavoritesStore(context.applicationContext) }
     private val syncManager: GiteeSyncManager by lazy { GiteeSyncManager(favoritesStore) }
@@ -688,9 +692,14 @@ class WatchLaterPage(context: Context) : BasePage(context) {
         Thread({
             val count = try { syncManager.downloadCollections(listOf(collection.id), popularCollections) } catch (_: Throwable) { 0 }
             if (count > 0) syncManager.incrementDownloadCount(listOf(collection.id))
-            post {
-                Toast.makeText(context, if (count > 0) "✅ 已下载「${collection.name}」" else "❌ 下载失败", Toast.LENGTH_SHORT).show()
-                if (count > 0) loadAsyncContent()
+            handler.post {
+                if (context is Activity && (context.isFinishing || context.isDestroyed)) return@post
+                if (count > 0) {
+                    Toast.makeText(context, "本地合集数据已更新，请前往【我的收藏】查看", Toast.LENGTH_LONG).show()
+                    loadAsyncContent()
+                } else {
+                    Toast.makeText(context, "❌ 下载失败", Toast.LENGTH_SHORT).show()
+                }
             }
         }, "watch-later-popular-download").start()
     }
