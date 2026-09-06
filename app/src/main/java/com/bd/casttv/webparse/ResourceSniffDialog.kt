@@ -49,10 +49,12 @@ class ResourceSniffDialog(
     private val context: Context,
     private val pageUrl: String,
     private val entry: Entry,
+    private val mode: Mode = Mode.SNIFF,
     private val onDomSnapshot: (pageUrl: String, html: String, reportNewCount: (Int) -> Unit) -> Unit,
     private val onSniffed: (SniffedApi) -> Unit = {},
     private val onClosed: () -> Unit = {}
 ) {
+    enum class Mode { SNIFF, INITIAL_PARSE }
     companion object {
         private const val MOBILE_USER_AGENT = "Mozilla/5.0 (Linux; Android 12; Chromecast) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36"
 
@@ -141,6 +143,7 @@ class ResourceSniffDialog(
     private var bannerHideRunnable: Runnable? = null
     private var winner: SniffedApi? = null
     private var scrollTriggerCount = 0
+    private var isClosed = false
 
     /** 已捕获的候选请求（按命中顺序） */
     private val captures = mutableListOf<Capture>()
@@ -309,7 +312,9 @@ class ResourceSniffDialog(
             }
 
             // 注入完成后主动上报首屏快照，覆盖刷新/跳转后 DOM 不再变化的页面。
-            reportDomChanged();
+            if (window.__sniffMode !== 'INITIAL_PARSE') {
+                reportDomChanged();
+            }
             safeCall(function() { AndroidSniffer.onInjected(); });
         })();
     """.trimIndent()
@@ -368,7 +373,7 @@ class ResourceSniffDialog(
         val header = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setPadding(dp(10), dp(4), dp(10), dp(4))
             background = createPanelBg()
             clipChildren = false
             clipToPadding = false
@@ -376,7 +381,7 @@ class ResourceSniffDialog(
 
         val title = TextView(context).apply {
             text = if (entry == Entry.LIST) "资源嗅探 · 影片列表" else "资源嗅探 · 影片详情"
-            textSize = 18f
+            textSize = 15f
             typeface = Typeface.DEFAULT_BOLD
             setTextColor(Color.rgb(245, 196, 81))
         }
@@ -385,20 +390,63 @@ class ResourceSniffDialog(
         progressBar = ProgressBar(context).apply {
             isIndeterminate = true
             visibility = View.GONE
-            val size = dp(22)
+            val size = dp(18)
             layoutParams = LinearLayout.LayoutParams(size, size).apply { marginEnd = dp(8) }
         }
         header.addView(progressBar)
 
         statusText = TextView(context).apply {
             text = "正在加载页面…"
-            textSize = 13f
+            textSize = 12f
             setTextColor(Color.argb(200, 255, 255, 255))
             maxLines = 2
         }
-        header.addView(statusText, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        header.addView(statusText, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
 
         container.addView(header, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+
+        if (mode == Mode.INITIAL_PARSE) {
+            val actionBar = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(10), dp(4), dp(6), dp(4))
+                background = createPanelBg()
+                clipChildren = false
+                clipToPadding = false
+            }
+            actionBar.addView(TextView(context).apply {
+                text = "请在页面加载完成后，点击【开始解析】"
+                textSize = 12f
+                setTextColor(Color.argb(200, 255, 255, 255))
+                gravity = Gravity.START or Gravity.CENTER_VERTICAL
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            actionBar.addView(TextView(context).apply {
+                text = "开始解析"
+                textSize = 16f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(Color.BLACK)
+                gravity = Gravity.CENTER
+                isFocusable = true
+                isClickable = true
+                setPadding(dp(24), dp(8), dp(24), dp(8))
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    cornerRadius = dp(24).toFloat()
+                    setColor(Color.rgb(245, 196, 81))
+                }
+                setOnClickListener { captureAndParse() }
+                setOnFocusChangeListener { _, hasFocus ->
+                    alpha = if (hasFocus) 1f else 0.85f
+                    scaleX = if (hasFocus) 1.05f else 1f
+                    scaleY = if (hasFocus) 1.05f else 1f
+                }
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                marginStart = dp(8)
+            })
+            container.addView(actionBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(4)
+                bottomMargin = dp(4)
+            })
+        }
 
         // WebView 区域
         val webContainer = FrameLayout(context).apply {
@@ -436,26 +484,35 @@ class ResourceSniffDialog(
                     super.onPageStarted(view, url, favicon)
                     handler.post {
                         progressBar?.visibility = View.VISIBLE
-                        updateStatus(if (entry == Entry.LIST) "页面刷新或跳转中，加载完成后将自动解析影片…" else "页面刷新或跳转中，加载完成后将自动解析播放地址…")
+                        updateStatus(
+                            if (mode == Mode.INITIAL_PARSE) "页面加载中，加载完成后请点击【开始解析】"
+                            else if (entry == Entry.LIST) "页面刷新或跳转中，加载完成后将自动解析影片…"
+                            else "页面刷新或跳转中，加载完成后将自动解析播放地址…"
+                        )
                     }
                 }
 
                 override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
                     super.doUpdateVisitedHistory(view, url, isReload)
                     // 覆盖 reload、History API 导航及同文档 URL 变化；脚本尚未注入时安全忽略。
-                    view?.evaluateJavascript("window.__sniffReportDomChanged && window.__sniffReportDomChanged();", null)
+                    if (mode != Mode.INITIAL_PARSE) {
+                        view?.evaluateJavascript("window.__sniffReportDomChanged && window.__sniffReportDomChanged();", null)
+                    }
                 }
 
                 override fun onPageFinished(view: WebView?, url: String?) {
                     super.onPageFinished(view, url)
                     // 页面加载完成后先注入自动化特征缓解脚本，再注入嗅探脚本。
                     view?.evaluateJavascript(automationMitigationScript, null)
+                    val jsMode = if (mode == Mode.INITIAL_PARSE) "'INITIAL_PARSE'" else "'SNIFF'"
+                    view?.evaluateJavascript("window.__sniffMode = $jsMode;", null)
                     view?.evaluateJavascript(injectScript, null)
                     CookieManager.getInstance().flush()
                     handler.post {
                         progressBar?.visibility = View.GONE
                         updateStatus(
-                            if (entry == Entry.LIST) "页面已加载，请手动翻页或加载更多"
+                            if (mode == Mode.INITIAL_PARSE) "页面已加载，请在需要时点击【开始解析】"
+                            else if (entry == Entry.LIST) "页面已加载，请手动翻页或加载更多"
                             else "页面已加载，请手动切换剧集或加载资源"
                         )
                     }
@@ -563,21 +620,41 @@ class ResourceSniffDialog(
     }
 
     private fun dismissAndClose() {
-        bannerHideRunnable?.let { handler.removeCallbacks(it) }
-        bannerHideRunnable = null
-        incrementBanner?.animate()?.cancel()
-        incrementBanner = null
-        runCatching { CookieManager.getInstance().flush() }
-        webView?.apply {
-            stopLoading()
-            removeJavascriptInterface("AndroidSniffer")
-            destroy()
+        if (isClosed) return
+        isClosed = true
+
+        val closingDialog = dialog.also { dialog = null }
+        val closingWebView = webView.also { webView = null }
+        val sniffed = winner
+        try {
+            // 先退出全屏 Window，再拆卸和销毁 WebView，避免旧 Window 阻塞下一次弹窗。
+            runCatching { closingDialog?.dismiss() }
+        } finally {
+            try {
+                bannerHideRunnable?.let { handler.removeCallbacks(it) }
+                bannerHideRunnable = null
+                handler.removeCallbacksAndMessages(null)
+                incrementBanner?.animate()?.cancel()
+                incrementBanner = null
+                statusText = null
+                progressBar = null
+                runCatching { CookieManager.getInstance().flush() }
+                closingWebView?.let { view ->
+                    runCatching { view.stopLoading() }
+                    runCatching { view.removeJavascriptInterface("AndroidSniffer") }
+                    runCatching { (view.parent as? ViewGroup)?.removeView(view) }
+                    runCatching { view.webChromeClient = null }
+                    runCatching { view.webViewClient = WebViewClient() }
+                    runCatching { view.destroy() }
+                }
+            } finally {
+                try {
+                    runCatching { sniffed?.let(onSniffed) }
+                } finally {
+                    onClosed()
+                }
+            }
         }
-        webView = null
-        dialog?.dismiss()
-        dialog = null
-        winner?.let { onSniffed(it) }
-        onClosed()
     }
 
     private fun openInExternalBrowser() {
@@ -591,6 +668,35 @@ class ResourceSniffDialog(
             Toast.makeText(context, "已切换到系统浏览器，请在浏览器中完成验证", Toast.LENGTH_SHORT).show()
         } catch (_: ActivityNotFoundException) {
             Toast.makeText(context, "当前设备没有可用的浏览器", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun captureAndParse() {
+        val view = webView ?: return
+        val currentUrl = view.url?.takeIf { it.isNotBlank() } ?: pageUrl
+        view.evaluateJavascript("(function() { return document.documentElement.outerHTML; })();") { htmlRaw ->
+            val html = if (htmlRaw != null && htmlRaw.startsWith("\"") && htmlRaw.endsWith("\"")) {
+                runCatching {
+                    // 处理 evaluateJavascript 返回的 JSON 字符串转义
+                    org.json.JSONTokener(htmlRaw).nextValue().toString()
+                }.getOrDefault("")
+            } else htmlRaw ?: ""
+            if (html.isNotBlank()) {
+                if (mode == Mode.INITIAL_PARSE) {
+                    // INITIAL_PARSE 模式：先销毁当前弹窗，避免遮挡后续的进度弹窗，并防止 onClosed 取消新启动的 Job
+                    dismissAndClose()
+                    // 确保在 dismiss/onClosed 完成后（下一帧）再触发解析回调
+                    handler.post {
+                        onDomSnapshot(currentUrl, html) { /* INITIAL_PARSE 模式下此 reportNewCount 仅作兼容 */ }
+                    }
+                } else {
+                    onDomSnapshot(currentUrl, html) { count ->
+                        if (count >= 0) dismissAndClose()
+                    }
+                }
+            } else {
+                Toast.makeText(context, "无法获取网页数据，请等待页面加载完成后再试", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -611,16 +717,20 @@ class ResourceSniffDialog(
         @JavascriptInterface
         fun onInjected() {
             handler.post {
-                updateStatus(
-                    if (entry == Entry.LIST) "请手动翻页或加载更多，DOM 变化后将自动解析影片"
-                    else "请手动切换或加载资源，DOM 变化后将自动解析播放地址"
-                )
+                if (mode == Mode.INITIAL_PARSE) {
+                    updateStatus("脚本注入成功，请在页面加载完成后点击【开始解析】")
+                } else {
+                    updateStatus(
+                        if (entry == Entry.LIST) "请手动翻页或加载更多，DOM 变化后将自动解析影片"
+                        else "请手动切换或加载资源，DOM 变化后将自动解析播放地址"
+                    )
+                }
             }
         }
 
         @JavascriptInterface
         fun onDomChanged(url: String, html: String) {
-            if (html.isBlank()) return
+            if (html.isBlank() || mode == Mode.INITIAL_PARSE) return
             handler.post {
                 if (dialog == null) return@post
                 progressBar?.visibility = View.VISIBLE

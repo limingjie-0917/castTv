@@ -61,7 +61,8 @@ class AddToCartoonDialog(
     private val adapterName: String,
     private val adapterRuleFileName: String?,
     private val adapterHost: String,
-    private val adapterFramework: WebFrameworkType
+    private val adapterFramework: WebFrameworkType,
+    private val fetchMode: String = "HTTP"
 ) {
     private val warm: Int get() = ThemeManager.accentColor(context)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -244,7 +245,8 @@ class AddToCartoonDialog(
             cover = coverUrl,
             globalAdapterId = globalAdapterId,
             adapterName = finalAdapterName,
-            episodeCount = episodeCount
+            episodeCount = episodeCount,
+            fetchMode = fetchMode
         )
         return when (r) {
             is GiteeApi.ApiResult.Success -> {

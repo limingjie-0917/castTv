@@ -42,8 +42,11 @@ import com.bd.casttv.ui.framework.NewMainActivity
 import com.bd.casttv.ui.theme.CartoonDesign
 import com.bd.casttv.util.ThemeManager
 import com.bd.casttv.webparse.AdapterKind
+import com.bd.casttv.webparse.AdapterInfo
 import com.bd.casttv.webparse.AdapterSelectResult
 import com.bd.casttv.webparse.AdapterSelector
+import com.bd.casttv.webparse.BuiltInAdapters
+import com.bd.casttv.webparse.ResourceSniffDialog
 import com.bd.casttv.webparse.ParsePageKind
 import com.bd.casttv.webparse.ParseProgress
 import com.bd.casttv.webparse.ParseStep
@@ -51,6 +54,7 @@ import com.bd.casttv.webparse.ParsedMovie
 import com.bd.casttv.webparse.ParsedSource
 import com.bd.casttv.webparse.RuleBasedAdapter
 import com.bd.casttv.webparse.WebFrameworkType
+import com.bd.casttv.webparse.WebFrameworkDetector
 import com.bd.casttv.webparse.WebParseAdapterStore
 import com.bd.casttv.webparse.WebParseExtractor
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -606,6 +610,95 @@ class CartoonDetailPage(
         }
         parseJob?.cancel()
         showStatus("开始解析", cartoon.detailUrl, spinner = true)
+        if (cartoon.fetchMode == "WEBVIEW") {
+            ResourceSniffDialog(
+                context = context,
+                pageUrl = cartoon.detailUrl,
+                entry = ResourceSniffDialog.Entry.DETAIL,
+                mode = ResourceSniffDialog.Mode.INITIAL_PARSE,
+                onDomSnapshot = { domUrl, html, reportNewCount ->
+                    // 将此解析任务赋值给 parseJob，以便对话框取消时能中止任务
+                    parseJob = scope.launch(errHandler + Dispatchers.Main.immediate) {
+                        val progressDialog = WebParseProgressDialog(context, ParsePageKind.DETAIL) {
+                            parseJob?.cancel()
+                        }
+                        progressDialog.show()
+                        progressDialog.update(ParseStep.PARSING_INFO)
+                        try {
+                            val binding = adapterStore.getBinding(ParsePageKind.DETAIL, domUrl)
+                                ?: adapterStore.getBinding(ParsePageKind.DETAIL, cartoon.detailUrl)
+
+                            val preselected = if (binding != null) {
+                                val adapter = BuiltInAdapters.findById(binding.adapterId) ?: AdapterInfo(
+                                    id = binding.adapterId,
+                                    name = binding.adapterName.ifBlank { binding.ruleFileName.ifBlank { "自定义解析" } },
+                                    kind = binding.adapterKind,
+                                    frameworkType = binding.frameworkType,
+                                    supportedPageKinds = setOf(ParsePageKind.DETAIL),
+                                    priority = 100,
+                                    description = binding.ruleFileName
+                                )
+                                AdapterSelectResult(
+                                    adapterInfo = adapter,
+                                    detectedFramework = binding.frameworkType,
+                                    source = AdapterSelectResult.SelectSource.DOMAIN_BINDING,
+                                    confidence = 1f
+                                )
+                            } else {
+                                AdapterSelector.select(context.applicationContext, domUrl, html, ParsePageKind.DETAIL)
+                            }
+
+                            val localExtractor = WebParseExtractor(context.applicationContext)
+                            extractor = localExtractor
+                            val movie = withContext(Dispatchers.Default) {
+                                if (preselected.source == AdapterSelectResult.SelectSource.DOMAIN_BINDING) {
+                                    if (preselected.adapterInfo.kind == AdapterKind.CUSTOM_JSON) {
+                                        val ruleFileName = preselected.adapterInfo.description.ifBlank { preselected.adapterInfo.id }
+                                        try {
+                                            localExtractor.extractWithHtml(domUrl, html, ruleFileName)
+                                        } catch (t: Throwable) {
+                                            Log.w(TAG, "绑定自定义适配器解析失败，回退自动识别: ${t.message}")
+                                            localExtractor.extractWithHtml(domUrl, html)
+                                        }
+                                    } else {
+                                        // 强制使用内置绑定适配器
+                                        localExtractor.extractWithHtml(domUrl, html, adapterId = preselected.adapterInfo.id)
+                                    }
+                                } else {
+                                    localExtractor.extractWithHtml(domUrl, html)
+                                }
+                            }
+
+                            val actualAdapter = localExtractor.lastAdapter
+                            val usedBoundAdapter = localExtractor.lastUsedRequestedAdapter
+
+                            val actualId = if (usedBoundAdapter) {
+                                preselected.adapterInfo.id
+                            } else {
+                                BuiltInAdapters.all.firstOrNull { it.frameworkType == WebFrameworkDetector.detect(html) && it.supportedPageKinds.contains(ParsePageKind.DETAIL) }?.id
+                                    ?: actualAdapter?.javaClass?.simpleName?.lowercase() ?: "generic"
+                            }
+                            val actualName = if (usedBoundAdapter) {
+                                preselected.adapterInfo.name
+                            } else {
+                                actualAdapter?.javaClass?.simpleName ?: "Generic"
+                            }
+
+                            applyParsedMovie(movie)
+                            writebackCartoon(movie, actualId, actualName)
+                            progressDialog.update(ParseStep.LOADING_DONE)
+                            progressDialog.dismissDelayed()
+                            reportNewCount(1)
+                        } catch (e: Exception) {
+                            progressDialog.update(ParseStep.ERROR, e.message ?: "解析失败")
+                            reportNewCount(-1)
+                        }
+                    }
+                },
+                onClosed = { }
+            ).show()
+            return
+        }
         parseJob = scope.launch(errHandler + Dispatchers.Main.immediate) {
             // Step1: 如果有 globalAdapterId → 下载 JSON 规则文件并 forceUpdateBinding 到 host
             if (!cartoon.globalAdapterId.isNullOrBlank()) {
@@ -674,22 +767,27 @@ class CartoonDetailPage(
             }
             applyParsedMovie(movie)
 
-            // Step3: upsertCartoon 到云端，title/cover/description/episodeCount 更新，
-            //        使用既有 cartoonId（不按 URL 重算），避免用户在云端改 ID 后幂等错位。
+            // Step3: upsertCartoon 到云端
+            writebackCartoon(movie, preselected.adapterInfo.id, preselected.adapterInfo.name)
+        }
+    }
+
+    private fun writebackCartoon(movie: ParsedMovie, preselectedAdapterId: String? = null, preselectedAdapterName: String? = null) {
+        scope.launch(errHandler + Dispatchers.Main.immediate) {
             val totalEps = movie.sources.sumOf { it.episodes.size }
             val newTitle = movie.title.ifBlank { cartoon.title }
             val newCover = movie.coverUrl.ifBlank { cartoon.cover }
             val newDesc = movie.description
             val adapterId = cartoon.globalAdapterId
-                ?: preselected.adapterInfo.id.takeIf { preselected.adapterInfo.kind == AdapterKind.CUSTOM_JSON }
+                ?: preselectedAdapterId.takeIf { preselectedAdapterId != null }
             val adapterName = when {
                 cartoon.adapterName.isNotBlank() -> cartoon.adapterName
-                preselected.adapterInfo.name.isNotBlank() -> preselected.adapterInfo.name
+                preselectedAdapterName?.isNotBlank() == true -> preselectedAdapterName
                 else -> ""
             }
             val cloud = withContext(Dispatchers.IO) {
                 GiteeShareStore.upsertCartoon(
-                    context = appCtx,
+                    context = context.applicationContext,
                     title = newTitle,
                     detailUrl = cartoon.detailUrl,
                     cover = newCover,
@@ -697,7 +795,8 @@ class CartoonDetailPage(
                     adapterName = adapterName,
                     episodeCount = totalEps,
                     description = newDesc,
-                    cartoonId = cartoon.cartoonId
+                    cartoonId = cartoon.cartoonId,
+                    fetchMode = cartoon.fetchMode
                 )
             }
             when (cloud) {

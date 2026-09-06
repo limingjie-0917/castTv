@@ -18,7 +18,8 @@ class WebParseStore(context: Context) {
         val frameworkType: String = "",
         val adapterName: String = "",
         val adapterId: String = "",
-        val recordId: String = ""
+        val recordId: String = "",
+        val fetchMode: String = "HTTP"
     )
 
 
@@ -52,7 +53,8 @@ class WebParseStore(context: Context) {
         frameworkType: String = "",
         adapterName: String = "",
         adapterId: String = "",
-        recordId: String = ""
+        recordId: String = "",
+        fetchMode: String = "HTTP"
     ) {
         val normalizedUrl = url.trim()
         if (normalizedUrl.isBlank()) return
@@ -68,7 +70,8 @@ class WebParseStore(context: Context) {
             frameworkType = frameworkType.trim(),
             adapterName = adapterName.trim(),
             adapterId = adapterId.trim(),
-            recordId = rid
+            recordId = rid,
+            fetchMode = if (fetchMode.uppercase() == "WEBVIEW") "WEBVIEW" else "HTTP"
         )
         val histories = getParseHistory()
             .filterNot { it.recordId == rid }
@@ -110,7 +113,8 @@ class WebParseStore(context: Context) {
                             frameworkType = item.optString("frameworkType").trim(),
                             adapterName = item.optString("adapterName").trim(),
                             adapterId = item.optString("adapterId").trim(),
-                            recordId = rid
+                            recordId = rid,
+                            fetchMode = item.optString("fetchMode", "HTTP").trim().ifBlank { "HTTP" }
                         )
                     )
                 }
@@ -137,6 +141,7 @@ class WebParseStore(context: Context) {
                 put("adapterName", history.adapterName)
                 put("adapterId", history.adapterId)
                 put("recordId", history.recordId)
+                put("fetchMode", history.fetchMode)
             })
         }
         return array.toString()

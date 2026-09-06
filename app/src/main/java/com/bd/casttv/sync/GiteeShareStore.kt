@@ -53,7 +53,8 @@ object GiteeShareStore {
         val adapterName: String,
         val creatorId: String,
         val deviceName: String,
-        val uploadedAt: Long
+        val uploadedAt: Long,
+        val fetchMode: String = "HTTP"
     )
 
     /** 动画城卡片：一条指向详情页 + 适配器的云端记录。 */
@@ -69,7 +70,8 @@ object GiteeShareStore {
         val deviceName: String,
         val uploadedAt: Long,
         /** 剧情/简介文案：新增字段，历史记录缺失时为空字符串。 */
-        val description: String = ""
+        val description: String = "",
+        val fetchMode: String = "HTTP"
     )
 
     data class CloudIndex(
@@ -186,7 +188,8 @@ object GiteeShareStore {
                         adapterName = obj.optString("adapterName"),
                         creatorId = obj.optString("creatorId"),
                         deviceName = obj.optString("deviceName"),
-                        uploadedAt = obj.optLong("uploadedAt")
+                        uploadedAt = obj.optLong("uploadedAt"),
+                        fetchMode = obj.optString("fetchMode", "HTTP")
                     ))
                 }
             }
@@ -233,9 +236,9 @@ object GiteeShareStore {
             if (customAdapters.containsKey(h.adapterId)) return@forEach
             // 查找本地域名绑定获取 ruleFileName
             val host = adapterStore.normalizeHost(h.url)
-            val pageKind = if (h.pageType.equals("list", true)) 
-                com.bd.casttv.webparse.ParsePageKind.LIST 
-            else 
+            val pageKind = if (h.pageType.equals("list", true))
+                com.bd.casttv.webparse.ParsePageKind.LIST
+            else
                 com.bd.casttv.webparse.ParsePageKind.DETAIL
             val binding = adapterStore.getBinding(pageKind, host)
             customAdapters[h.adapterId] = h.adapterId to binding
@@ -336,6 +339,7 @@ object GiteeShareStore {
             put("creatorId", creatorId)
             put("deviceName", deviceName)
             put("uploadedAt", now)
+            put("fetchMode", h.fetchMode)
         }
         return obj.toString(2)
     }
@@ -408,7 +412,8 @@ object GiteeShareStore {
                 adapterName = h.adapterName,
                 creatorId = creatorId,
                 deviceName = deviceName,
-                uploadedAt = now
+                uploadedAt = now,
+                fetchMode = h.fetchMode
             )
         }
         val array = JSONArray()
@@ -427,6 +432,7 @@ object GiteeShareStore {
                 put("creatorId", r.creatorId)
                 put("deviceName", r.deviceName)
                 put("uploadedAt", r.uploadedAt)
+                put("fetchMode", r.fetchMode)
             })
         }
         val sha = GiteeApi.getFile(RECORDS_INDEX)?.sha
@@ -502,10 +508,11 @@ object GiteeShareStore {
                     pageType = record.pageType,
                     siteTitle = record.siteTitle,
                     frameworkType = record.frameworkType,
-                    adapterName = record.adapterName,
-                    adapterId = adapterIdForSave,
-                    recordId = record.globalRecordId
-                )
+                adapterName = record.adapterName,
+                adapterId = adapterIdForSave,
+                recordId = record.globalRecordId,
+                fetchMode = record.fetchMode
+            )
             }.onSuccess { recordsSaved++ }
                 .onFailure { errors.add("记录保存失败: ${record.title}, ${it.message}") }
         }
@@ -617,6 +624,7 @@ object GiteeShareStore {
                 put("creatorId", r.creatorId)
                 put("deviceName", r.deviceName)
                 put("uploadedAt", r.uploadedAt)
+                put("fetchMode", r.fetchMode)
             })
         }
         val sha = GiteeApi.getFile(RECORDS_INDEX)?.sha
@@ -781,7 +789,8 @@ object GiteeShareStore {
         adapterName: String,
         episodeCount: Int,
         description: String = "",
-        cartoonId: String? = null
+        cartoonId: String? = null,
+        fetchMode: String = "HTTP"
     ): GiteeApi.ApiResult<SharedCartoon> {
         val creatorId = CreatorIdProvider.get(context)
         val deviceName = com.bd.casttv.settings.Settings(context).deviceName
@@ -798,7 +807,8 @@ object GiteeShareStore {
             creatorId = creatorId,
             deviceName = deviceName,
             uploadedAt = now,
-            description = description.trim()
+            description = description.trim(),
+            fetchMode = if (fetchMode.uppercase() == "WEBVIEW") "WEBVIEW" else "HTTP"
         )
         val cartoonJson = JSONObject().apply {
             put("cartoonId", cartoon.cartoonId)
@@ -811,6 +821,7 @@ object GiteeShareStore {
             put("creatorId", cartoon.creatorId)
             put("deviceName", cartoon.deviceName)
             put("uploadedAt", cartoon.uploadedAt)
+            put("fetchMode", cartoon.fetchMode)
             if (cartoon.description.isNotEmpty()) put("description", cartoon.description)
         }
         val path = "$CARTOONS_DIR/$resolvedId.json"
@@ -837,6 +848,7 @@ object GiteeShareStore {
                 put("creatorId", c.creatorId)
                 put("deviceName", c.deviceName)
                 put("uploadedAt", c.uploadedAt)
+                put("fetchMode", c.fetchMode)
                 if (c.description.isNotEmpty()) put("description", c.description)
             })
         }
@@ -899,6 +911,8 @@ object GiteeShareStore {
                 put("creatorId", c.creatorId)
                 put("deviceName", c.deviceName)
                 put("uploadedAt", c.uploadedAt)
+                put("fetchMode", c.fetchMode)
+                if (c.description.isNotEmpty()) put("description", c.description)
             })
         }
         val del = putIndexWithRetry(CARTOONS_INDEX, array.toString(2), "delete cartoon index $cartoonId")

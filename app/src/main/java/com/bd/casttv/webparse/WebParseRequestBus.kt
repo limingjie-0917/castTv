@@ -17,9 +17,24 @@ enum class WebParsePageType {
     }
 }
 
+enum class FetchMode {
+    HTTP,
+    WEBVIEW;
+
+    companion object {
+        fun from(value: String?): FetchMode {
+            return when (value?.trim()?.uppercase()) {
+                "WEBVIEW" -> WEBVIEW
+                else -> HTTP
+            }
+        }
+    }
+}
+
 data class WebParseRequest(
     val url: String,
     val pageType: WebParsePageType = WebParsePageType.DETAIL,
+    val fetchMode: FetchMode = FetchMode.HTTP,
     /** 动画城上下文：非空时解析成功后回写云端 cartoons（更新集数等）。 */
     val cartoonId: String? = null,
     val adapterId: String? = null,
@@ -49,13 +64,14 @@ object WebParseRequestBus {
     fun submit(
         url: String,
         pageType: WebParsePageType = WebParsePageType.DETAIL,
+        fetchMode: FetchMode = FetchMode.HTTP,
         cartoonId: String? = null,
         adapterId: String? = null,
         adapterName: String? = null
     ) {
         val normalized = url.trim()
         if (normalized.isBlank()) return
-        val request = WebParseRequest(normalized, pageType, cartoonId, adapterId, adapterName)
+        val request = WebParseRequest(normalized, pageType, fetchMode, cartoonId, adapterId, adapterName)
         pendingRequest = request
         main.post { listeners.toList().forEach { it.onWebParseRequest(request) } }
     }

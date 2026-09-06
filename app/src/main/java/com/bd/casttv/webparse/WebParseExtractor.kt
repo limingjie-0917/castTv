@@ -25,6 +25,9 @@ class WebParseExtractor(
     var lastAdapter: SiteAdapter? = null
         private set
 
+    var lastUsedRequestedAdapter: Boolean = false
+        private set
+
     suspend fun extract(url: String): ParsedMovie = withContext(Dispatchers.IO) {
         progress(ParseProgress(ParseStep.RECEIVED, "接收到链接"))
         try {
@@ -59,6 +62,59 @@ class WebParseExtractor(
             val adapter = RuleBasedAdapter(appContext, fileName)
             lastAdapter = adapter
             val movie = adapter.parseSpecified(url, html, fileName)
+            progress(ParseProgress(ParseStep.LOADING_DONE, "加载完成"))
+            movie
+        } catch (t: Throwable) {
+            progress(ParseProgress(ParseStep.ERROR, "解析失败", t.message ?: "未知错误"))
+            throw t
+        }
+    }
+
+    suspend fun extractWithHtml(url: String, html: String, fileName: String? = null, adapterId: String? = null): ParsedMovie = withContext(Dispatchers.Default) {
+        val appContext = context?.applicationContext
+        progress(ParseProgress(ParseStep.RECEIVED, "接收到 DOM 快照"))
+        lastUsedRequestedAdapter = false
+        try {
+            lastParsedUrl = url
+            lastParsedHtml = html
+            progress(ParseProgress(ParseStep.PARSING_INFO, "正在解析影片信息"))
+
+            // 尝试按指定 adapterId 强制解析
+            if (adapterId != null) {
+                val forcedAdapter = when (adapterId) {
+                    BuiltInAdapters.ID_DETAIL_MAC_CMS -> adapters.filterIsInstance<MacCmsAdapter>().firstOrNull()
+                    BuiltInAdapters.ID_DETAIL_GENERIC -> adapters.filterIsInstance<GenericAdapter>().firstOrNull()
+                    else -> null
+                }
+                if (forcedAdapter != null) {
+                    try {
+                        val movie = forcedAdapter.parseDetail(url, html)
+                        lastAdapter = forcedAdapter
+                        lastUsedRequestedAdapter = true
+                        progress(ParseProgress(ParseStep.LOADING_DONE, "加载完成"))
+                        return@withContext movie
+                    } catch (t: Throwable) {
+                        Log.w(TAG, "强制使用绑定适配器 $adapterId 解析失败，将尝试自动识别: ${t.message}")
+                    }
+                }
+            }
+
+            val adapter = when {
+                fileName != null && appContext != null -> {
+                    val a = RuleBasedAdapter(appContext, fileName)
+                    if (a.canHandle(url, html)) {
+                        lastUsedRequestedAdapter = true
+                    }
+                    a
+                }
+                else -> adapters.firstOrNull { it.canHandle(url, html) } ?: GenericAdapter()
+            }
+            lastAdapter = adapter
+            val movie = if (adapter is RuleBasedAdapter && fileName != null) {
+                adapter.parseSpecified(url, html, fileName)
+            } else {
+                adapter.parseDetail(url, html)
+            }
             progress(ParseProgress(ParseStep.LOADING_DONE, "加载完成"))
             movie
         } catch (t: Throwable) {

@@ -68,6 +68,7 @@ class CartoonStore(context: Context) {
             put("creatorId", c.creatorId)
             put("deviceName", c.deviceName)
             put("uploadedAt", c.uploadedAt)
+            put("fetchMode", c.fetchMode)
             if (c.description.isNotEmpty()) put("description", c.description)
         }
     }
@@ -110,7 +111,8 @@ class CartoonStore(context: Context) {
                 deviceName = obj.optString("deviceName"),
                 uploadedAt = uploadedAt,
                 // 老数据可能缺失该字段（云端在 2026-08 前的写入没有简介），按空串兜底
-                description = obj.optString("description").orEmpty()
+                description = obj.optString("description").orEmpty(),
+                fetchMode = obj.optString("fetchMode", "HTTP")
             )
         }
     }

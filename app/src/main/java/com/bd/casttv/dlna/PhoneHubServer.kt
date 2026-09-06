@@ -229,8 +229,9 @@ class PhoneHubServer(
                 val o = tryJson(body) ?: return badRequest()
                 val u = o.optString("url").trim()
                 val pageType = WebParsePageType.from(o.optString("type", "detail"))
+                val fetchMode = com.bd.casttv.webparse.FetchMode.from(o.optString("fetchMode", "HTTP"))
                 if (u.isBlank()) return badRequest("缺少 url")
-                WebParseRequestBus.submit(u, pageType)
+                WebParseRequestBus.submit(u, pageType, fetchMode)
                 json(Response.Status.OK, okObj().put("message", "已发送到电视端"))
             }
             "/api/history/clear" -> {

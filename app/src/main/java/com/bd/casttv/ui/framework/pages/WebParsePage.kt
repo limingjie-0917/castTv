@@ -35,17 +35,21 @@ import com.bd.casttv.ui.framework.BoundaryFocusHandler
 import com.bd.casttv.ui.framework.FocusFxHelper
 import com.bd.casttv.ui.framework.PhoneHubHost
 import com.bd.casttv.webparse.AdapterKind
+import com.bd.casttv.webparse.AdapterInfo
 import com.bd.casttv.webparse.AdapterSelectResult
 import com.bd.casttv.webparse.AdapterSelector
+import com.bd.casttv.webparse.BuiltInAdapters
 import com.bd.casttv.webparse.JsonAdapterEventBus
 import com.bd.casttv.webparse.ParsePageKind
 import com.bd.casttv.webparse.ResourceSniffDialog
 import com.bd.casttv.webparse.ParseStep
 import com.bd.casttv.webparse.ParsedListMovie
+import com.bd.casttv.webparse.ParsedListResult
 import com.bd.casttv.webparse.ParsedMovie
 import com.bd.casttv.webparse.ParsedSource
 import com.bd.casttv.webparse.RuleBasedAdapter
 import com.bd.casttv.webparse.WebFrameworkType
+import com.bd.casttv.webparse.WebFrameworkDetector
 import com.bd.casttv.sync.GiteeShareStore
 import com.bd.casttv.webparse.WebParseAdapterStore
 import com.bd.casttv.webparse.WebParseExtractor
@@ -68,11 +72,22 @@ import java.net.HttpURLConnection
 import java.net.NetworkInterface
 import java.net.URL
 
+import com.bd.casttv.webparse.FetchMode
+
 class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Listener, JsonAdapterEventBus.Listener {
     private companion object {
         const val TAG = "WebParsePage"
         const val WEB_PARSE_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     }
+
+    private data class WebParseContext(
+        val pageType: WebParsePageType,
+        val fetchMode: FetchMode,
+        val originalUrl: String,
+        var currentUrl: String,
+        var html: String = ""
+    )
+    private var parseContext: WebParseContext? = null
 
     override val pageId = com.bd.casttv.settings.Settings.PAGE_ID_WEB_PARSE
     override val pageTitle = "网页解析播放"
@@ -211,8 +226,8 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
             inputEdit.setSelection(inputEdit.text?.length ?: 0)
             inputEdit.requestFocus()
             when (history.pageType.trim().lowercase()) {
-                "list" -> startParseList(url)
-                "detail" -> startParse(url)
+                "list" -> startParseList(url, FetchMode.from(history.fetchMode))
+                "detail" -> startParse(url, fetchMode = FetchMode.from(history.fetchMode))
                 else -> showPageTypeDialogForUrl(url, parseButton)
             }
         }.show()
@@ -287,8 +302,8 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
             CartoonContext(it, url, request.adapterId, request.adapterName)
         }
         when (request.pageType) {
-            WebParsePageType.LIST -> startParseList(url)
-            WebParsePageType.DETAIL -> startParse(url)
+            WebParsePageType.LIST -> startParseList(url, request.fetchMode)
+            WebParsePageType.DETAIL -> startParse(url, fetchMode = request.fetchMode)
         }
     }
 
@@ -341,7 +356,8 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                         cover = parsed.coverUrl,
                         globalAdapterId = ctx.adapterId,
                         adapterName = ctx.adapterName.orEmpty(),
-                        episodeCount = episodeCount
+                        episodeCount = episodeCount,
+                        fetchMode = parseContext?.fetchMode?.name ?: "HTTP"
                     )
                 }.onFailure { Log.w(TAG, "cartoon writeback failed: ${it.message}") }
             }
@@ -366,7 +382,8 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
             adapterName = m?.adapterName.orEmpty(),
             adapterRuleFileName = m?.ruleFileName,
             adapterHost = m?.host.orEmpty(),
-            adapterFramework = m?.frameworkType ?: WebFrameworkType.UNKNOWN
+            adapterFramework = m?.frameworkType ?: WebFrameworkType.UNKNOWN,
+            fetchMode = parseContext?.fetchMode?.name ?: "HTTP"
         ).show()
     }
 
@@ -456,8 +473,8 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         WebParsePageTypeDialog(
             context = context,
             returnFocusView = returnFocusView,
-            onListPage = { startParseList(url) },
-            onDetailPage = { startParse(url) }
+            onListPage = { mode -> startParseList(url, mode) },
+            onDetailPage = { mode -> startParse(url, fetchMode = mode) }
         ).show()
     }
 
@@ -485,7 +502,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         listBackUrl = currentUrl
         listBackMovies = listMovies
         detailFromList = true
-        startParse(item.detailUrl, fromList = true)
+        startParse(item.detailUrl, fromList = true, fetchMode = parseContext?.fetchMode ?: FetchMode.HTTP)
     }
 
     private fun startParseFromInput() {
@@ -508,7 +525,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         return url
     }
 
-    private fun startParseList(url: String) {
+    private fun startParseList(url: String, fetchMode: FetchMode = FetchMode.HTTP) {
         detailFromList = false
         backToListButton.visibility = View.GONE
         currentUrl = url
@@ -527,6 +544,13 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         sniffDomParseJob?.cancel()
         parseJob?.cancel()
         progressJob?.cancel()
+
+        parseContext = WebParseContext(WebParsePageType.LIST, fetchMode, url, url)
+        if (fetchMode == FetchMode.WEBVIEW) {
+            showResourceSniffDialog(ResourceSniffDialog.Entry.LIST, ResourceSniffDialog.Mode.INITIAL_PARSE)
+            return
+        }
+
         val progressDialog = WebParseProgressDialog(
             context = context,
             pageKind = ParsePageKind.LIST,
@@ -550,7 +574,11 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                     val jsonRule = RuleBasedAdapter.readRuleText(context.applicationContext, ruleFileName)
                     if (jsonRule.isBlank()) error("已绑定的列表页自定义适配器规则文件不存在")
                     progressDialog.update(ParseStep.FETCHING_HTML)
-                    val html = withContext(Dispatchers.IO) { WebParseExtractor.fetchText(url) }
+                    val html = if (parseContext?.fetchMode == FetchMode.WEBVIEW && parseContext?.html?.isNotBlank() == true) {
+                        parseContext?.html.orEmpty()
+                    } else {
+                        withContext(Dispatchers.IO) { WebParseExtractor.fetchText(url) }
+                    }
                     WebParseExtractor.lastParsedUrl = url
                     WebParseExtractor.lastParsedHtml = html
                     progressDialog.update(ParseStep.PARSING_INFO)
@@ -563,7 +591,11 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                     htmlForHistory = html
                 } else {
                     progressDialog.update(ParseStep.FETCHING_HTML)
-                    val result = listExtractor.extractList(url)
+                    val result = if (parseContext?.fetchMode == FetchMode.WEBVIEW && parseContext?.html?.isNotBlank() == true) {
+                        listExtractor.parseDom(url, parseContext?.html.orEmpty())
+                    } else {
+                        listExtractor.extractList(url)
+                    }
                     parsedList = result.movies
                     nextPageUrl = result.nextPageUrl
                     adapterSelection = selectAdapterForHistory(url, ParsePageKind.LIST)
@@ -590,7 +622,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         }
     }
 
-    private fun startParse(url: String, fromList: Boolean = false) {
+    private fun startParse(url: String, fromList: Boolean = false, fetchMode: FetchMode = FetchMode.HTTP) {
         detailFromList = fromList
         backToListButton.visibility = if (fromList && listBackMovies.isNotEmpty()) View.VISIBLE else View.GONE
         currentUrl = url
@@ -603,6 +635,23 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         selectedEpisodeIndex = 0
         sniffDomParseJob?.cancel()
         parseJob?.cancel()
+
+        if (fromList) {
+            parseContext = parseContext?.copy(
+                pageType = WebParsePageType.DETAIL,
+                fetchMode = fetchMode,
+                originalUrl = url,
+                currentUrl = url,
+                html = ""
+            )
+        } else {
+            parseContext = WebParseContext(WebParsePageType.DETAIL, fetchMode, url, url)
+        }
+        if (fetchMode == FetchMode.WEBVIEW) {
+            showResourceSniffDialog(ResourceSniffDialog.Entry.DETAIL, ResourceSniffDialog.Mode.INITIAL_PARSE)
+            return
+        }
+
         val progressDialog = WebParseProgressDialog(context) { parseJob?.cancel() }
         progressDialog.show()
         extractor = WebParseExtractor(context.applicationContext) { p ->
@@ -622,10 +671,18 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                         .ifBlank { preselectedAdapter.adapterInfo.id }
                     val jsonRule = RuleBasedAdapter.readRuleText(context.applicationContext, ruleFileName)
                     if (jsonRule.isBlank()) error("已绑定的详情页自定义适配器规则文件不存在")
-                    parsed = extractor.extractWithRule(url, ruleFileName)
+                    parsed = if (parseContext?.fetchMode == FetchMode.WEBVIEW && parseContext?.html?.isNotBlank() == true) {
+                        extractor.extractWithHtml(url, parseContext?.html.orEmpty(), ruleFileName)
+                    } else {
+                        extractor.extractWithRule(url, ruleFileName)
+                    }
                     adapterSelection = preselectedAdapter
                 } else {
-                    parsed = extractor.extract(url)
+                    parsed = if (parseContext?.fetchMode == FetchMode.WEBVIEW && parseContext?.html?.isNotBlank() == true) {
+                        extractor.extractWithHtml(url, parseContext?.html.orEmpty())
+                    } else {
+                        extractor.extract(url)
+                    }
                     adapterSelection = selectAdapterForHistory(url, ParsePageKind.DETAIL)
                 }
                 movie = parsed
@@ -684,7 +741,11 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         }
         parseJob = scope.launch {
             try {
-                val parsed = extractor.extractWithRule(url, fileName)
+                val parsed = if (parseContext?.fetchMode == FetchMode.WEBVIEW && parseContext?.html?.isNotBlank() == true) {
+                    extractor.extractWithHtml(url, parseContext?.html.orEmpty(), fileName)
+                } else {
+                    extractor.extractWithRule(url, fileName)
+                }
                 val ruleName = RuleBasedAdapter.listRuleInfos(context).firstOrNull { it.fileName == fileName }?.name.orEmpty().ifBlank { fileName }
                 val host = adapterStore.normalizeHost(url)
                 val binding = adapterStore.getBinding(ParsePageKind.DETAIL, host)
@@ -705,6 +766,17 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                     frameworkType = WebFrameworkType.CUSTOM.displayName,
                     adapterName = ruleName,
                     adapterId = fileName
+                )
+                store.saveParseHistory(
+                    title = parsed.title,
+                    url = url,
+                    pageType = "detail",
+                    siteTitle = "",
+                    frameworkType = WebFrameworkType.CUSTOM.displayName,
+                    adapterName = ruleName,
+                    adapterId = fileName,
+                    recordId = WebParseStore.generateRecordId(url, "detail"),
+                    fetchMode = parseContext?.fetchMode?.name ?: "HTTP"
                 )
                 selectedSourceIndex = 0
                 selectedEpisodeIndex = 0
@@ -831,7 +903,8 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                 frameworkType = info.frameworkType,
                 adapterName = info.adapterName,
                 adapterId = info.adapterId,
-                recordId = WebParseStore.generateRecordId(info.url, info.pageType)
+                recordId = WebParseStore.generateRecordId(info.url, info.pageType),
+                fetchMode = parseContext?.fetchMode?.name ?: "HTTP"
             )
             toast("已收藏到解析记录")
         }
@@ -884,7 +957,11 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                 extractor = WebParseExtractor(context.applicationContext) { p ->
                     post { if (p.step == ParseStep.ERROR) progressDialog.update(ParseStep.ERROR, p.error) else progressDialog.update(p.step) }
                 }
-                val parsed = extractor.extractWithRule(url, info.fileName)
+                val parsed = if (parseContext?.fetchMode == FetchMode.WEBVIEW && parseContext?.html?.isNotBlank() == true) {
+                    extractor.extractWithHtml(url, parseContext?.html.orEmpty(), info.fileName)
+                } else {
+                    extractor.extractWithRule(url, info.fileName)
+                }
                 saveCustomAdapterBinding(url, info.name, info.fileName, ParsePageKind.DETAIL)
                 movie = parsed
                 detailSiteInfo = SiteBookmarkInfo(
@@ -895,6 +972,17 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                     frameworkType = WebFrameworkType.CUSTOM.displayName,
                     adapterName = info.name,
                     adapterId = info.fileName
+                )
+                store.saveParseHistory(
+                    title = parsed.title,
+                    url = url,
+                    pageType = "detail",
+                    siteTitle = "",
+                    frameworkType = WebFrameworkType.CUSTOM.displayName,
+                    adapterName = info.name,
+                    adapterId = info.fileName,
+                    recordId = WebParseStore.generateRecordId(url, "detail"),
+                    fetchMode = parseContext?.fetchMode?.name ?: "HTTP"
                 )
                 render()
                 progressDialog.update(ParseStep.LOADING_DONE)
@@ -968,7 +1056,11 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
             try {
                 progressDialog.update(ParseStep.RECEIVED)
                 progressDialog.update(ParseStep.FETCHING_HTML)
-                val html = withContext(Dispatchers.IO) { WebParseExtractor.fetchText(url) }
+                val html = if (parseContext?.fetchMode == FetchMode.WEBVIEW && parseContext?.html?.isNotBlank() == true) {
+                    parseContext?.html.orEmpty()
+                } else {
+                    withContext(Dispatchers.IO) { WebParseExtractor.fetchText(url) }
+                }
                 WebParseExtractor.lastParsedUrl = url
                 WebParseExtractor.lastParsedHtml = html
                 progressDialog.update(ParseStep.PARSING_INFO)
@@ -989,6 +1081,17 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                     frameworkType = WebFrameworkType.CUSTOM.displayName,
                     adapterName = info.name,
                     adapterId = info.fileName
+                )
+                store.saveParseHistory(
+                    title = "列表页 JSON · ${parsedList.size} 个条目",
+                    url = url,
+                    pageType = "list",
+                    siteTitle = WebParseStore.extractSiteTitle(html),
+                    frameworkType = WebFrameworkType.CUSTOM.displayName,
+                    adapterName = info.name,
+                    adapterId = info.fileName,
+                    recordId = WebParseStore.generateRecordId(url, "list"),
+                    fetchMode = parseContext?.fetchMode?.name ?: "HTTP"
                 )
                 renderList(parsedList)
                 progressDialog.update(ParseStep.LOADING_DONE)
@@ -1298,9 +1401,9 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
 
     // ---- 资源嗅探 ----
 
-    private fun showResourceSniffDialog(entry: ResourceSniffDialog.Entry) {
+    private fun showResourceSniffDialog(entry: ResourceSniffDialog.Entry, mode: ResourceSniffDialog.Mode = ResourceSniffDialog.Mode.SNIFF) {
         val expectedEntry = if (movie != null) ResourceSniffDialog.Entry.DETAIL else ResourceSniffDialog.Entry.LIST
-        if (entry != expectedEntry) {
+        if (entry != expectedEntry && mode == ResourceSniffDialog.Mode.SNIFF) {
             toast("当前解析结果已变化，请重新打开资源嗅探")
             return
         }
@@ -1308,7 +1411,12 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
             context = context,
             pageUrl = currentUrl,
             entry = entry,
+            mode = mode,
             onDomSnapshot = { domUrl, html, reportNewCount ->
+                if (mode == ResourceSniffDialog.Mode.INITIAL_PARSE) {
+                    parseContext?.currentUrl = domUrl
+                    parseContext?.html = html
+                }
                 parseSniffedDom(entry, domUrl, html, reportNewCount)
             },
             onSniffed = { api ->
@@ -1319,7 +1427,10 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                     updateListFooter()
                 }
             },
-            onClosed = {}
+            onClosed = {
+                sniffDomParseJob?.cancel()
+                sniffDomParseJob = null
+            }
         ).show()
     }
 
@@ -1335,24 +1446,214 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
         val previousJob = sniffDomParseJob
         sniffDomParseJob = scope.launch {
             previousJob?.join()
+
+            val isInitial = parseContext?.fetchMode == FetchMode.WEBVIEW &&
+                    ((entry == ResourceSniffDialog.Entry.LIST && listGrid == null) ||
+                            (entry == ResourceSniffDialog.Entry.DETAIL && movie == null))
+            var progressDialog: WebParseProgressDialog? = null
+
+            if (isInitial) {
+                progressDialog = WebParseProgressDialog(
+                    context = context,
+                    pageKind = if (entry == ResourceSniffDialog.Entry.LIST) ParsePageKind.LIST else ParsePageKind.DETAIL,
+                    onTryJsonParse = if (entry == ResourceSniffDialog.Entry.LIST) ({ showListJsonAdapterDialog() }) else null,
+                    onCancel = { sniffDomParseJob?.cancel() }
+                )
+                progressDialog.show()
+                // 立即更新到解析信息阶段，使得前两个节点直接显示成功
+                progressDialog.update(ParseStep.PARSING_INFO)
+            }
+
             val count = runCatching {
+                val pageKind = if (entry == ResourceSniffDialog.Entry.LIST) ParsePageKind.LIST else ParsePageKind.DETAIL
+                val binding = adapterStore.getBinding(pageKind, domUrl)
+                    ?: parseContext?.originalUrl?.let { adapterStore.getBinding(pageKind, it) }
+
+                val preselectedAdapter = if (binding != null) {
+                    val adapter = BuiltInAdapters.findById(binding.adapterId) ?: AdapterInfo(
+                        id = binding.adapterId,
+                        name = binding.adapterName.ifBlank { binding.ruleFileName.ifBlank { "自定义解析" } },
+                        kind = binding.adapterKind,
+                        frameworkType = binding.frameworkType,
+                        supportedPageKinds = setOf(pageKind),
+                        priority = 100,
+                        description = binding.ruleFileName
+                    )
+                    AdapterSelectResult(
+                        adapterInfo = adapter,
+                        detectedFramework = binding.frameworkType,
+                        source = AdapterSelectResult.SelectSource.DOMAIN_BINDING,
+                        confidence = 1f
+                    )
+                } else {
+                    AdapterSelector.select(context.applicationContext, domUrl, html, pageKind)
+                }
+
                 when (entry) {
                     ResourceSniffDialog.Entry.LIST -> {
-                        val parsed = withContext(Dispatchers.Default) {
-                            val rule = listJsonRule
-                            if (rule != null) listExtractor.parseWithJsonRule(html, rule, domUrl)
-                            else listExtractor.parseDom(domUrl, html)
+                        var usedBoundAdapter = false
+                        val parsedResult = withContext(Dispatchers.Default) {
+                            var ruleResult: ParsedListResult? = null
+                            if (preselectedAdapter.source == AdapterSelectResult.SelectSource.DOMAIN_BINDING) {
+                                if (preselectedAdapter.adapterInfo.kind == AdapterKind.CUSTOM_JSON) {
+                                    val ruleFileName = preselectedAdapter.adapterInfo.description.ifBlank { preselectedAdapter.adapterInfo.id }
+                                    val rule = RuleBasedAdapter.readRuleText(context.applicationContext, ruleFileName)
+                                    if (rule.isNotBlank()) {
+                                        try {
+                                            val res = listExtractor.parseWithJsonRule(html, rule, domUrl)
+                                            if (res.movies.isNotEmpty()) {
+                                                if (isInitial) listJsonRule = rule
+                                                ruleResult = res
+                                                usedBoundAdapter = true
+                                            } else {
+                                                Log.w(TAG, "已绑定的列表页自定义适配器解析结果为空，文件名: $ruleFileName")
+                                            }
+                                        } catch (t: Throwable) {
+                                            Log.w(TAG, "已绑定的列表页自定义适配器解析抛错: ${t.message}, 文件名: $ruleFileName")
+                                        }
+                                    } else {
+                                        Log.w(TAG, "已绑定的列表页自定义适配器规则文件不存在: $ruleFileName")
+                                    }
+                                } else if (preselectedAdapter.adapterInfo.kind == AdapterKind.BUILT_IN) {
+                                    usedBoundAdapter = true
+                                }
+                            }
+                            ruleResult ?: listExtractor.parseDom(domUrl, html)
                         }
-                        appendSniffedListMovies(parsed.movies)
+
+                        if (isInitial) {
+                            // INITIAL_PARSE 路径：执行首次完整列表渲染
+                            listMovies = parsedResult.movies
+                            if (listMovies.isEmpty()) error("未从 DOM 快照中解析到影片条目")
+                            listNextPageUrl = parsedResult.nextPageUrl
+
+                            // 确定实际使用的适配器元信息
+                            val actualAdapter = if (usedBoundAdapter) {
+                                preselectedAdapter
+                            } else {
+                                selectAdapterForHistory(domUrl, ParsePageKind.LIST)
+                            }
+
+                            listSiteInfo = SiteBookmarkInfo(
+                                title = "列表页(WV) · ${listMovies.size} 个条目",
+                                url = domUrl,
+                                pageType = "list",
+                                siteTitle = WebParseStore.extractSiteTitle(html),
+                                frameworkType = frameworkDisplayName(actualAdapter),
+                                adapterName = actualAdapter.adapterInfo.name,
+                                adapterId = actualAdapter.adapterInfo.id
+                            )
+                            store.saveParseHistory(
+                                title = listSiteInfo!!.title,
+                                url = listSiteInfo!!.url,
+                                pageType = "list",
+                                siteTitle = listSiteInfo!!.siteTitle,
+                                frameworkType = listSiteInfo!!.frameworkType,
+                                adapterName = listSiteInfo!!.adapterName,
+                                adapterId = listSiteInfo!!.adapterId,
+                                recordId = WebParseStore.generateRecordId(domUrl, "list"),
+                                fetchMode = parseContext?.fetchMode?.name ?: "HTTP"
+                            )
+                            renderList(listMovies)
+                            1
+                        } else {
+                            appendSniffedListMovies(parsedResult.movies)
+                        }
                     }
                     ResourceSniffDialog.Entry.DETAIL -> {
-                        val adapter = extractor.lastAdapter ?: error("详情页适配器不可用，请先完成详情解析")
-                        val parsed = withContext(Dispatchers.Default) { adapter.parseDetail(domUrl, html) }
-                        appendSniffedPlayAddresses(parsed.sources)
+                        if (isInitial) {
+                            extractor = WebParseExtractor(context.applicationContext)
+                            val detailParsed: ParsedMovie = if (preselectedAdapter.source == AdapterSelectResult.SelectSource.DOMAIN_BINDING) {
+                                if (preselectedAdapter.adapterInfo.kind == AdapterKind.CUSTOM_JSON) {
+                                    val ruleFileName = preselectedAdapter.adapterInfo.description.ifBlank { preselectedAdapter.adapterInfo.id }
+                                    try {
+                                        extractor.extractWithHtml(domUrl, html, ruleFileName)
+                                    } catch (t: Throwable) {
+                                        Log.w(TAG, "绑定自定义适配器解析失败，回退自动识别: ${t.message}")
+                                        extractor.extractWithHtml(domUrl, html)
+                                    }
+                                } else {
+                                    // 强制使用内置绑定适配器
+                                    extractor.extractWithHtml(domUrl, html, adapterId = preselectedAdapter.adapterInfo.id)
+                                }
+                            } else {
+                                extractor.extractWithHtml(domUrl, html)
+                            }
+
+                            movie = detailParsed
+                            val actualAdapter = extractor.lastAdapter
+                            val usedBoundAdapter = extractor.lastUsedRequestedAdapter
+                            val host = adapterStore.normalizeHost(domUrl)
+
+                            val adapterForMeta = if (usedBoundAdapter) {
+                                preselectedAdapter.adapterInfo
+                            } else {
+                                val detected = WebFrameworkDetector.detect(html)
+                                BuiltInAdapters.all.firstOrNull { it.frameworkType == detected && it.supportedPageKinds.contains(ParsePageKind.DETAIL) }
+                                    ?: BuiltInAdapters.findById(BuiltInAdapters.ID_DETAIL_GENERIC)!!
+                            }
+
+                            lastAdapterMeta = if (usedBoundAdapter) {
+                                val b = binding ?: adapterStore.getBinding(ParsePageKind.DETAIL, host)
+                                AdapterMeta(
+                                    adapterId = adapterForMeta.id,
+                                    adapterName = adapterForMeta.name,
+                                    kind = adapterForMeta.kind,
+                                    ruleFileName = b?.ruleFileName,
+                                    host = b?.host.orEmpty().ifBlank { host },
+                                    frameworkType = b?.frameworkType ?: preselectedAdapter.detectedFramework
+                                )
+                            } else {
+                                AdapterMeta(
+                                    adapterId = actualAdapter?.let { it.javaClass.simpleName } ?: adapterForMeta.id,
+                                    adapterName = actualAdapter?.let { it.javaClass.simpleName } ?: adapterForMeta.name,
+                                    kind = AdapterKind.BUILT_IN,
+                                    host = host,
+                                    frameworkType = WebFrameworkDetector.detect(html)
+                                )
+                            }
+
+                            detailSiteInfo = SiteBookmarkInfo(
+                                title = detailParsed.title,
+                                url = domUrl,
+                                pageType = "detail",
+                                siteTitle = "",
+                                frameworkType = if (usedBoundAdapter) adapterForMeta.frameworkType.displayName else (actualAdapter?.let { "自动识别" } ?: "通用"),
+                                adapterName = if (usedBoundAdapter) adapterForMeta.name else (actualAdapter?.javaClass?.simpleName ?: "Generic"),
+                                adapterId = if (usedBoundAdapter) adapterForMeta.id else (actualAdapter?.javaClass?.simpleName ?: "generic")
+                            )
+                            store.saveParseHistory(
+                                title = detailParsed.title,
+                                url = domUrl,
+                                pageType = "detail",
+                                siteTitle = "",
+                                frameworkType = detailSiteInfo!!.frameworkType,
+                                adapterName = detailSiteInfo!!.adapterName,
+                                adapterId = detailSiteInfo!!.adapterId,
+                                recordId = WebParseStore.generateRecordId(domUrl, "detail"),
+                                fetchMode = parseContext?.fetchMode?.name ?: "HTTP"
+                            )
+                            render()
+                            maybeWritebackCartoon(detailParsed)
+                            1
+                        } else {
+                            val adapter = extractor.lastAdapter ?: error("详情页适配器不可用，请先完成详情解析")
+                            val parsed = withContext(Dispatchers.Default) { adapter.parseDetail(domUrl, html) }
+                            appendSniffedPlayAddresses(parsed.sources)
+                        }
                     }
                 }
-            }.onFailure { Log.w(TAG, "parse sniffed DOM failed entry=$entry: ${it.message}") }
-                .getOrDefault(0)
+            }.onFailure {
+                Log.w(TAG, "parse sniffed DOM failed entry=$entry: ${it.message}")
+                if (isInitial) {
+                    progressDialog?.update(ParseStep.ERROR, it.message ?: "解析失败")
+                }
+            }.getOrDefault(0)
+
+            if (isInitial && count > 0) {
+                progressDialog?.update(ParseStep.LOADING_DONE)
+                progressDialog?.dismissDelayed()
+            }
             reportNewCount(count)
         }
     }
