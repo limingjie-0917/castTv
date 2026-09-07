@@ -693,7 +693,8 @@ class WatchLaterPage(context: Context) : BasePage(context) {
             val count = try { syncManager.downloadCollections(listOf(collection.id), popularCollections) } catch (_: Throwable) { 0 }
             if (count > 0) syncManager.incrementDownloadCount(listOf(collection.id))
             handler.post {
-                if (context is Activity && (context.isFinishing || context.isDestroyed)) return@post
+                val ctx = context
+                if (ctx is android.app.Activity && (ctx.isFinishing || ctx.isDestroyed)) return@post
                 if (count > 0) {
                     Toast.makeText(context, "本地合集数据已更新，请前往【我的收藏】查看", Toast.LENGTH_LONG).show()
                     loadAsyncContent()

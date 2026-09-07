@@ -374,7 +374,7 @@ class ResourceSniffDialog(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(10), dp(4), dp(10), dp(4))
-            background = createPanelBg()
+            background = createPanelBgTopRound()
             clipChildren = false
             clipToPadding = false
         }
@@ -410,7 +410,7 @@ class ResourceSniffDialog(
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(10), dp(4), dp(6), dp(4))
-                background = createPanelBg()
+                background = createPanelBgNoRound()
                 clipChildren = false
                 clipToPadding = false
             }
@@ -424,18 +424,24 @@ class ResourceSniffDialog(
                 text = "开始解析"
                 textSize = 16f
                 typeface = Typeface.DEFAULT_BOLD
-                setTextColor(Color.BLACK)
+                setTextColor(Color.WHITE)
                 gravity = Gravity.CENTER
                 isFocusable = true
                 isClickable = true
                 setPadding(dp(24), dp(8), dp(24), dp(8))
+                val warm = Color.rgb(245, 196, 81)
                 background = android.graphics.drawable.GradientDrawable().apply {
-                    cornerRadius = dp(24).toFloat()
-                    setColor(Color.rgb(245, 196, 81))
+                    cornerRadius = dp(10).toFloat()
+                    setColor(Color.argb(52, 32, 34, 40))
+                    setStroke(dp(1), Color.argb(170, 210, 214, 222))
                 }
                 setOnClickListener { captureAndParse() }
                 setOnFocusChangeListener { _, hasFocus ->
-                    alpha = if (hasFocus) 1f else 0.85f
+                    background = android.graphics.drawable.GradientDrawable().apply {
+                        cornerRadius = dp(10).toFloat()
+                        setColor(Color.argb(52, 32, 34, 40))
+                        setStroke(dp(if (hasFocus) 3 else 1), if (hasFocus) warm else Color.argb(170, 210, 214, 222))
+                    }
                     scaleX = if (hasFocus) 1.05f else 1f
                     scaleY = if (hasFocus) 1.05f else 1f
                 }
@@ -703,6 +709,23 @@ class ResourceSniffDialog(
     private fun createPanelBg(): android.graphics.drawable.GradientDrawable {
         return android.graphics.drawable.GradientDrawable().apply {
             cornerRadius = dp(12).toFloat()
+            setColor(Color.argb(90, 22, 24, 30))
+            setStroke(dp(1), Color.argb(60, 255, 255, 255))
+        }
+    }
+
+    private fun createPanelBgTopRound(): android.graphics.drawable.GradientDrawable {
+        val r = dp(12).toFloat()
+        return android.graphics.drawable.GradientDrawable().apply {
+            cornerRadii = floatArrayOf(r, r, r, r, 0f, 0f, 0f, 0f)
+            setColor(Color.argb(90, 22, 24, 30))
+            setStroke(dp(1), Color.argb(60, 255, 255, 255))
+        }
+    }
+
+    private fun createPanelBgNoRound(): android.graphics.drawable.GradientDrawable {
+        return android.graphics.drawable.GradientDrawable().apply {
+            cornerRadius = 0f
             setColor(Color.argb(90, 22, 24, 30))
             setStroke(dp(1), Color.argb(60, 255, 255, 255))
         }

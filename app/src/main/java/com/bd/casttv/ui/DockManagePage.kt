@@ -139,12 +139,7 @@ class DockManagePage(
     }
 
     fun requestInitialFocus() {
-        val tabs = store.list()
-        if (tabs.isEmpty()) {
-            binding?.btnAddDockTab?.requestFocus()
-            return
-        }
-        focusSelectedOrLastItem()
+        binding?.btnAddDockTab?.requestFocus()
     }
 
     fun configureDialogWindow(dialog: android.app.Dialog) {
@@ -842,20 +837,29 @@ class DockManagePage(
             holder.binding.imgTabIcon.setImageResource(CustomDockIconPresets.iconFor(tab.iconKey).drawableRes)
             holder.binding.tabContentCard.isSelected = tab.id == selectedId
 
-            holder.binding.tabContentCard.setOnFocusChangeListener { _, hasFocus ->
+            holder.binding.tabContentCard.setOnFocusChangeListener { v, hasFocus ->
                 if (hasFocus) {
+                    val oldPos = positionOf(selectedId)
                     selectedId = tab.id
                     onFocused(tab)
-                    notifyDataSetChanged()
+                    if (oldPos in 0 until itemCount && oldPos != position) notifyItemChanged(oldPos)
+                    notifyItemChanged(position)
                 }
+                FocusFxHelper.applyFocusFxState(v, hasFocus, cornerRadiusDp = 14)
+            }
+            holder.binding.btnEditDockTab.setOnFocusChangeListener { v, hasFocus ->
+                FocusFxHelper.applyFocusFxState(v, hasFocus, cornerRadiusDp = 22)
+            }
+            holder.binding.btnDeleteDockTab.setOnFocusChangeListener { v, hasFocus ->
+                FocusFxHelper.applyFocusFxState(v, hasFocus, cornerRadiusDp = 22)
             }
             holder.binding.tabContentCard.setOnClickListener { onEdit(tab) }
             holder.binding.btnEditDockTab.setOnClickListener { onEdit(tab) }
             holder.binding.btnDeleteDockTab.setOnClickListener { onDelete(tab) }
 
             holder.binding.tabContentCard.setOnKeyListener(itemKeyListener(position))
-            holder.binding.btnEditDockTab.setOnKeyListener(actionKeyListener(position, holder.binding.tabContentCard))
-            holder.binding.btnDeleteDockTab.setOnKeyListener(actionKeyListener(position, holder.binding.btnEditDockTab))
+            holder.binding.btnEditDockTab.setOnKeyListener(actionKeyListener(position, holder.binding.tabContentCard, holder.binding.btnDeleteDockTab))
+            holder.binding.btnDeleteDockTab.setOnKeyListener(actionKeyListener(position, holder.binding.btnEditDockTab, null))
         }
 
         fun submitList(next: List<CustomDockTabsStore.CustomDockTab>, selected: String?) {
@@ -870,9 +874,12 @@ class DockManagePage(
             if (event.action != KeyEvent.ACTION_DOWN) return@OnKeyListener false
             when (keyCode) {
                 KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                    (v.parent as? RecyclerView)?.findViewHolderForAdapterPosition(position)?.itemView
                     val holder = binding?.dockTabList?.findViewHolderForAdapterPosition(position) as? VH
                     holder?.binding?.btnEditDockTab?.requestFocus() ?: false
+                }
+                KeyEvent.KEYCODE_DPAD_LEFT -> {
+                    playBoundaryShake(v)
+                    true
                 }
                 KeyEvent.KEYCODE_DPAD_DOWN -> {
                     if (position == itemCount - 1) {
@@ -890,12 +897,21 @@ class DockManagePage(
             }
         }
 
-        private fun actionKeyListener(position: Int, leftTarget: View) = View.OnKeyListener { v, keyCode, event ->
+        private fun actionKeyListener(position: Int, leftTarget: View, rightTarget: View?) = View.OnKeyListener { v, keyCode, event ->
             if (event.action != KeyEvent.ACTION_DOWN) return@OnKeyListener false
             when (keyCode) {
                 KeyEvent.KEYCODE_DPAD_LEFT -> {
                     leftTarget.requestFocus()
                     true
+                }
+                KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                    if (rightTarget != null) {
+                        rightTarget.requestFocus()
+                        true
+                    } else {
+                        playBoundaryShake(v)
+                        true
+                    }
                 }
                 KeyEvent.KEYCODE_DPAD_DOWN -> {
                     if (position == itemCount - 1) {
