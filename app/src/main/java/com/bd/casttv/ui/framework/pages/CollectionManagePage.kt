@@ -192,14 +192,14 @@ class CollectionManagePage(
             setOnClickListener { exitWithoutSaving() }
             setOnKeyListener { _, _, e -> handleTopKey(e) }
         }
-        topRow.addView(btnBack, LayoutParams(dp(44), dp(44)))
+        topRow.addView(btnBack, LayoutParams(dp(36), dp(36)))
 
         val title = TextView(context).apply {
             text = "合集管理"
-            textSize = 22f
+            textSize = 20f
             setTextColor(WARM)
             setTypeface(typeface, Typeface.BOLD)
-            setPadding(dp(20), 0, 0, 0)
+            setPadding(dp(14), 0, 0, 0)
         }
         topRow.addView(title, LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
 
@@ -216,8 +216,8 @@ class CollectionManagePage(
             setBackgroundColor(Color.argb(0x40, 0xFF, 0xFF, 0xFF))
         }
         root.addView(separator, LayoutParams(LayoutParams.MATCH_PARENT, dp(1)).apply {
-            topMargin = dp(6)
-            bottomMargin = dp(8)
+            topMargin = dp(4)
+            bottomMargin = dp(6)
         })
 
         val functionRow = LinearLayout(context).apply {
@@ -241,17 +241,18 @@ class CollectionManagePage(
 
         hintBanner = TextView(context).apply {
             textSize = 14f
-            setTextColor(Color.argb(235, 255, 232, 150))
+            setTextColor(Color.rgb(128, 24, 24))
+            setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), 0, dp(16), 0)
+            setPadding(dp(10), 0, dp(10), 0)
             background = GradientDrawable().apply {
-                cornerRadius = dp(14).toFloat()
-                setColor(Color.argb(54, 255, 215, 0))
-                setStroke(dp(1), Color.argb(118, 255, 215, 0))
+                cornerRadius = dp(12).toFloat()
+                setColor(Color.rgb(255, 236, 214))
+                setStroke(dp(1), Color.rgb(160, 48, 40))
             }
         }
-        root.addView(hintBanner, LayoutParams(LayoutParams.MATCH_PARENT, dp(38)).apply {
-            bottomMargin = dp(6)
+        root.addView(hintBanner, LayoutParams(LayoutParams.MATCH_PARENT, dp(34)).apply {
+            bottomMargin = dp(4)
         })
 
         gridHolder = FrameLayout(context).apply {
@@ -921,14 +922,14 @@ class CollectionManagePage(
         contentDescription = "返回"
         clipChildren = false
         clipToPadding = false
-        minimumWidth = dp(44)
-        minimumHeight = dp(44)
+        minimumWidth = dp(36)
+        minimumHeight = dp(36)
         val icon = ImageView(context).apply {
             setImageResource(R.drawable.ic_collection_header_back)
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             setColorFilter(LIGHT_ICON_GRAY)
         }
-        addView(icon, FrameLayout.LayoutParams(dp(24), dp(24), Gravity.CENTER))
+        addView(icon, FrameLayout.LayoutParams(dp(18), dp(18), Gravity.CENTER))
         refreshIconButton(this, focused = false)
         setOnFocusChangeListener { v, has ->
             refreshIconButton(v as FrameLayout, has)
@@ -937,15 +938,13 @@ class CollectionManagePage(
     }
 
     private fun refreshIconButton(button: FrameLayout, focused: Boolean) {
-        button.background = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            setColor(if (focused) Color.argb(58, 245, 196, 81) else BUTTON_DEFAULT_BG)
-            setStroke(dp(2), if (focused) WARM else SILVER)
-        }
+        button.background = null
         button.getChildAt(0)?.let { child ->
-            if (child is ImageView) child.setColorFilter(LIGHT_ICON_GRAY)
+            if (child is ImageView) {
+                child.setColorFilter(if (focused) WARM else LIGHT_ICON_GRAY)
+                FocusFxHelper.applyFocusFxState(child, focused, cornerRadiusDp = 18)
+            }
         }
-        FocusFxHelper.applyFocusFxState(button, focused, cornerRadiusDp = 40)
     }
 
     private fun mkActionButton(text: String): TextView = TextView(context).apply {

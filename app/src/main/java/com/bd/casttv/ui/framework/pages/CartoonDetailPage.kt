@@ -216,8 +216,16 @@ class CartoonDetailPage(
     // ---------------- UI 构建 ----------------
 
     private fun buildLayout() {
+        // 焦点态会放大按钮并抬升层级，整条父容器链均需允许越界绘制。
+        clipChildren = false
+        clipToPadding = false
+        contentContainer.clipChildren = false
+        contentContainer.clipToPadding = false
+
         val outer = ScrollView(context).apply {
             isVerticalScrollBarEnabled = false
+            clipChildren = false
+            clipToPadding = false
             // 收紧外层 padding：给 18/8/18/16，卡片占比更饱满，不压内容。
             setPadding(CartoonDesign.dp(context, 18), CartoonDesign.dp(context, 8),
                 CartoonDesign.dp(context, 18), CartoonDesign.dp(context, 16))
@@ -225,13 +233,19 @@ class CartoonDetailPage(
         }
         val root = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
+            clipChildren = false
+            clipToPadding = false
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
             )
         }
 
         // 顶部：封面（左 3:4，液态玻璃卡 + 左下角语义胶囊徽章）+ 右侧排版簇
-        val header = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        val header = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            clipChildren = false
+            clipToPadding = false
+        }
         val coverWrap = FrameLayout(context).apply {
             background = CartoonDesign.liquidGlassDrawable(
                 context, CartoonDesign.Radius.LG, CartoonDesign.TintMode.ELEVATED,
@@ -257,6 +271,8 @@ class CartoonDetailPage(
 
         val rightPanel = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
+            clipChildren = false
+            clipToPadding = false
             setPadding(CartoonDesign.dp(context, 20), 0, 0, 0)
         }
         rightPanel.addView(eyebrowView, LinearLayout.LayoutParams(
@@ -284,7 +300,13 @@ class CartoonDetailPage(
 
         // 按钮簇 + 胶囊状态行：主 CTA（琥珀底液态玻璃 ACCENT）+ 次 CTA + 小 spinner + 状态胶囊
         val actions = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            clipChildren = false
+            clipToPadding = false
+            // 为 1.05 倍焦点缩放及 3dp 描边预留安全空间，避免贴边裁剪。
+            val focusInset = CartoonDesign.dp(context, 4)
+            setPadding(focusInset, focusInset, focusInset, focusInset)
         }
         actions.addView(reparseButton)
         actions.addView(separator(CartoonDesign.dp(context, 10)))
