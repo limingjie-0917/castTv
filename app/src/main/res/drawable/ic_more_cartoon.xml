@@ -5,148 +5,67 @@
     android:viewportWidth="512"
     android:viewportHeight="512">
 
-    <!-- 外白圈 -->
+    <!-- 深蓝圆形底板：提升电视深色界面中的识别度 -->
     <path
-        android:fillColor="#F7F6F4"
-        android:pathData="M256,18C123.45,18 16,125.45 16,258s107.45,240 240,240 240,-107.45 240,-240S388.55,18 256,18z" />
+        android:fillColor="#1677E8"
+        android:pathData="M256,24A232,232 0,1 1,256 488A232,232 0,1 1,256 24" />
 
-    <!-- 蓝色星空底 -->
+    <!-- 清爽的内圈，保留动画城的空间感 -->
     <path
-        android:fillColor="#1389C0"
-        android:pathData="M256,34C132.29,34 32,134.29 32,258s100.29,224 224,224 224,-100.29 224,-224S379.71,34 256,34z" />
+        android:fillColor="#35A7FF"
+        android:pathData="M256,48A208,208 0,1 1,256 464A208,208 0,1 1,256 48" />
 
-    <!-- 左上深蓝补丁 -->
+    <!-- 四颗简化星点 -->
+    <path android:fillColor="#FFFFFF" android:fillAlpha="0.92" android:pathData="M112,126l7,15 16,2 -12,11 3,16 -14,-8 -14,8 3,-16 -12,-11 16,-2z" />
+    <path android:fillColor="#FFF3B0" android:pathData="M390,135l5,10 11,2 -8,7 2,11 -10,-5 -10,5 2,-11 -8,-7 11,-2z" />
+    <path android:fillColor="#FFFFFF" android:fillAlpha="0.86" android:pathData="M91,316l5,10 11,2 -8,7 2,11 -10,-5 -10,5 2,-11 -8,-7 11,-2z" />
+    <path android:fillColor="#FFF3B0" android:pathData="M403,319l6,12 13,2 -10,9 3,13 -12,-6 -12,6 3,-13 -10,-9 13,-2z" />
+
+    <!-- 八向阳光：几何造型替代原有复杂放射纹 -->
+    <path android:fillColor="#FF9F1C" android:pathData="M239,59h34l-5,74h-24z" />
+    <path android:fillColor="#FF8A1F" android:pathData="M365,99l24,24 -56,49 -17,-17z" />
+    <path android:fillColor="#FF9F1C" android:pathData="M385,239h74v34h-74z" />
+    <path android:fillColor="#FF7A18" android:pathData="M333,340l56,49 -24,24 -49,-56z" />
+    <path android:fillColor="#FF9F1C" android:pathData="M244,379h24l5,74h-34z" />
+    <path android:fillColor="#FF8A1F" android:pathData="M179,340l17,17 -49,56 -24,-24z" />
+    <path android:fillColor="#FF9F1C" android:pathData="M53,239h74v34h-74z" />
+    <path android:fillColor="#FF7A18" android:pathData="M123,123l24,-24 49,56 -17,17z" />
+
+    <!-- 太阳主体：饱和暖黄 + 轻量高光 -->
     <path
-        android:fillColor="#0A5B95"
-        android:fillAlpha="0.65"
-        android:pathData="M162,92c33,-18 78,-26 122,-19 37,6 74,23 104,52 -41,-1 -78,6 -110,23 -34,18 -60,46 -78,80 -5,10 -10,21 -14,32 -23,-14 -42,-36 -56,-65 -18,-37 -25,-88 32,-103z" />
-
-    <!-- 星星 -->
-    <path android:fillColor="#E7E1AE" android:pathData="M233,69l6,12 13,2 -10,9 2,13 -11,-6 -12,6 3,-13 -10,-9 13,-2z" />
-    <path android:fillColor="#D8D3A2" android:pathData="M346,109l4,9 9,2 -7,7 2,9 -8,-4 -8,4 2,-9 -7,-7 9,-2z" />
-    <path android:fillColor="#D7D29F" android:pathData="M398,155l4,8 8,2 -6,6 1,8 -7,-4 -7,4 1,-8 -6,-6 8,-2z" />
-    <path android:fillColor="#E6E0AE" android:pathData="M418,226l4,10 10,2 -8,7 2,10 -8,-5 -8,5 2,-10 -8,-7 10,-2z" />
-    <path android:fillColor="#DAD6A5" android:pathData="M364,371l5,10 11,2 -8,7 2,10 -10,-5 -9,5 2,-10 -8,-7 11,-2z" />
-    <path android:fillColor="#E7E1AF" android:pathData="M215,428l5,11 11,2 -8,7 2,10 -10,-5 -9,5 2,-10 -8,-7 11,-2z" />
-    <path android:fillColor="#D8D3A0" android:pathData="M89,308l4,8 9,2 -7,6 2,9 -8,-4 -7,4 2,-9 -7,-6 9,-2z" />
-
-    <!-- 顶部三根主光芒：重点精修 -->
+        android:fillColor="#FFC928"
+        android:pathData="M256,116A140,140 0,1 1,256 396A140,140 0,1 1,256 116" />
     <path
-        android:fillColor="#F3AA0C"
-        android:pathData="M260,22c7,-2 13,3 16,13 4,11 4,28 2,50l-3,57h-33l1,-57c1,-28 4,-47 8,-56 3,-5 6,-7 9,-7z" />
-    <path
-        android:fillColor="#F5B318"
-        android:pathData="M126,89c9,-1 18,3 28,12l43,39 30,28 -16,19 -36,-28 -50,-42c-17,-15 -22,-25 -18,-31 4,-5 10,-8 19,-8z" />
-    <path
-        android:fillColor="#F7A70A"
-        android:pathData="M338,122l31,-24 56,-38c10,-7 19,-9 27,-7 7,2 11,7 12,14 0,9 -8,18 -23,29l-52,35 -39,25z" />
+        android:fillColor="#FFE56B"
+        android:pathData="M256,134A122,122 0,0 0,151 318A140,140 0,0 1,326 139A122,122 0,0 0,256 134" />
 
-    <!-- 其余光芒 -->
-    <path android:fillColor="#F7B111" android:pathData="M32,171c11,-5 23,-6 36,-2l77,24 -16,31 -102,-5c-13,-1 -22,-5 -25,-13 -4,-9 1,-20 30,-35z" />
-    <path android:fillColor="#F6AF0D" android:pathData="M42,294c12,-8 26,-13 42,-15l70,-3 3,31 -97,34c-17,6 -29,6 -35,-1 -5,-7 -2,-20 17,-46z" />
-    <path android:fillColor="#F6A306" android:pathData="M118,411c6,-10 16,-19 30,-29l67,-39 13,25 -78,70c-13,11 -24,16 -32,14 -9,-1 -14,-11 0,-41z" />
-    <path android:fillColor="#F09B05" android:pathData="M242,401h31l14,99c1,12 -4,19 -15,19 -10,0 -15,-7 -16,-19z" />
-    <path android:fillColor="#F58D02" android:pathData="M311,366l13,-28 84,54c15,9 23,19 24,28 1,9 -5,15 -16,16 -9,0 -19,-3 -30,-10z" />
-    <path android:fillColor="#F47E00" android:pathData="M366,255l8,-28 106,10c14,1 23,5 25,13 3,8 0,16 -10,23 -8,5 -18,10 -29,14z" />
-    <path android:fillColor="#F38701" android:pathData="M149,197l15,-24 -46,-40c-17,-15 -28,-20 -36,-17 -8,2 -13,8 -13,15 0,9 7,18 21,27z" />
-
-    <!-- 光芒间红橙阴影 -->
-    <path android:fillColor="#E73100" android:fillAlpha="0.86" android:pathData="M356,193c35,7 68,24 100,50 -8,-28 -27,-53 -59,-74 -15,4 -31,13 -47,24 2,0 4,0 6,0z" />
-    <path android:fillColor="#EB3600" android:fillAlpha="0.80" android:pathData="M172,353c-19,13 -39,28 -59,46 30,-5 56,-3 80,5 5,-14 10,-29 16,-45 -11,-5 -24,-7 -37,-6z" />
-    <path android:fillColor="#EA3400" android:fillAlpha="0.82" android:pathData="M293,350c6,17 12,33 18,48 24,-8 50,-10 78,-7 -20,-14 -42,-29 -64,-41 -10,-5 -21,-6 -32,0z" />
-
-    <!-- 太阳脸主体 -->
+    <!-- 简约笑脸 -->
     <path
-        android:fillColor="#F8B80A"
-        android:pathData="M257,118C174.16,118 107,185.16 107,268s67.16,150 150,150 150,-67.16 150,-150S339.84,118 257,118z" />
-
-    <!-- 左上亮黄高光 -->
+        android:fillColor="#24324A"
+        android:pathData="M183,218A17,23 0,1 1,183 264A17,23 0,1 1,183 218" />
     <path
-        android:fillColor="#FFE25E"
-        android:fillAlpha="0.58"
-        android:pathData="M151,188c21,-39 62,-66 105,-67 18,-1 37,2 55,8 -17,3 -32,8 -46,16 -39,20 -69,50 -87,85 -5,11 -10,22 -14,35 -18,-26 -22,-47 -13,-77z" />
-
-    <!-- 右侧暖橙渐变体积 -->
+        android:fillColor="#24324A"
+        android:pathData="M329,218A17,23 0,1 1,329 264A17,23 0,1 1,329 218" />
     <path
-        android:fillColor="#FF8A00"
-        android:fillAlpha="0.64"
-        android:pathData="M319,138c50,19 85,68 85,124 0,52 -30,98 -74,119 16,-24 25,-51 25,-81 0,-58 -33,-109 -81,-133 17,-14 30,-25 45,-29z" />
-
-    <!-- 左侧柔光 -->
-    <path
-        android:fillColor="#FFD33D"
-        android:fillAlpha="0.24"
-        android:pathData="M139,213c13,-28 35,-49 61,-62 -19,19 -31,39 -38,60 -7,20 -9,42 -7,65 -17,-21 -23,-42 -16,-63z" />
+        android:fillColor="#FFFFFF"
+        android:pathData="M177,224A6,8 0,1 1,177 240A6,8 0,1 1,177 224M323,224A6,8 0,1 1,323 240A6,8 0,1 1,323 224" />
 
     <!-- 腮红 -->
-    <path
-        android:fillColor="#FF9600"
-        android:fillAlpha="0.22"
-        android:pathData="M145,271c12,0 23,4 31,11 7,6 11,13 13,22 -8,7 -19,11 -31,13 -14,2 -27,0 -37,-5 -7,-3 -11,-9 -13,-16 3,-10 9,-17 18,-21 7,-3 13,-4 19,-4z" />
-    <path
-        android:fillColor="#F46C00"
-        android:fillAlpha="0.30"
-        android:pathData="M322,266c15,0 28,7 37,18 7,7 11,15 12,24 -8,7 -19,12 -33,14 -16,2 -31,-1 -43,-8 -7,-4 -12,-10 -13,-17 2,-8 8,-16 16,-22 8,-6 16,-9 24,-9z" />
+    <path android:fillColor="#FF6B5E" android:fillAlpha="0.72" android:pathData="M152,277A27,13 0,1 1,152 303A27,13 0,1 1,152 277" />
+    <path android:fillColor="#FF6B5E" android:fillAlpha="0.72" android:pathData="M360,277A27,13 0,1 1,360 303A27,13 0,1 1,360 277" />
 
-    <!-- 双眼：重点精修间距/神态 -->
+    <!-- 极简笑线：去除嘴唇填充，仅保留圆润上扬曲线 -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#B92F36"
+        android:strokeWidth="12"
+        android:strokeLineCap="round"
+        android:pathData="M184,302c18,34 42,51 72,51s54,-17 72,-51" />
+
+    <!-- 外圈柔和高光，增强图标完成度 -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M154,206c0,-42 30,-75 68,-75 32,0 55,20 55,45 0,42 -30,75 -68,75 -32,0 -55,-18 -55,-45z" />
-    <path
-        android:fillColor="#111111"
-        android:pathData="M182,178c15,-1 29,15 30,37 1,21 -10,39 -25,40 -15,1 -28,-15 -29,-37 -1,-21 10,-38 24,-40z" />
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M173,189c5,0 9,4 10,10 0,6 -3,11 -8,12 -5,0 -9,-4 -10,-10 0,-6 3,-11 8,-12z" />
-
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M246,205c0,-47 33,-83 75,-83 35,0 59,22 59,49 0,46 -33,81 -75,81 -35,0 -59,-20 -59,-47z" />
-    <path
-        android:fillColor="#161616"
-        android:pathData="M306,183c14,-1 26,15 27,36 1,20 -9,37 -23,38 -13,1 -24,-14 -25,-35 -1,-20 9,-38 21,-39z" />
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M299,194c4,0 8,4 8,10 1,5 -2,10 -6,10 -4,1 -8,-3 -9,-9 0,-5 3,-10 7,-11z" />
-
-    <!-- 鼻子 -->
-    <path
-        android:fillColor="#F5AA0E"
-        android:pathData="M223,218c9,-8 22,-12 35,-12 12,0 23,3 30,9 5,5 7,10 7,16 0,17 -18,30 -42,30 -14,1 -27,-3 -34,-10 -6,-5 -9,-10 -9,-16 0,-7 5,-12 13,-17z" />
-    <path
-        android:fillColor="#FFD968"
-        android:fillAlpha="0.55"
-        android:pathData="M226,221c8,-6 17,-9 27,-9 9,0 17,2 23,5 -9,1 -18,4 -25,8 -8,4 -15,11 -20,19 -5,-6 -7,-14 -5,-23z" />
-
-    <!-- 眉毛：重点增强火焰感 -->
-    <path
-        android:fillColor="#D90800"
-        android:pathData="M144,161c7,-8 15,-13 24,-16 9,-3 19,-3 31,-1 10,2 20,6 30,12 -1,5 -4,9 -8,13 -8,-4 -15,-7 -22,-8 -6,-1 -12,-1 -18,0 -7,1 -13,3 -19,7 -6,3 -11,8 -15,14 -5,-1 -8,-5 -10,-10 -1,-4 1,-8 7,-11z" />
-    <path
-        android:fillColor="#D90800"
-        android:pathData="M180,144c6,2 11,7 15,14 -8,0 -14,2 -19,5 -5,2 -10,7 -15,13 -4,-4 -5,-9 -4,-16 3,-8 10,-13 23,-16z" />
-    <path
-        android:fillColor="#D90800"
-        android:pathData="M257,154c10,-12 24,-20 42,-24 15,-4 29,-4 41,-1 10,2 21,8 31,16 0,5 -2,10 -6,14 -8,-5 -15,-8 -22,-10 -7,-1 -14,-1 -22,0 -8,1 -16,4 -25,8 -8,4 -16,10 -24,18 -6,-4 -11,-9 -15,-15z" />
-    <path
-        android:fillColor="#D90800"
-        android:pathData="M307,140c12,-3 23,-2 33,2 10,4 18,11 24,20 -7,-2 -13,-3 -20,-2 -8,0 -18,3 -30,8 -2,-11 -4,-20 -7,-28z" />
-
-    <!-- 主笑脸：重点精修嘴角弧度 -->
-    <path
-        android:fillColor="#B41F14"
-        android:pathData="M144,288c4,-1 8,1 12,6 13,18 30,32 50,43 24,13 51,19 81,19 59,0 111,-26 144,-71 4,-5 8,-7 13,-6 5,2 7,6 5,12 -7,14 -17,28 -30,41 -35,37 -83,59 -133,59 -41,0 -80,-11 -112,-31 -22,-14 -38,-31 -48,-51 -2,-5 -1,-10 4,-13 5,-4 10,-7 14,-8z" />
-    <path
-        android:fillColor="#D63B20"
-        android:fillAlpha="0.28"
-        android:pathData="M159,301c32,28 71,42 115,42 39,0 76,-12 108,-35 -26,34 -73,56 -126,56 -40,0 -75,-10 -103,-29 -5,-7 -3,-19 6,-34z" />
-
-    <!-- 两侧嘴角钩 -->
-    <path
-        android:fillColor="#B41F14"
-        android:pathData="M136,276c6,-2 12,2 15,9 3,8 2,17 -4,20 -6,2 -12,-2 -16,-11 -2,-8 -1,-16 5,-18z" />
-    <path
-        android:fillColor="#B41F14"
-        android:pathData="M331,267c6,-2 12,1 16,9 3,9 2,17 -4,20 -6,2 -12,-2 -16,-10 -3,-8 -1,-16 4,-19z" />
+        android:fillAlpha="0.18"
+        android:pathData="M256,48A208,208 0,0 0,75 358A208,208 0,0 1,344 68A208,208 0,0 0,256 48" />
 
 </vector>
