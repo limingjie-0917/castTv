@@ -320,15 +320,18 @@ class CloudShareRecordsDialog(
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        val marker = TextView(context).apply {
-            text = "✓"
-            textSize = 20f
-            typeface = Typeface.DEFAULT_BOLD
-            gravity = Gravity.CENTER
-            includeFontPadding = false
-            refreshCheckbox(this, selected.contains(record.globalRecordId))
+        val marker = FrameLayout(context).apply {
+            clipChildren = false
+            clipToPadding = false
+            val checkMark = ImageView(context).apply {
+                setImageResource(R.drawable.ic_collection_manage_hand_check)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                contentDescription = "已选中"
+            }
+            addView(checkMark, FrameLayout.LayoutParams(dp(34), dp(30), Gravity.CENTER))
+            refreshCheckbox(this, checkMark, selected.contains(record.globalRecordId))
         }
-        topRow.addView(marker, LinearLayout.LayoutParams(dp(28), dp(28)).apply { marginEnd = dp(12) })
+        topRow.addView(marker, LinearLayout.LayoutParams(dp(22), dp(22)).apply { marginEnd = dp(12) })
         // 类型标签
         pageTypeTag(record.pageType)?.let { tag ->
             topRow.addView(tag, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(22)).apply { marginEnd = dp(8) })
@@ -383,18 +386,21 @@ class CloudShareRecordsDialog(
     private fun updateRowSelection(globalRecordId: String) {
         val row = rowMap[globalRecordId] as? LinearLayout ?: return
         val topRow = row.getChildAt(0) as? LinearLayout ?: return
-        val marker = topRow.getChildAt(0) as? TextView ?: return
-        marker.setPadding(0, 0, 0, 0)
-        refreshCheckbox(marker, selected.contains(globalRecordId))
+        val marker = topRow.getChildAt(0) as? FrameLayout ?: return
+        val checkMark = marker.getChildAt(0) as? ImageView ?: return
+        refreshCheckbox(marker, checkMark, selected.contains(globalRecordId))
     }
 
-    private fun refreshCheckbox(check: TextView, checked: Boolean) {
-        val borderColor = if (checked) warm else Color.WHITE
-        check.setTextColor(if (checked) warm else Color.TRANSPARENT)
-        check.background = GradientDrawable().apply {
-            cornerRadius = dp(4).toFloat()
-            setColor(Color.TRANSPARENT)
-            setStroke(dp(if (checked) 3 else 2), borderColor)
+    private fun refreshCheckbox(checkBox: FrameLayout, checkMark: ImageView, checked: Boolean) {
+        checkMark.visibility = if (checked) View.VISIBLE else View.GONE
+        checkBox.background = if (checked) {
+            null
+        } else {
+            GradientDrawable().apply {
+                cornerRadius = dp(4).toFloat()
+                setColor(Color.TRANSPARENT)
+                setStroke(dp(2), Color.WHITE)
+            }
         }
     }
 

@@ -2301,21 +2301,15 @@ class CloudSyncDialog(
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(3) })
 
-            val checkBadge = TextView(context).apply {
+            val checkBadge = ImageView(context).apply {
                 tag = "checkBadge"
-                text = "✓"
-                textSize = 12f
-                setTypeface(typeface, Typeface.BOLD)
-                gravity = Gravity.CENTER
-                setTextColor(Color.parseColor("#101217"))
-                background = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL
-                    setColor(warm)
-                }
+                setImageResource(R.drawable.ic_collection_manage_hand_check)
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                contentDescription = "已选中"
             }
-            card.addView(checkBadge, FrameLayout.LayoutParams(dp(20), dp(20), Gravity.END or Gravity.TOP).apply {
-                topMargin = dp(6)
-                rightMargin = dp(6)
+            card.addView(checkBadge, FrameLayout.LayoutParams(dp(34), dp(30), Gravity.END or Gravity.TOP).apply {
+                topMargin = dp(1)
+                rightMargin = dp(2)
             })
 
             fun refreshBadge() {

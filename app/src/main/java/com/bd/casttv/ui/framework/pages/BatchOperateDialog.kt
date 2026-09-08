@@ -212,7 +212,7 @@ class BatchOperateDialog(
             val thumb: ImageView = root.findViewById(R.id.batchThumb)
             val seq: TextView = root.findViewById(R.id.batchSeq)
             val title: TextView = root.findViewById(R.id.batchTitle)
-            val check: TextView = root.findViewById(R.id.batchCheck)
+            val check: ImageView = root.findViewById(R.id.batchCheck)
         }
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
             val v = LayoutInflater.from(parent.context).inflate(R.layout.item_batch_video, parent, false)

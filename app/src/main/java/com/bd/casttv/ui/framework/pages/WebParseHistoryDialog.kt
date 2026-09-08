@@ -220,25 +220,32 @@ class WebParseHistoryDialog(
             setPadding(dp(14), dp(10), dp(14), dp(10))
             background = rowBg(false)
         }
-        val check = TextView(context).apply {
-            text = "✓"
-            textSize = 20f
-            typeface = Typeface.DEFAULT_BOLD
-            gravity = Gravity.CENTER
-            includeFontPadding = false
+        val checkMark = ImageView(context).apply {
+            setImageResource(R.drawable.ic_collection_manage_hand_check)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            visibility = if (checked) View.VISIBLE else View.GONE
+            contentDescription = "已选中"
+        }
+        val check = FrameLayout(context).apply {
+            clipChildren = false
+            clipToPadding = false
+            addView(checkMark, FrameLayout.LayoutParams(dp(34), dp(30), Gravity.CENTER))
         }
         fun refreshCheck() {
-            val color = if (checked) warm else Color.WHITE
-            check.setTextColor(if (checked) warm else Color.TRANSPARENT)
-            check.background = GradientDrawable().apply {
-                cornerRadius = dp(4).toFloat()
-                setColor(Color.TRANSPARENT)
-                setStroke(dp(if (checked) 3 else 2), color)
+            checkMark.visibility = if (checked) View.VISIBLE else View.GONE
+            check.background = if (checked) {
+                null
+            } else {
+                GradientDrawable().apply {
+                    cornerRadius = dp(4).toFloat()
+                    setColor(Color.TRANSPARENT)
+                    setStroke(dp(2), Color.WHITE)
+                }
             }
         }
         refreshCheck()
         if (showCheckBox) {
-            root.addView(check, LinearLayout.LayoutParams(dp(28), dp(28)).apply { marginEnd = dp(12) })
+            root.addView(check, LinearLayout.LayoutParams(dp(22), dp(22)).apply { marginEnd = dp(12) })
         }
 
         val textContent = LinearLayout(context).apply {

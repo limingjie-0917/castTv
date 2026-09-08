@@ -72,17 +72,17 @@
             android:textStyle="bold"
             android:visibility="gone" />
 
-        <!-- 选中态右上角对勾 -->
-        <TextView
+        <!-- 选中态右上角对勾：复用合集管理页同款暖黄色小方框 + 外溢大对勾 -->
+        <ImageView
             android:id="@+id/batchCheck"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_width="34dp"
+            android:layout_height="30dp"
             android:layout_gravity="top|end"
-            android:layout_margin="3dp"
-            android:text="✓"
-            android:textColor="#FFD700"
-            android:textSize="16sp"
-            android:textStyle="bold"
+            android:layout_marginTop="1dp"
+            android:layout_marginEnd="2dp"
+            android:contentDescription="已选中"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_collection_manage_hand_check"
             android:visibility="gone" />
     </FrameLayout>
 

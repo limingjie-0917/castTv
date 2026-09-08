@@ -312,23 +312,28 @@ class WebParseShareDialog(
             clipToPadding = false
         }
         // 选中标记
-        val marker = TextView(context).apply {
-            if (isShared) {
+        val marker: View = if (isShared) {
+            TextView(context).apply {
                 text = "已共享"
                 textSize = 14f
                 typeface = Typeface.DEFAULT_BOLD
                 setTextColor(Color.argb(120, 255, 255, 255))
                 gravity = Gravity.CENTER_VERTICAL
-            } else {
-                text = "✓"
-                textSize = 20f
-                typeface = Typeface.DEFAULT_BOLD
-                gravity = Gravity.CENTER
-                includeFontPadding = false
-                refreshCheckbox(this, selected.contains(index))
+            }
+        } else {
+            FrameLayout(context).apply {
+                clipChildren = false
+                clipToPadding = false
+                val checkMark = ImageView(context).apply {
+                    setImageResource(R.drawable.ic_collection_manage_hand_check)
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    contentDescription = "已选中"
+                }
+                addView(checkMark, FrameLayout.LayoutParams(dp(34), dp(30), Gravity.CENTER))
+                refreshCheckbox(this, checkMark, selected.contains(index))
             }
         }
-        topRow.addView(marker, LinearLayout.LayoutParams(if (isShared) dp(56) else dp(28), if (isShared) ViewGroup.LayoutParams.WRAP_CONTENT else dp(28)).apply {
+        topRow.addView(marker, LinearLayout.LayoutParams(if (isShared) dp(56) else dp(22), if (isShared) ViewGroup.LayoutParams.WRAP_CONTENT else dp(22)).apply {
             marginEnd = dp(if (isShared) 0 else 12)
         })
         // 类型标签
@@ -384,18 +389,21 @@ class WebParseShareDialog(
         if (index >= rowViews.size) return
         val row = rowViews[index] as? LinearLayout ?: return
         val topRow = row.getChildAt(0) as? LinearLayout ?: return
-        val marker = topRow.getChildAt(0) as? TextView ?: return
-        marker.setPadding(0, 0, 0, 0)
-        refreshCheckbox(marker, selected.contains(index))
+        val marker = topRow.getChildAt(0) as? FrameLayout ?: return
+        val checkMark = marker.getChildAt(0) as? ImageView ?: return
+        refreshCheckbox(marker, checkMark, selected.contains(index))
     }
 
-    private fun refreshCheckbox(check: TextView, checked: Boolean) {
-        val borderColor = if (checked) warm else Color.WHITE
-        check.setTextColor(if (checked) warm else Color.TRANSPARENT)
-        check.background = GradientDrawable().apply {
-            cornerRadius = dp(4).toFloat()
-            setColor(Color.TRANSPARENT)
-            setStroke(dp(if (checked) 3 else 2), borderColor)
+    private fun refreshCheckbox(checkBox: FrameLayout, checkMark: ImageView, checked: Boolean) {
+        checkMark.visibility = if (checked) View.VISIBLE else View.GONE
+        checkBox.background = if (checked) {
+            null
+        } else {
+            GradientDrawable().apply {
+                cornerRadius = dp(4).toFloat()
+                setColor(Color.TRANSPARENT)
+                setStroke(dp(2), Color.WHITE)
+            }
         }
     }
 
