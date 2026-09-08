@@ -35,7 +35,7 @@ import com.bd.casttv.util.ThemeManager
  * 合集管理独立页面：
  *  - 顶部固定「← 返回」按钮 + 标题 + 当前状态；
  *  - 功能按钮行：新建合集 / 导入直播源 / 云同步 / 导入 / 导出；
- *  - 合集展示区：5 列文件夹卡片网格，卡片展示文件夹图标、视频数角标、序号、合集名称；
+ *  - 合集展示区：5 列文件夹卡片网格，卡片展示文件夹图标、序号、合集名称、视频数量副标题；
  *  - 底部行：全选 / 取消勾选 / 排序 / 删除 / 保存；
  *  - 排序模式：以最近聚焦合集为目标，方向键交换位置，OK 确认位置，BACK 退出排序模式；
  *  - 「保存」按钮：调用 [FavoritesStore.reorderCollections] 落盘后返回收藏页。
@@ -978,28 +978,19 @@ class CollectionManagePage(
         button.invalidate()
     }
 
-    private fun cardBackground(focused: Boolean, checked: Boolean, sorting: Boolean): GradientDrawable = GradientDrawable().apply {
+    private fun cardBackground(focused: Boolean, sorting: Boolean): GradientDrawable = GradientDrawable().apply {
         cornerRadius = dp(18).toFloat()
         val fill = when {
             sorting -> Color.argb(78, 255, 215, 0)
-            checked -> Color.argb(74, 245, 196, 81)
             else -> CARD_TRANSLUCENT_WHITE
         }
         setColor(fill)
         val strokeColor = when {
             sorting -> WARM
             focused -> WARM
-            checked -> Color.argb(180, 255, 215, 0)
             else -> Color.argb(60, 255, 255, 255)
         }
         setStroke(dp(if (sorting || focused) 3 else 1), strokeColor)
-    }
-
-    private fun badgeBackground(color: Int = WARM): GradientDrawable = GradientDrawable().apply {
-        shape = GradientDrawable.RECTANGLE
-        cornerRadius = dp(10).toFloat()
-        setColor(color)
-        setStroke(dp(1), Color.argb(160, 255, 255, 255))
     }
 
     private fun crayonPanelBg(alpha: Int, radiusDp: Int, strokeColor: Int): GradientDrawable = GradientDrawable().apply {
@@ -1051,18 +1042,6 @@ class CollectionManagePage(
                 contentDescription = "合集图标"
             }
             iconWrap.addView(folder, FrameLayout.LayoutParams(dp(96), dp(78), Gravity.CENTER))
-            val badge = TextView(parent.context).apply {
-                textSize = 12f
-                setTypeface(typeface, Typeface.BOLD)
-                gravity = Gravity.CENTER
-                setTextColor(Color.rgb(30, 26, 18))
-                background = badgeBackground()
-                minWidth = dp(30)
-            }
-            iconWrap.addView(badge, FrameLayout.LayoutParams(dp(34), dp(24), Gravity.TOP or Gravity.END).apply {
-                topMargin = dp(3)
-                rightMargin = dp(3)
-            })
             fileBox.addView(iconWrap, FrameLayout.LayoutParams(dp(112), dp(92), Gravity.CENTER))
             root.addView(fileBox, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
 
@@ -1078,19 +1057,16 @@ class CollectionManagePage(
             val hint = TextView(parent.context).apply {
                 textSize = 11f
                 gravity = Gravity.CENTER
-                setTextColor(Color.argb(210, 255, 232, 150))
+                setTextColor(Color.argb(178, 238, 232, 218))
                 maxLines = 1
             }
             root.addView(hint, LayoutParams(LayoutParams.MATCH_PARENT, dp(16)))
 
-            val checkMark = TextView(parent.context).apply {
-                text = "✓"
-                textSize = 13f
-                gravity = Gravity.CENTER
-                setTypeface(typeface, Typeface.BOLD)
-                setTextColor(Color.rgb(30, 26, 18))
-                background = badgeBackground(Color.rgb(124, 219, 116))
+            val checkMark = ImageView(parent.context).apply {
+                setImageResource(R.drawable.ic_collection_manage_hand_check)
+                scaleType = ImageView.ScaleType.FIT_CENTER
                 visibility = View.GONE
+                contentDescription = "已选中"
             }
             val sequenceBadge = TextView(parent.context).apply {
                 textSize = 15f
@@ -1107,12 +1083,12 @@ class CollectionManagePage(
                     topMargin = dp(4)
                     leftMargin = dp(6)
                 })
-                addView(checkMark, FrameLayout.LayoutParams(dp(28), dp(28), Gravity.TOP or Gravity.START).apply {
-                    topMargin = dp(6)
-                    leftMargin = dp(6)
+                addView(checkMark, FrameLayout.LayoutParams(dp(34), dp(30), Gravity.TOP or Gravity.END).apply {
+                    topMargin = dp(1)
+                    rightMargin = dp(2)
                 })
             }
-            return VH(wrapper, root, folder, badge, name, hint, checkMark, sequenceBadge)
+            return VH(wrapper, root, folder, name, hint, checkMark, sequenceBadge)
         }
 
         override fun onBindViewHolder(holder: VH, position: Int) {
@@ -1124,29 +1100,27 @@ class CollectionManagePage(
             item: View,
             val card: LinearLayout,
             val folder: ImageView,
-            val badge: TextView,
             val name: TextView,
             val hint: TextView,
-            val checkMark: TextView,
+            val checkMark: ImageView,
             val sequenceBadge: TextView
         ) : RecyclerView.ViewHolder(item) {
             fun bind(item: FavoritesStore.CollectionInfo, position: Int) {
                 val checked = item.id in selectedIds
                 val sorting = isSortMode && item.id == sortingCollectionId
                 val focused = itemView.hasFocus() || card.hasFocus()
-                badge.text = item.itemCount.toString()
                 sequenceBadge.text = (position + 1).toString().padStart(2, '0')
-                sequenceBadge.visibility = if (checked) View.GONE else View.VISIBLE
+                sequenceBadge.visibility = View.VISIBLE
                 name.text = item.name
-                hint.text = if (sorting) "排序中" else "OK勾选｜长按OK排序"
-                hint.visibility = if (focused || sorting) View.VISIBLE else View.INVISIBLE
-                hint.setTextColor(if (sorting) WARM else Color.argb(210, 255, 232, 150))
-                name.setTextColor(if (checked || sorting) WARM else Color.argb(238, 238, 232, 218))
+                hint.text = if (sorting) "排序中｜共${item.itemCount}集" else "共${item.itemCount}集"
+                hint.visibility = View.VISIBLE
+                hint.setTextColor(if (sorting) WARM else Color.argb(178, 238, 232, 218))
+                name.setTextColor(if (sorting) WARM else Color.argb(238, 238, 232, 218))
                 name.paint.isFakeBoldText = sorting
                 checkMark.visibility = if (checked) View.VISIBLE else View.GONE
                 folder.translationY = if (sorting || focused) -dp(4).toFloat() else 0f
                 folder.alpha = if (sorting || focused) 1f else 0.96f
-                refreshCardVisual(this, focused = focused, checked = checked, sorting = sorting)
+                refreshCardVisual(this, focused = focused, sorting = sorting)
 
                 card.setOnClickListener { toggleSelection(bindingAdapterPosition) }
                 card.setOnLongClickListener {
@@ -1162,8 +1136,10 @@ class CollectionManagePage(
                     if (p != RecyclerView.NO_POSITION && has) {
                         lastFocusedCollectionId = visibleItems[p].id
                     }
-                    refreshCardVisual(this, focused = has, checked = item.id in selectedIds, sorting = isSortMode && item.id == sortingCollectionId)
-                    hint.visibility = if (has || (isSortMode && item.id == sortingCollectionId)) View.VISIBLE else View.INVISIBLE
+                    refreshCardVisual(this, focused = has, sorting = isSortMode && item.id == sortingCollectionId)
+                    hint.visibility = View.VISIBLE
+                    hint.text = if (isSortMode && item.id == sortingCollectionId) "排序中｜共${item.itemCount}集" else "共${item.itemCount}集"
+                    hint.setTextColor(if (isSortMode && item.id == sortingCollectionId) WARM else Color.argb(178, 238, 232, 218))
                     updateHintForCurrentFocus(card)
                 }
                 card.setOnKeyListener { _, _, e ->
@@ -1174,8 +1150,8 @@ class CollectionManagePage(
         }
     }
 
-    private fun refreshCardVisual(holder: CollectionCardAdapter.VH, focused: Boolean, checked: Boolean, sorting: Boolean) {
-        holder.card.background = cardBackground(focused = focused, checked = checked, sorting = sorting)
+    private fun refreshCardVisual(holder: CollectionCardAdapter.VH, focused: Boolean, sorting: Boolean) {
+        holder.card.background = cardBackground(focused = focused, sorting = sorting)
         val scale = when {
             sorting -> 1.08f
             focused -> 1.04f

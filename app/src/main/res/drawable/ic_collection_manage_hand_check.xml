@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="36dp"
+    android:height="32dp"
+    android:viewportWidth="36"
+    android:viewportHeight="32">
+    <!-- 合集管理选中态：暖黄色小方框 + 外溢手写感大对勾 -->
+    <path
+        android:pathData="M4,8 L20,8 L20,24 L4,24 Z"
+        android:fillColor="#00000000"
+        android:strokeColor="@color/crayon_yellow"
+        android:strokeWidth="2.2"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M7,16.8 C10.2,19.8 13.1,22.8 15.4,26.2 C19.4,17.4 26.2,9.6 34,3.8"
+        android:fillColor="#00000000"
+        android:strokeColor="@color/crayon_yellow"
+        android:strokeWidth="4.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>
