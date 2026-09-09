@@ -2307,9 +2307,10 @@ class CloudSyncDialog(
                 scaleType = ImageView.ScaleType.FIT_CENTER
                 contentDescription = "已选中"
             }
-            card.addView(checkBadge, FrameLayout.LayoutParams(dp(34), dp(30), Gravity.END or Gravity.TOP).apply {
-                topMargin = dp(1)
-                rightMargin = dp(2)
+            card.addView(checkBadge, FrameLayout.LayoutParams(dp(40), dp(36), Gravity.END or Gravity.TOP).apply {
+                // 对勾为「外溢手写大对勾」风格，四周留余量避免 stroke 被裁剪
+                topMargin = dp(0)
+                rightMargin = dp(0)
             })
 
             fun refreshBadge() {

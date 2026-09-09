@@ -75,11 +75,11 @@
         <!-- 选中态右上角对勾：复用合集管理页同款暖黄色小方框 + 外溢大对勾 -->
         <ImageView
             android:id="@+id/batchCheck"
-            android:layout_width="34dp"
-            android:layout_height="30dp"
+            android:layout_width="40dp"
+            android:layout_height="36dp"
             android:layout_gravity="top|end"
-            android:layout_marginTop="1dp"
-            android:layout_marginEnd="2dp"
+            android:layout_marginTop="0dp"
+            android:layout_marginEnd="0dp"
             android:contentDescription="已选中"
             android:scaleType="fitCenter"
             android:src="@drawable/ic_collection_manage_hand_check"

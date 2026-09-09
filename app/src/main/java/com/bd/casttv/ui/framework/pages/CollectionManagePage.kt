@@ -1082,9 +1082,10 @@ class CollectionManagePage(
                     topMargin = dp(4)
                     leftMargin = dp(6)
                 })
-                addView(checkMark, FrameLayout.LayoutParams(dp(34), dp(30), Gravity.TOP or Gravity.END).apply {
-                    topMargin = dp(1)
-                    rightMargin = dp(2)
+                addView(checkMark, FrameLayout.LayoutParams(dp(40), dp(36), Gravity.TOP or Gravity.END).apply {
+                    // 对勾为「外溢手写大对勾」风格，四周留一点余量避免 stroke 被 ImageView 边界裁剪
+                    topMargin = dp(0)
+                    rightMargin = dp(0)
                 })
             }
             return VH(wrapper, root, folder, name, hint, checkMark, sequenceBadge)

@@ -328,10 +328,11 @@ class CloudShareRecordsDialog(
                 scaleType = ImageView.ScaleType.FIT_CENTER
                 contentDescription = "已选中"
             }
-            addView(checkMark, FrameLayout.LayoutParams(dp(34), dp(30), Gravity.CENTER))
+            addView(checkMark, FrameLayout.LayoutParams(dp(40), dp(36), Gravity.CENTER))
             refreshCheckbox(this, checkMark, selected.contains(record.globalRecordId))
         }
-        topRow.addView(marker, LinearLayout.LayoutParams(dp(22), dp(22)).apply { marginEnd = dp(12) })
+        // 复用「外溢大对勾」选中图标，容器需放大以避免裁剪
+        topRow.addView(marker, LinearLayout.LayoutParams(dp(40), dp(36)).apply { marginEnd = dp(12) })
         // 类型标签
         pageTypeTag(record.pageType)?.let { tag ->
             topRow.addView(tag, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(22)).apply { marginEnd = dp(8) })

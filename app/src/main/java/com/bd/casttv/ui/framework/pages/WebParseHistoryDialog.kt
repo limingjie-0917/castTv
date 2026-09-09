@@ -229,7 +229,7 @@ class WebParseHistoryDialog(
         val check = FrameLayout(context).apply {
             clipChildren = false
             clipToPadding = false
-            addView(checkMark, FrameLayout.LayoutParams(dp(34), dp(30), Gravity.CENTER))
+            addView(checkMark, FrameLayout.LayoutParams(dp(40), dp(36), Gravity.CENTER))
         }
         fun refreshCheck() {
             checkMark.visibility = if (checked) View.VISIBLE else View.GONE
@@ -245,7 +245,8 @@ class WebParseHistoryDialog(
         }
         refreshCheck()
         if (showCheckBox) {
-            root.addView(check, LinearLayout.LayoutParams(dp(22), dp(22)).apply { marginEnd = dp(12) })
+            // 复用「外溢大对勾」选中图标，需要比常规 22dp checkbox 更大的容器，否则容易被裁剪
+            root.addView(check, LinearLayout.LayoutParams(dp(40), dp(36)).apply { marginEnd = dp(12) })
         }
 
         val textContent = LinearLayout(context).apply {

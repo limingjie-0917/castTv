@@ -329,7 +329,7 @@ class WebParseShareDialog(
                     scaleType = ImageView.ScaleType.FIT_CENTER
                     contentDescription = "已选中"
                 }
-                addView(checkMark, FrameLayout.LayoutParams(dp(34), dp(30), Gravity.CENTER))
+                addView(checkMark, FrameLayout.LayoutParams(dp(40), dp(36), Gravity.CENTER))
                 refreshCheckbox(this, checkMark, selected.contains(index))
             }
         }
