@@ -1543,17 +1543,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                                 adapterName = actualAdapter.adapterInfo.name,
                                 adapterId = actualAdapter.adapterInfo.id
                             )
-                            store.saveParseHistory(
-                                title = listSiteInfo!!.title,
-                                url = listSiteInfo!!.url,
-                                pageType = "list",
-                                siteTitle = listSiteInfo!!.siteTitle,
-                                frameworkType = listSiteInfo!!.frameworkType,
-                                adapterName = listSiteInfo!!.adapterName,
-                                adapterId = listSiteInfo!!.adapterId,
-                                recordId = WebParseStore.generateRecordId(domUrl, "list"),
-                                fetchMode = parseContext?.fetchMode?.name ?: "HTTP"
-                            )
+                            // WebView 模式不自动保存到收藏，用户可通过「收藏网站」按钮手动收藏
                             renderList(listMovies)
                             1
                         } else {
@@ -1622,17 +1612,7 @@ class WebParsePage(context: Context) : BasePage(context), WebParseRequestBus.Lis
                                 adapterName = if (usedBoundAdapter) adapterForMeta.name else (actualAdapter?.javaClass?.simpleName ?: "Generic"),
                                 adapterId = if (usedBoundAdapter) adapterForMeta.id else (actualAdapter?.javaClass?.simpleName ?: "generic")
                             )
-                            store.saveParseHistory(
-                                title = detailParsed.title,
-                                url = domUrl,
-                                pageType = "detail",
-                                siteTitle = "",
-                                frameworkType = detailSiteInfo!!.frameworkType,
-                                adapterName = detailSiteInfo!!.adapterName,
-                                adapterId = detailSiteInfo!!.adapterId,
-                                recordId = WebParseStore.generateRecordId(domUrl, "detail"),
-                                fetchMode = parseContext?.fetchMode?.name ?: "HTTP"
-                            )
+                            // WebView 模式不自动保存到收藏，用户可通过「收藏网站」按钮手动收藏
                             render()
                             maybeWritebackCartoon(detailParsed)
                             1

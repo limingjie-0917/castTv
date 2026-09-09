@@ -423,6 +423,7 @@ class HomePage(context: Context) : BasePage(context), PlaybackController.StateOb
         cards += ShortcutItem("history", "历史记录", R.drawable.ic_more_history)
         cards += ShortcutItem("diagnostics", "网络诊断", R.drawable.ic_more_diagnostics)
         cards += ShortcutItem("help", "帮助", R.drawable.ic_more_help)
+        cards += ShortcutItem(Settings.PAGE_ID_CONTENT_DOWNLOAD, "内容下载", R.drawable.ic_more_content_download)
         cards += ShortcutItem("settings", "设置", R.drawable.ic_more_settings)
         return cards
     }

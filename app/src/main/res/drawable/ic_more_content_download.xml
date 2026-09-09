@@ -1,0 +1,32 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- 圆角方形背景：蓝色渐变底 -->
+    <path
+        android:pathData="M7,2 h10 a5,5 0 0 1 5,5 v10 a5,5 0 0 1 -5,5 h-10 a5,5 0 0 1 -5,-5 v-10 a5,5 0 0 1 5,-5 z"
+        android:fillColor="#3A86FF" />
+
+    <!-- 顶部渐变高光层 -->
+    <path
+        android:pathData="M7,2 h10 a5,5 0 0 1 5,5 v6 h-20 v-6 a5,5 0 0 1 5,-5 z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.28" />
+
+    <!-- 底部托盘（U 形） -->
+    <path
+        android:pathData="M6,17 h12 v1.5 a1.5,1.5 0 0 1 -1.5,1.5 h-9 a1.5,1.5 0 0 1 -1.5,-1.5 z"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.95" />
+
+    <!-- 向下箭头主体 -->
+    <path
+        android:pathData="M12,5.5 L12,15 M8.5,11.5 L12,15 L15.5,11.5"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.9"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="@android:color/transparent" />
+</vector>

@@ -514,6 +514,12 @@ class PlayerActivity : AppCompatActivity() {
         activePlayerView.player = exo
         exo.addListener(playerListener)
 
+        // 如果当前 URI 来自 intent（用户主动从收藏/历史等入口点击播放），
+        // 先同步更新 PlaybackController 的全局状态，避免 registerCommandCallback 触发
+        // 的 flushPending 用旧的投屏 URI（如抖音投屏）覆盖当前要播放的 URI。
+        if (currentUri.isNotBlank()) {
+            PlaybackController.setCurrentUriAndTitle(currentUri, title, sourceHint)
+        }
         PlaybackController.registerCommandCallback(commandCallback)
 
         if (currentUri.isNotBlank()) {

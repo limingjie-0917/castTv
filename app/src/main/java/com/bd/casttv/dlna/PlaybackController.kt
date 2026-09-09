@@ -380,6 +380,22 @@ object PlaybackController {
 
     // ---------- registration ----------
 
+    /**
+     * 由 PlayerActivity 在主动启动（从收藏/历史/网页解析等入口点击播放）时调用，
+     * 同步更新 PlaybackController 的全局 URI/标题/来源，避免后续 registerCommandCallback
+     * 触发的 flushPending 用旧的投屏 URI 覆盖当前要播放的内容。
+     */
+    fun setCurrentUriAndTitle(uri: String, title: String, hint: String = "") {
+        synchronized(lock) {
+            currentUri = uri
+            currentTitle = title
+            sourceHint = hint
+            currentIsDouyinCast = false
+            positionMs = 0
+            transportState = TransportState.TRANSITIONING
+        }
+    }
+
     fun registerCommandCallback(cb: CommandCallback?) {
         synchronized(lock) { command = cb }
         // Replay the latest desired state onto a freshly-attached player so a

@@ -12,6 +12,7 @@
     <!-- Keep the DLNA renderer alive in the background -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
@@ -119,6 +120,10 @@
             android:foregroundServiceType="mediaPlayback" />
 
         <!-- Android TV DreamService：系统屏保海报墙。 -->
+        <service
+            android:name=".douyin.DouyinDownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
         <service
             android:name=".screensaver.PosterDreamService"
             android:exported="true"

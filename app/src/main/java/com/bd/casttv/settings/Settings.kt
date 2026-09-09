@@ -128,6 +128,11 @@ class Settings(context: Context) {
         get() = prefs.getBoolean(KEY_BOOT_AUTO_START, false)
         set(value) = prefs.edit().putBoolean(KEY_BOOT_AUTO_START, value).apply()
 
+    /** 内容下载根路径（收藏视频下载使用）。为空时使用默认路径。 */
+    var contentDownloadRootPath: String
+        get() = prefs.getString(KEY_CONTENT_DOWNLOAD_ROOT_PATH, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_CONTENT_DOWNLOAD_ROOT_PATH, value).apply()
+
     /**
      * 视频渲染面是否使用 SurfaceView。默认 false（即使用 TextureView）。
      *
@@ -232,11 +237,28 @@ class Settings(context: Context) {
 
     /** Ordered page ids for the new full-screen page architecture. */
     var pageOrder: List<String>
-        get() = (prefs.getString(KEY_PAGE_ORDER, null)
-            ?.split(',')
-            ?.map { it.trim() }
-            ?.filter { it.isNotEmpty() }
-            ?.takeIf { it.isNotEmpty() }) ?: DEFAULT_PAGE_ORDER
+        get() {
+            val saved = prefs.getString(KEY_PAGE_ORDER, null)
+                ?.split(',')
+                ?.map { it.trim() }
+                ?.filter { it.isNotEmpty() }
+                ?.takeIf { it.isNotEmpty() }
+                ?: return DEFAULT_PAGE_ORDER
+            // 将 DEFAULT_PAGE_ORDER 中新增的页面追加到末尾（升级兼容）
+            val result = saved.toMutableList()
+            for (pageId in DEFAULT_PAGE_ORDER) {
+                if (pageId !in result) {
+                    // 插入到 settings 之前（保持设置在最后）
+                    val settingsIdx = result.indexOf("settings")
+                    if (settingsIdx >= 0) {
+                        result.add(settingsIdx, pageId)
+                    } else {
+                        result.add(pageId)
+                    }
+                }
+            }
+            return result
+        }
         set(value) = prefs.edit().putString(KEY_PAGE_ORDER, value.joinToString(",")).apply()
 
     /** Disabled page ids for the new full-screen page architecture. */
@@ -254,6 +276,7 @@ class Settings(context: Context) {
         private const val KEY_BOOT_AUTO_START = "boot_auto_start"
         private const val KEY_USE_SURFACE_VIEW = "use_surface_view"
         private const val KEY_SCREENSAVER_STYLE = "screensaver_style"
+        private const val KEY_CONTENT_DOWNLOAD_ROOT_PATH = "content_download_root_path"
         private const val KEY_INDICATOR_SCALE = "indicator_scale"
         private const val KEY_TV_MOBILE_MODE = "tv_mobile_mode"
         private const val KEY_PHONE_MOBILE_MODE = "phone_mobile_mode"
@@ -284,6 +307,7 @@ class Settings(context: Context) {
         const val DEFAULT_DOUYIN_HISTORY_THRESHOLD_SEC = 3
         const val PAGE_ID_DOUYIN_CAST = "douyin_cast"
         const val PAGE_ID_WEB_PARSE = "web_parse"
+        const val PAGE_ID_CONTENT_DOWNLOAD = "content_download"
 
         fun normalizeDeviceName(value: String?): String {
             return value
@@ -330,6 +354,7 @@ class Settings(context: Context) {
             "history",
             "diagnostics",
             "help",
+            PAGE_ID_CONTENT_DOWNLOAD,
             "settings"
         )
     }

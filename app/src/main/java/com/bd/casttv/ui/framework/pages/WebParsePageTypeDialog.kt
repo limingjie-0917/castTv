@@ -110,11 +110,7 @@ class WebParsePageTypeDialog(
                 )
                 btn.background = GradientDrawable().apply {
                     cornerRadius = dp(8).toFloat()
-                    if (checked) {
-                        setColor(Color.argb(70, Color.red(accent), Color.green(accent), Color.blue(accent)))
-                    } else {
-                        setColor(Color.argb(18, 255, 255, 255))
-                    }
+                    setColor(Color.TRANSPARENT)
                     ThemeManager.strokeFor(context, btn.hasFocus()).let { setStroke(dp(it.first), it.second) }
                 }
             }
@@ -196,21 +192,13 @@ class WebParsePageTypeDialog(
             scaleType = ImageView.ScaleType.CENTER_CROP
             foreground = context.getDrawable(R.drawable.fg_sticker_circle_border)
         }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(12) })
-        addView(object : TextView(context) {
-            init {
-                text = "选择网页类型"
-                textSize = 21f
-                typeface = Typeface.DEFAULT_BOLD
-                gravity = Gravity.CENTER_VERTICAL
-                setShadowLayer(2f, 0f, 1f, Color.argb(130, 0, 0, 0))
-            }
-            override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-                super.onSizeChanged(w, h, oldw, oldh)
-                if (w <= 0 || h <= 0) return
-                val grad = ThemeManager.dialogTitleGradient(context)
-                if (grad.isEmpty()) return
-                paint.shader = LinearGradient(0f, h * 0.5f, w.toFloat(), h * 0.5f, grad, null, Shader.TileMode.CLAMP)
-            }
+        addView(TextView(context).apply {
+            text = "选择网页类型"
+            textSize = 21f
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER_VERTICAL
+            setTextColor(Color.rgb(255, 215, 0))
+            setShadowLayer(2f, 0f, 1f, Color.argb(130, 0, 0, 0))
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
     }
 
