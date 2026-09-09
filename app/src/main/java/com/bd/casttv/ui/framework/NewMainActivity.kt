@@ -44,7 +44,6 @@ import com.bd.casttv.ui.ClippedImageView
 import com.bd.casttv.ui.CustomDockIconPresets
 import com.bd.casttv.util.ThemeManager
 import com.bd.casttv.ui.framework.pages.CartoonCityPage
-import com.bd.casttv.ui.framework.pages.ContentDownloadPage
 import com.bd.casttv.ui.framework.pages.CustomTabPage
 import com.bd.casttv.ui.framework.pages.DiagnosticsPage
 import com.bd.casttv.ui.framework.pages.DouyinCastPage
@@ -197,15 +196,7 @@ class NewMainActivity : AppCompatActivity(), SettingsChangeBus.Listener, PageCon
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        // 转发给当前页面处理
-        (currentPage() as? com.bd.casttv.ui.framework.pages.DouyinCastPage)?.onRequestPermissionsResult(
-            requestCode,
-            grantResults
-        )
-        (currentPage() as? com.bd.casttv.ui.framework.pages.ContentDownloadPage)?.onRequestPermissionsResult(
-            requestCode,
-            grantResults
-        )
+        // 下载相关功能已移除：不再需要向页面转发存储权限回调。
     }
 
     private fun handlePlayerReturnIntent(intent: Intent?) {
@@ -871,7 +862,6 @@ class NewMainActivity : AppCompatActivity(), SettingsChangeBus.Listener, PageCon
         pageFactories["diagnostics"] = { DiagnosticsPage(this) }
         pageFactories["help"] = { HelpPage(this) }
         pageFactories["settings"] = { SettingsPage(this) }
-        pageFactories[Settings.PAGE_ID_CONTENT_DOWNLOAD] = { ContentDownloadPage(this) }
         pageInstances.keys.filter { it !in pageFactories }.forEach { detachAndRemovePageInstance(it) }
     }
 
@@ -896,7 +886,6 @@ class NewMainActivity : AppCompatActivity(), SettingsChangeBus.Listener, PageCon
         pageId == "history" -> PageContainer.PageSpec(pageId, "历史播放", R.drawable.ic_history_tv) { getPage(pageId) }
         pageId == "diagnostics" -> PageContainer.PageSpec(pageId, "网络诊断", R.drawable.ic_dock_diagnostics) { getPage(pageId) }
         pageId == "help" -> PageContainer.PageSpec(pageId, "帮助", R.drawable.ic_help_tv) { getPage(pageId) }
-        pageId == Settings.PAGE_ID_CONTENT_DOWNLOAD -> PageContainer.PageSpec(pageId, "内容下载", R.drawable.ic_watch_later) { getPage(pageId) }
         pageId == "settings" -> PageContainer.PageSpec(pageId, "设置", R.drawable.ic_settings_tv) { getPage(pageId) }
         else -> PageContainer.PageSpec(pageId, pageId, 0) { getPage(pageId) }
     }

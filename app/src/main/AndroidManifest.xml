@@ -121,10 +121,6 @@
 
         <!-- Android TV DreamService：系统屏保海报墙。 -->
         <service
-            android:name=".douyin.DouyinDownloadService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
-        <service
             android:name=".screensaver.PosterDreamService"
             android:exported="true"
             android:permission="android.permission.BIND_DREAM_SERVICE">

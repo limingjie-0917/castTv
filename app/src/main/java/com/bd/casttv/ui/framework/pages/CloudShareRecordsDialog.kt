@@ -321,18 +321,13 @@ class CloudShareRecordsDialog(
             gravity = Gravity.CENTER_VERTICAL
         }
         val marker = FrameLayout(context).apply {
-            clipChildren = false
-            clipToPadding = false
             val checkMark = ImageView(context).apply {
-                setImageResource(R.drawable.ic_collection_manage_hand_check)
                 scaleType = ImageView.ScaleType.FIT_CENTER
-                contentDescription = "已选中"
             }
-            addView(checkMark, FrameLayout.LayoutParams(dp(40), dp(36), Gravity.CENTER))
+            addView(checkMark, FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER))
             refreshCheckbox(this, checkMark, selected.contains(record.globalRecordId))
         }
-        // 复用「外溢大对勾」选中图标，容器需放大以避免裁剪
-        topRow.addView(marker, LinearLayout.LayoutParams(dp(40), dp(36)).apply { marginEnd = dp(12) })
+        topRow.addView(marker, LinearLayout.LayoutParams(dp(22), dp(22)).apply { marginEnd = dp(10) })
         // 类型标签
         pageTypeTag(record.pageType)?.let { tag ->
             topRow.addView(tag, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(22)).apply { marginEnd = dp(8) })
@@ -393,16 +388,11 @@ class CloudShareRecordsDialog(
     }
 
     private fun refreshCheckbox(checkBox: FrameLayout, checkMark: ImageView, checked: Boolean) {
-        checkMark.visibility = if (checked) View.VISIBLE else View.GONE
-        checkBox.background = if (checked) {
-            null
-        } else {
-            GradientDrawable().apply {
-                cornerRadius = dp(4).toFloat()
-                setColor(Color.TRANSPARENT)
-                setStroke(dp(2), Color.WHITE)
-            }
-        }
+        checkBox.background = null
+        checkMark.setImageResource(
+            if (checked) R.drawable.ic_warm_radio_checked else R.drawable.ic_warm_radio_unchecked
+        )
+        checkMark.contentDescription = if (checked) "已选中" else "未选中"
     }
 
     private fun updateGroupCountTip(groupKey: String) {

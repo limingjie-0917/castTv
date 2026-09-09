@@ -33,9 +33,6 @@ import com.bd.casttv.dlna.DlnaRendererService
 import com.bd.casttv.dlna.LanDeviceScanner
 import com.bd.casttv.dlna.PlaybackController
 import com.bd.casttv.douyin.DouyinCastHistoryStore
-import com.bd.casttv.douyin.DouyinDownloadManager
-import com.bd.casttv.douyin.DouyinDownloadService
-import com.bd.casttv.douyin.DouyinDownloadStore
 import com.bd.casttv.player.PlayerActivity
 import com.bd.casttv.settings.CustomDouyinDeviceGroupsStore
 import com.bd.casttv.settings.DouyinDeviceGroup
@@ -92,7 +89,6 @@ class DouyinCastPage(context: Context) : BasePage(context) {
 
     private companion object {
         const val TIMELINE_THUMB_TAG = "douyin_timeline_thumb"
-        private const val STORAGE_PERMISSION_REQ_CODE = 10001
     }
 
     init {
@@ -181,7 +177,6 @@ class DouyinCastPage(context: Context) : BasePage(context) {
         focusFirstDeviceGroup()
         handler.removeCallbacks(refresh)
         handler.postDelayed(refresh, 3000L)
-        DouyinDownloadManager.addListener(downloadListener)
     }
 
     override fun focusToFirstContent(): Boolean {
@@ -191,56 +186,6 @@ class DouyinCastPage(context: Context) : BasePage(context) {
 
     override fun onLeave() {
         handler.removeCallbacks(refresh)
-        DouyinDownloadManager.removeListener(downloadListener)
-    }
-
-    private val downloadListener = object : DouyinDownloadManager.Listener {
-        override fun onTaskProgress(task: DouyinDownloadStore.Task) {
-            updateDownloadButton(task)
-        }
-        override fun onTaskCompleted(task: DouyinDownloadStore.Task) {
-            updateDownloadButton(task)
-        }
-        override fun onTaskFailed(task: DouyinDownloadStore.Task) {
-            updateDownloadButton(task)
-        }
-        override fun onTaskAdded(task: DouyinDownloadStore.Task) {
-            updateDownloadButton(task)
-        }
-        override fun onTaskRemoved(taskId: String) {
-            renderTimeline()
-        }
-    }
-
-    private fun updateDownloadButton(task: DouyinDownloadStore.Task) {
-        // 找到对应 ViewHolder 并更新按钮
-        val adapter = timelineAdapter
-        for (i in 0 until adapter.itemCount) {
-            val vh = timelineRecycler.findViewHolderForAdapterPosition(i) as? TimelineViewHolder ?: continue
-            val item = adapter.items.getOrNull(i) ?: continue
-            if (item.uri == task.uri) {
-                val card = vh.itemView.findViewWithTag<View>("download_btn_tag")
-                if (card is TextView) {
-                    card.text = downloadButtonText(task)
-                }
-                break
-            }
-        }
-    }
-
-    private fun downloadButtonText(task: DouyinDownloadStore.Task?): String {
-        if (task == null) return "⬇ 下载"
-        return when (task.status) {
-            DouyinDownloadStore.Status.PENDING -> "↓ 等待中"
-            DouyinDownloadStore.Status.DOWNLOADING -> {
-                if (task.totalBytes > 0) "↓ ${task.progress}%" else "↓ 下载中…"
-            }
-            DouyinDownloadStore.Status.COMPLETED -> {
-                val file = java.io.File(task.localPath)
-                if (file.exists()) "▶ 本地播放" else "⟳ 重新下载"
-            }
-            DouyinDownloadStore.Status.FAILED -> "⟳ 重试"
-        }
     }
 
     fun refreshTimelineAfterPlayerReturn() {
@@ -1371,13 +1316,8 @@ class DouyinCastPage(context: Context) : BasePage(context) {
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
 
         val buttons = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-        val playBtn = buttonView(if (highlighted) "▶ 全屏播放" else "▶ 播放") { launchPlayer(uri, title) }
-        val downloadTask = DouyinDownloadStore.getTaskByUri(context, uri)
-        val downloadBtn = buttonView(downloadButtonText(downloadTask), rightToRoot = true) {
-            onDownloadClicked(uri, title, downloadTask)
-        }.apply { tag = "download_btn_tag" }
-        buttons.addView(playBtn, LinearLayout.LayoutParams(0, dpi(38), 1f).apply { rightMargin = dpi(6) })
-        buttons.addView(downloadBtn, LinearLayout.LayoutParams(0, dpi(38), 1f).apply { rightMargin = if (showDelete) dpi(6) else 0 })
+        val playBtn = buttonView(if (highlighted) "▶ 全屏播放" else "▶ 播放", rightToRoot = !showDelete) { launchPlayer(uri, title) }
+        buttons.addView(playBtn, LinearLayout.LayoutParams(0, dpi(38), 1f).apply { rightMargin = if (showDelete) dpi(6) else 0 })
         if (showDelete) {
             val delBtn = buttonView("🗑 删除", danger = true, rightToRoot = true) { onDelete() }
             buttons.addView(delBtn, LinearLayout.LayoutParams(0, dpi(38), 1f))
@@ -1572,118 +1512,6 @@ class DouyinCastPage(context: Context) : BasePage(context) {
             }
             context.startActivity(intent)
         } catch (_: Throwable) { toastMsg("无法打开播放器") }
-    }
-
-    /** 下载按钮点击处理 */
-    private fun onDownloadClicked(uri: String, title: String, task: DouyinDownloadStore.Task?) {
-        if (task != null) {
-            when (task.status) {
-                DouyinDownloadStore.Status.COMPLETED -> {
-                    // 本地播放
-                    val file = java.io.File(task.localPath)
-                    if (file.exists()) {
-                        launchPlayer("file://${task.localPath}", task.title)
-                    } else {
-                        // 文件已删除，重新下载
-                        startDownload(uri, title)
-                    }
-                }
-                DouyinDownloadStore.Status.FAILED -> {
-                    // 重试
-                    DouyinDownloadManager.retry(context, task.id)
-                    DouyinDownloadService.start(context)
-                    toastMsg("已重新加入下载队列")
-                }
-                DouyinDownloadStore.Status.PENDING, DouyinDownloadStore.Status.DOWNLOADING -> {
-                    // 下载中/等待中，点击无操作或提示
-                    toastMsg("正在下载中…")
-                }
-            }
-            return
-        }
-        // 没有任务，开始下载
-        startDownload(uri, title)
-    }
-
-    private fun startDownload(uri: String, title: String) {
-        if (uri.isBlank()) { toastMsg("下载地址无效"); return }
-        // 检查存储权限
-        if (!hasStoragePermission()) {
-            pendingDownloadUri = uri
-            pendingDownloadTitle = title
-            requestStoragePermission()
-            return
-        }
-        doStartDownload(uri, title)
-    }
-
-    private fun doStartDownload(uri: String, title: String) {
-        val artworkUrl = ""
-        val artworkPath = ""
-        val task = DouyinDownloadManager.enqueueDouyin(context, uri, title, artworkUrl, artworkPath)
-        DouyinDownloadService.start(context)
-        toastMsg(
-            when (task.status) {
-                DouyinDownloadStore.Status.PENDING -> "已加入下载队列"
-                DouyinDownloadStore.Status.DOWNLOADING -> "开始下载"
-                else -> "下载任务已创建"
-            }
-        )
-        renderTimeline()
-    }
-
-    private var pendingDownloadUri: String? = null
-    private var pendingDownloadTitle: String? = null
-
-    private fun hasStoragePermission(): Boolean {
-        val ctx = context.applicationContext
-        val sdk = android.os.Build.VERSION.SDK_INT
-        return when {
-            sdk >= 33 -> true // Android 13+ 不需要 WRITE_EXTERNAL_STORAGE
-            sdk >= 29 -> { // Android 10-12，使用分区存储
-                val result = ctx.checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE)
-                result == android.content.pm.PackageManager.PERMISSION_GRANTED
-            }
-            else -> {
-                val read = ctx.checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE)
-                val write = ctx.checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                read == android.content.pm.PackageManager.PERMISSION_GRANTED &&
-                        write == android.content.pm.PackageManager.PERMISSION_GRANTED
-            }
-        }
-    }
-
-    private fun requestStoragePermission() {
-        val activity = context as? android.app.Activity ?: return
-        val sdk = android.os.Build.VERSION.SDK_INT
-        val permissions = when {
-            sdk >= 33 -> return // 不需要权限
-            sdk >= 29 -> arrayOf(android.Manifest.permission.READ_EXTERNAL_STORAGE)
-            else -> arrayOf(
-                android.Manifest.permission.READ_EXTERNAL_STORAGE,
-                android.Manifest.permission.WRITE_EXTERNAL_STORAGE
-            )
-        }
-        activity.requestPermissions(permissions, STORAGE_PERMISSION_REQ_CODE)
-    }
-
-    fun onRequestPermissionsResult(requestCode: Int, grantResults: IntArray) {
-        if (requestCode != STORAGE_PERMISSION_REQ_CODE) return
-        val granted = grantResults.isNotEmpty() &&
-                grantResults.all { it == android.content.pm.PackageManager.PERMISSION_GRANTED }
-        if (granted) {
-            val uri = pendingDownloadUri
-            val title = pendingDownloadTitle
-            pendingDownloadUri = null
-            pendingDownloadTitle = null
-            if (!uri.isNullOrBlank() && !title.isNullOrBlank()) {
-                doStartDownload(uri, title)
-            }
-        } else {
-            toastMsg("存储权限被拒绝，无法下载")
-            pendingDownloadUri = null
-            pendingDownloadTitle = null
-        }
     }
 
     private fun triggerDlnaIdentityRestart() {

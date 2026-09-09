@@ -128,11 +128,6 @@ class Settings(context: Context) {
         get() = prefs.getBoolean(KEY_BOOT_AUTO_START, false)
         set(value) = prefs.edit().putBoolean(KEY_BOOT_AUTO_START, value).apply()
 
-    /** 内容下载根路径（收藏视频下载使用）。为空时使用默认路径。 */
-    var contentDownloadRootPath: String
-        get() = prefs.getString(KEY_CONTENT_DOWNLOAD_ROOT_PATH, "") ?: ""
-        set(value) = prefs.edit().putString(KEY_CONTENT_DOWNLOAD_ROOT_PATH, value).apply()
-
     /**
      * 视频渲染面是否使用 SurfaceView。默认 false（即使用 TextureView）。
      *
@@ -276,7 +271,6 @@ class Settings(context: Context) {
         private const val KEY_BOOT_AUTO_START = "boot_auto_start"
         private const val KEY_USE_SURFACE_VIEW = "use_surface_view"
         private const val KEY_SCREENSAVER_STYLE = "screensaver_style"
-        private const val KEY_CONTENT_DOWNLOAD_ROOT_PATH = "content_download_root_path"
         private const val KEY_INDICATOR_SCALE = "indicator_scale"
         private const val KEY_TV_MOBILE_MODE = "tv_mobile_mode"
         private const val KEY_PHONE_MOBILE_MODE = "phone_mobile_mode"
@@ -307,7 +301,6 @@ class Settings(context: Context) {
         const val DEFAULT_DOUYIN_HISTORY_THRESHOLD_SEC = 3
         const val PAGE_ID_DOUYIN_CAST = "douyin_cast"
         const val PAGE_ID_WEB_PARSE = "web_parse"
-        const val PAGE_ID_CONTENT_DOWNLOAD = "content_download"
 
         fun normalizeDeviceName(value: String?): String {
             return value
@@ -354,7 +347,6 @@ class Settings(context: Context) {
             "history",
             "diagnostics",
             "help",
-            PAGE_ID_CONTENT_DOWNLOAD,
             "settings"
         )
     }

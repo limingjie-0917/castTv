@@ -378,7 +378,9 @@ class CustomDockTabPage(
         if (activePlayer != null && activeChannel != null && activeSource != null && previewingChannelKey == activeChannel.channelKey && previewingSourceId == activeSource.sourceId) {
             binding?.let { b ->
                 val activeView = if (useSurfaceView) b.previewPlayerView else b.previewPlayerViewTexture
-                if (activeView.player !== activePlayer) activeView.player = activePlayer
+                // 全屏播放期间会释放预览播放器的 Surface；返回时强制重新绑定，恢复视频渲染。
+                activeView.player = null
+                activeView.player = activePlayer
                 b.progressPreviewLoading.visibility = View.GONE
                 b.textPreviewStatus.visibility = View.GONE
                 b.textPreviewStatus.translationY = 0f
@@ -386,6 +388,9 @@ class CustomDockTabPage(
             }
             try {
                 activePlayer.volume = 1f
+                if (activePlayer.playbackState == Player.STATE_IDLE || activePlayer.playbackState == Player.STATE_ENDED) {
+                    activePlayer.prepare()
+                }
                 activePlayer.playWhenReady = true
                 activePlayer.play()
             } catch (_: Throwable) {
@@ -464,7 +469,9 @@ class CustomDockTabPage(
         if (healthController.isDetecting(source.item.uri)) {
             Toast.makeText(inflater.context, "当前频道正在预检中，检测完成后播放会更稳定，也可以继续尝试播放～", Toast.LENGTH_SHORT).show()
         }
-        PreviewPlayerHolder.pauseForFullscreen()
+        // 全屏期间彻底挂起预览任务并释放视频 Surface，避免后台重试与全屏播放器争抢解码资源。
+        pausePreviewInternal(cancelHealthDetection = true)
+        PreviewPlayerHolder.pauseForFullscreen(releaseSurface = true)
         onOpenFullscreen(source.item)
     }
 

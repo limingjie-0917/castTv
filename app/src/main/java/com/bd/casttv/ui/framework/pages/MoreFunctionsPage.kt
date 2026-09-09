@@ -254,7 +254,6 @@ class MoreFunctionsPage(
         cards += FunctionCard("history", "历史记录", intArrayOf(Color.rgb(168, 142, 255), Color.rgb(82, 77, 190)), Color.rgb(42, 53, 80), R.drawable.ic_more_history)
         cards += FunctionCard("diagnostics", "网络诊断", intArrayOf(Color.rgb(102, 210, 255), Color.rgb(0, 114, 188)), Color.rgb(92, 42, 26), R.drawable.ic_more_diagnostics)
         cards += FunctionCard("help", "帮助", intArrayOf(Color.rgb(118, 220, 132), Color.rgb(50, 145, 82)), Color.rgb(42, 26, 92), R.drawable.ic_more_help)
-        cards += FunctionCard(Settings.PAGE_ID_CONTENT_DOWNLOAD, "内容下载", intArrayOf(Color.rgb(90, 150, 255), Color.rgb(40, 90, 200)), Color.rgb(20, 40, 80), R.drawable.ic_more_content_download)
         cards += FunctionCard("settings", "设置", intArrayOf(Color.rgb(82, 118, 190), Color.rgb(28, 48, 96)), Color.rgb(42, 53, 64), R.drawable.ic_more_settings)
         return cards
     }

@@ -627,7 +627,7 @@ class RecommendDialog(
             val thumb: ImageView = root.findViewById(R.id.batchThumb)
             val seq: TextView = root.findViewById(R.id.batchSeq)
             val title: TextView = root.findViewById(R.id.batchTitle)
-            val check: TextView = root.findViewById(R.id.batchCheck)
+            val check: ImageView = root.findViewById(R.id.batchCheck)
             val recommendedBadge: TextView = root.findViewById(R.id.batchRecommendedBadge)
         }
 

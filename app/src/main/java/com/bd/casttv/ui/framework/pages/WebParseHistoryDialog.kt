@@ -221,32 +221,21 @@ class WebParseHistoryDialog(
             background = rowBg(false)
         }
         val checkMark = ImageView(context).apply {
-            setImageResource(R.drawable.ic_collection_manage_hand_check)
             scaleType = ImageView.ScaleType.FIT_CENTER
-            visibility = if (checked) View.VISIBLE else View.GONE
-            contentDescription = "已选中"
+            contentDescription = if (checked) "已选中" else "未选中"
         }
         val check = FrameLayout(context).apply {
-            clipChildren = false
-            clipToPadding = false
-            addView(checkMark, FrameLayout.LayoutParams(dp(40), dp(36), Gravity.CENTER))
+            addView(checkMark, FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER))
         }
         fun refreshCheck() {
-            checkMark.visibility = if (checked) View.VISIBLE else View.GONE
-            check.background = if (checked) {
-                null
-            } else {
-                GradientDrawable().apply {
-                    cornerRadius = dp(4).toFloat()
-                    setColor(Color.TRANSPARENT)
-                    setStroke(dp(2), Color.WHITE)
-                }
-            }
+            checkMark.setImageResource(
+                if (checked) R.drawable.ic_warm_radio_checked else R.drawable.ic_warm_radio_unchecked
+            )
+            checkMark.contentDescription = if (checked) "已选中" else "未选中"
         }
         refreshCheck()
         if (showCheckBox) {
-            // 复用「外溢大对勾」选中图标，需要比常规 22dp checkbox 更大的容器，否则容易被裁剪
-            root.addView(check, LinearLayout.LayoutParams(dp(40), dp(36)).apply { marginEnd = dp(12) })
+            root.addView(check, LinearLayout.LayoutParams(dp(22), dp(22)).apply { marginEnd = dp(10) })
         }
 
         val textContent = LinearLayout(context).apply {
