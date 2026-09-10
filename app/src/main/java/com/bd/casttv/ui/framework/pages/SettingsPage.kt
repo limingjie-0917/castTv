@@ -460,6 +460,7 @@ class SettingsPage(context: Context) : BasePage(context) {
 
         fun pageLabel(id: String): String = when (id) {
             "home" -> "首页"
+            "music_player" -> "音乐"
             "favorites" -> "收藏"
             "customtabs" -> "自定义 Tab"
             "phonehub" -> "连接手机"

@@ -7,9 +7,9 @@
     android:padding="26dp">
 
     <TextView
+        android:id="@+id/dialogTitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@drawable/bg_dialog_crayon_header"
         android:gravity="center_vertical"
         android:paddingLeft="18dp"
         android:paddingTop="10dp"

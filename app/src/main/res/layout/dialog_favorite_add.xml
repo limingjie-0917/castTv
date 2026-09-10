@@ -31,6 +31,7 @@
 
     <!-- 自定义标题（必填） -->
     <TextView
+        android:id="@+id/favoriteTitleLabel"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="20dp"
@@ -56,6 +57,7 @@
 
     <!-- 选择合集：默认「默认合集」，横向蜡笔小新风格 chip，遥控器可左右聚焦并 OK 选择 -->
     <TextView
+        android:id="@+id/favoriteCollectionLabel"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="18dp"
@@ -85,6 +87,7 @@
 
     <!-- 资源地址（只读） -->
     <TextView
+        android:id="@+id/favoriteUriLabel"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="18dp"

@@ -408,6 +408,7 @@ class HomePage(context: Context) : BasePage(context), PlaybackController.StateOb
     private fun buildFunctionCards(): List<ShortcutItem> {
         val cards = mutableListOf<ShortcutItem>()
         cards += ShortcutItem("watch_later", "稍后播放", R.drawable.ic_more_watch_later)
+        cards += ShortcutItem(MusicPlayerPage.PAGE_ID, "音乐", R.drawable.ic_more_music)
         cards += ShortcutItem("favorites", "我的收藏", R.drawable.ic_more_favorites)
         if (settings.webParseEnabled) {
             cards += ShortcutItem(Settings.PAGE_ID_WEB_PARSE, "网页解析", R.drawable.ic_more_web_parse)

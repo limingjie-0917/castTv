@@ -2,6 +2,7 @@ package com.bd.casttv.player
 
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -33,6 +34,7 @@ import com.bd.casttv.dlna.PlaybackController
 import com.bd.casttv.favorites.FavoritesStore
 import com.bd.casttv.queue.PlayQueueStore
 import com.bd.casttv.ui.framework.FocusFxHelper
+import com.bd.casttv.util.ThemeManager
 import com.bd.casttv.util.Thumbnails
 import java.util.Locale
 import kotlin.math.max
@@ -203,18 +205,33 @@ class PlayerActivity : AppCompatActivity() {
         setupSeekBar()
         setupTouchGestures()
 
-        // 侧边弹窗内的「收藏」按钮：点击后弹出收藏保存弹窗。
-        binding.btnSidebarFavorite.setOnFocusChangeListener { _, hasFocus ->
+        // 侧边弹窗按钮沿用稍后播放/推荐页风格：银白描边、暖白焦点边框，
+        // 点击时只切换视觉选中态，原有收藏弹窗/稍后播放列表功能保持不变。
+        val sidebarIconTint = ColorStateList(
+            arrayOf(intArrayOf(android.R.attr.state_selected), intArrayOf()),
+            intArrayOf(ThemeManager.currentPalette(this).accent, Color.WHITE)
+        )
+        binding.iconSidebarFavorite.imageTintList = sidebarIconTint
+        binding.iconSidebarQueue.imageTintList = sidebarIconTint
+        binding.textSidebarFavorite.setTextColor(sidebarIconTint)
+        binding.textSidebarQueue.setTextColor(sidebarIconTint)
+        binding.btnSidebarFavorite.setOnFocusChangeListener { view, hasFocus ->
             if (hasFocus) hideQueuePanel()
+            FocusFxHelper.applyFocusFxState(view, hasFocus, cornerRadiusDp = 18)
         }
         binding.btnSidebarFavorite.setOnClickListener {
+            binding.btnSidebarFavorite.isSelected = !binding.btnSidebarFavorite.isSelected
             hideQueuePanel()
             showFavoriteAddDialog()
         }
-        binding.btnSidebarQueue.setOnFocusChangeListener { _, hasFocus ->
+        binding.btnSidebarQueue.setOnFocusChangeListener { view, hasFocus ->
             if (hasFocus) showQueuePanel(focusList = false)
+            FocusFxHelper.applyFocusFxState(view, hasFocus, cornerRadiusDp = 18)
         }
-        binding.btnSidebarQueue.setOnClickListener { showQueuePanel(focusList = true) }
+        binding.btnSidebarQueue.setOnClickListener {
+            binding.btnSidebarQueue.isSelected = !binding.btnSidebarQueue.isSelected
+            showQueuePanel(focusList = true)
+        }
         setupQueuePanel()
 
         if (mirrorMode) setupMirrorUi()
@@ -1398,12 +1415,13 @@ class PlayerActivity : AppCompatActivity() {
         gravity = Gravity.CENTER
         isFocusable = true
         isClickable = true
+        val accent = ThemeManager.currentPalette(this@PlayerActivity).accent
         fun refresh(focused: Boolean) {
             val selected = isSelected
-            setTextColor(if (selected) Color.rgb(245, 196, 81) else Color.argb(235, 245, 245, 245))
+            setTextColor(if (selected) accent else Color.argb(235, 245, 245, 245))
             background = GradientDrawable().apply {
                 cornerRadius = 10.dp().toFloat()
-                setStroke(if (focused) 2.dp() else 1.dp(), if (focused) Color.rgb(245, 196, 81) else Color.argb(170, 210, 214, 222))
+                setStroke(if (focused) 2.dp() else 1.dp(), if (focused) accent else Color.argb(170, 210, 214, 222))
                 setColor(Color.argb(52, 32, 34, 40))
             }
         }
@@ -1423,6 +1441,35 @@ class PlayerActivity : AppCompatActivity() {
         // 收藏缩略图统一改为 MediaMetadataRetriever 抽取视频第 3 秒画面；
         // 异步保存，保存成功后回填收藏数据。
         val dialogBinding = DialogFavoriteAddBinding.inflate(layoutInflater)
+        val favoritePalette = ThemeManager.currentPalette(this)
+        val favoriteAccent = favoritePalette.accent
+        // 对齐壁纸设置弹窗：主题渐变外框、暖色强调与深色内容控件均跟随当前主题。
+        dialogBinding.root.background = GradientDrawable(
+            GradientDrawable.Orientation.TL_BR,
+            favoritePalette.dialogTitleGradient
+        ).apply {
+            cornerRadius = 18.dp().toFloat()
+            setStroke(2.dp(), favoriteAccent)
+        }
+        dialogBinding.favoriteAddHeader.background = GradientDrawable(
+            GradientDrawable.Orientation.LEFT_RIGHT,
+            favoritePalette.dialogTitleGradient
+        ).apply { cornerRadius = 10.dp().toFloat() }
+        dialogBinding.favoriteAddHeader.setTextColor(Color.WHITE)
+        dialogBinding.favoriteTitleLabel.setTextColor(favoriteAccent)
+        dialogBinding.favoriteCollectionLabel.setTextColor(favoriteAccent)
+        dialogBinding.favoriteUriLabel.setTextColor(favoriteAccent)
+        fun favoriteInputBackground(focused: Boolean) = GradientDrawable().apply {
+            cornerRadius = 10.dp().toFloat()
+            setColor(Color.argb(52, 32, 34, 40))
+            setStroke(if (focused) 3.dp() else 1.dp(), if (focused) favoriteAccent else Color.argb(170, 210, 214, 222))
+        }
+        dialogBinding.inputFavoriteTitle.background = favoriteInputBackground(false)
+        dialogBinding.inputFavoriteTitle.setOnFocusChangeListener { view, hasFocus ->
+            view.background = favoriteInputBackground(hasFocus)
+            FocusFxHelper.applyFocusFxState(view, hasFocus, cornerRadiusDp = 10)
+        }
+        dialogBinding.textFavoriteUri.background = favoriteInputBackground(false)
         dialogBinding.textFavoriteUri.text = currentUri
         // 预填一个建议标题（当前节目名 / 来源），方便用户直接确认或修改。
         val suggested = title.ifBlank { sourceHint }
@@ -1465,17 +1512,25 @@ class PlayerActivity : AppCompatActivity() {
         val density = resources.displayMetrics.density
         fun dp(v: Int) = (v * density).toInt()
         val chipViews = ArrayList<android.widget.TextView>(collections.size)
+        fun styleChip(view: android.widget.TextView, focused: Boolean) {
+            view.setTextColor(if (view.isSelected) favoriteAccent else Color.WHITE)
+            view.background = GradientDrawable().apply {
+                cornerRadius = dp(10).toFloat()
+                setColor(Color.argb(52, 32, 34, 40))
+                setStroke(dp(if (focused) 2 else 1), if (focused) favoriteAccent else Color.argb(170, 210, 214, 222))
+            }
+        }
         fun refreshChipSelection() {
-            chipViews.forEachIndexed { i, v -> v.isSelected = (i == selectedIndex) }
+            chipViews.forEachIndexed { i, v ->
+                v.isSelected = (i == selectedIndex)
+                styleChip(v, v.hasFocus())
+            }
         }
         var defaultChip: android.widget.TextView? = null
         collections.forEachIndexed { index, c ->
             val chip = android.widget.TextView(this).apply {
                 text = c.name
-                setTextColor(ContextCompat.getColorStateList(this@PlayerActivity, R.color.favorite_collection_choice_tint))
                 textSize = 15f
-                setBackgroundResource(R.drawable.bg_favorite_collection_choice)
-                // v1.1.124：合集选择列表去除名称前图标，仅保留文字名称。
                 isFocusable = true
                 isFocusableInTouchMode = false
                 isClickable = true
@@ -1487,11 +1542,14 @@ class PlayerActivity : AppCompatActivity() {
                     refreshChipSelection()
                 }
                 // v1.1.105：合集列表焦点即选中，遥控器左右移动到哪即选到哪，无需再按 OK。
-                setOnFocusChangeListener { _, hasFocus ->
+                setOnFocusChangeListener { view, hasFocus ->
                     if (hasFocus) {
                         selectedIndex = index
                         refreshChipSelection()
+                    } else {
+                        styleChip(view as android.widget.TextView, false)
                     }
+                    FocusFxHelper.applyFocusFxState(view, hasFocus, cornerRadiusDp = 10)
                 }
             }
             val lp = android.widget.LinearLayout.LayoutParams(
@@ -1500,6 +1558,7 @@ class PlayerActivity : AppCompatActivity() {
             ).apply { rightMargin = dp(10) }
             dialogBinding.collectionChipContainer.addView(chip, lp)
             chipViews.add(chip)
+            styleChip(chip, false)
             if (index == selectedIndex) defaultChip = chip
         }
         // 让默认合集 chip 进入可见区域，方便遥控器直接从这里开始选择。

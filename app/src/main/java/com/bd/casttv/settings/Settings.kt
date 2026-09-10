@@ -340,6 +340,7 @@ class Settings(context: Context) {
         val DEFAULT_PAGE_ORDER = listOf(
             "home",
             PAGE_ID_DOUYIN_CAST,
+            "music_player",
             "favorites",
             PAGE_ID_WEB_PARSE,
             "customtabs",

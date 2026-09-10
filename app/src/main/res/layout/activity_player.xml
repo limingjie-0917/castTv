@@ -320,6 +320,7 @@
             android:paddingBottom="12dp">
 
             <ImageView
+                android:id="@+id/iconSidebarFavorite"
                 android:layout_width="30dp"
                 android:layout_height="30dp"
                 android:contentDescription="@null"
@@ -328,12 +329,13 @@
                 android:tint="@color/player_sidebar_action_tint" />
 
             <TextView
+                android:id="@+id/textSidebarFavorite"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
                 android:duplicateParentState="true"
                 android:text="@string/btn_favorite"
-                android:textColor="@color/player_sidebar_action_tint"
+                android:textColor="@color/text_primary"
                 android:textSize="12sp"
                 android:textStyle="bold" />
         </LinearLayout>
@@ -353,6 +355,7 @@
             android:paddingBottom="12dp">
 
             <ImageView
+                android:id="@+id/iconSidebarQueue"
                 android:layout_width="30dp"
                 android:layout_height="30dp"
                 android:contentDescription="@null"
@@ -361,12 +364,13 @@
                 android:tint="@color/player_sidebar_action_tint" />
 
             <TextView
+                android:id="@+id/textSidebarQueue"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
                 android:duplicateParentState="true"
                 android:text="稍后播放列表"
-                android:textColor="@color/player_sidebar_action_tint"
+                android:textColor="@color/text_primary"
                 android:textSize="12sp"
                 android:textStyle="bold" />
         </LinearLayout>

@@ -395,6 +395,7 @@ class IncomingRecommendationsDialog(
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
             val v = LayoutInflater.from(parent.context).inflate(R.layout.item_batch_video, parent, false)
+            v.setBackgroundResource(R.drawable.bg_incoming_recommendation_video_card)
             v.clipToOutline = false
             return VH(v)
         }

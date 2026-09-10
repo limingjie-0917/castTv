@@ -9,6 +9,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Rect
 import android.graphics.Typeface
+import android.net.Uri
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.LinearGradient
@@ -27,6 +28,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -52,6 +54,7 @@ import com.bd.casttv.ui.framework.pages.HelpPage
 import com.bd.casttv.ui.framework.pages.HistoryPage
 import com.bd.casttv.ui.framework.pages.HomePage
 import com.bd.casttv.ui.framework.pages.MoreFunctionsPage
+import com.bd.casttv.ui.framework.pages.MusicPlayerPage
 import com.bd.casttv.ui.framework.pages.PhoneHubPage
 import com.bd.casttv.ui.framework.pages.SettingsPage
 import com.bd.casttv.ui.framework.pages.WatchLaterPage
@@ -65,6 +68,7 @@ class NewMainActivity : AppCompatActivity(), SettingsChangeBus.Listener, PageCon
         /** 外部唤起时，要求主页直接切到某个 pageId（例如 "settings"）。 */
         const val EXTRA_OPEN_PAGE_ID = "extra_open_page_id"
 
+        private const val STATE_PENDING_MUSIC_UPLOAD_REPO_ID = "state_pending_music_upload_repo_id"
         private const val SIDE_PAGE_BUTTON_BREATH_MIN_ALPHA = 0.7f
         private const val SIDE_PAGE_BUTTON_BREATH_MAX_ALPHA = 1.0f
         private const val SIDE_PAGE_BUTTON_BREATH_MIN_SCALE = 1.05f
@@ -124,9 +128,19 @@ class NewMainActivity : AppCompatActivity(), SettingsChangeBus.Listener, PageCon
     private val launcherOverlayInterpolator = DecelerateInterpolator()
     private val overlayBlockedFocusability = mutableMapOf<ViewGroup, Int>()
     private var overlaySwallowNextBackUp = false
+    private var pendingMusicUploadRepoId: String? = null
+    private val musicAudioDocumentLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        val repoId = pendingMusicUploadRepoId
+        pendingMusicUploadRepoId = null
+        val musicPage = getPage(MusicPlayerPage.PAGE_ID) as? MusicPlayerPage
+        if (repoId != null) {
+            musicPage?.onMusicAudioDocumentResult(uri, repoId)
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        pendingMusicUploadRepoId = savedInstanceState?.getString(STATE_PENDING_MUSIC_UPLOAD_REPO_ID)
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
 
         settings = Settings(this)
@@ -805,6 +819,7 @@ class NewMainActivity : AppCompatActivity(), SettingsChangeBus.Listener, PageCon
         val customSpecs = pageFactories.keys.filter { it.startsWith("customtab_") }.map { pageSpecFor(it) }
         val fixed = linkedMapOf<String, List<PageContainer.PageSpec>>(
             "home" to listOf(pageSpecFor("home")),
+            MusicPlayerPage.PAGE_ID to listOf(pageSpecFor(MusicPlayerPage.PAGE_ID)),
             "favorites" to listOf(pageSpecFor("favorites")),
             Settings.PAGE_ID_WEB_PARSE to emptyList(),
             "customtabs" to customSpecs,
@@ -841,6 +856,7 @@ class NewMainActivity : AppCompatActivity(), SettingsChangeBus.Listener, PageCon
         pageFactories.clear()
         pageFactories["home"] = { HomePage(this) }
         pageFactories["watch_later"] = { WatchLaterPage(this) }
+        pageFactories[MusicPlayerPage.PAGE_ID] = { MusicPlayerPage(this) }
         pageFactories["more_functions"] = { MoreFunctionsPage(this) }
         if (settings.douyinCastEnabled) {
             pageFactories[Settings.PAGE_ID_DOUYIN_CAST] = { DouyinCastPage(this) }
@@ -868,6 +884,7 @@ class NewMainActivity : AppCompatActivity(), SettingsChangeBus.Listener, PageCon
     private fun pageSpecFor(pageId: String): PageContainer.PageSpec = when {
         pageId == "home" -> PageContainer.PageSpec(pageId, "首页", R.drawable.ic_dock_home) { getPage(pageId) }
         pageId == "watch_later" -> PageContainer.PageSpec(pageId, "稍后播放/推荐", R.drawable.ic_history_tv) { getPage(pageId) }
+        pageId == MusicPlayerPage.PAGE_ID -> PageContainer.PageSpec(pageId, "音乐", R.drawable.ic_more_music) { getPage(pageId) }
         pageId == "more_functions" -> PageContainer.PageSpec(pageId, "更多功能", R.drawable.ic_dock_home) { getPage(pageId) }
         pageId == Settings.PAGE_ID_DOUYIN_CAST -> PageContainer.PageSpec(pageId, "抖音投屏", R.drawable.ic_history_tv) { getPage(pageId) }
         pageId == Settings.PAGE_ID_WEB_PARSE -> PageContainer.PageSpec(pageId, "网页解析播放", R.drawable.ic_web_parse) { getPage(pageId) }
@@ -952,6 +969,11 @@ class NewMainActivity : AppCompatActivity(), SettingsChangeBus.Listener, PageCon
         (currentPage() as? DouyinCastPage)?.refreshTimelineAfterPlayerReturn()
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        pendingMusicUploadRepoId?.let { outState.putString(STATE_PENDING_MUSIC_UPLOAD_REPO_ID, it) }
+        super.onSaveInstanceState(outState)
+    }
+
     override fun onDestroy() {
         sideBreathAnimator?.cancel()
         sideBreathAnimator = null
@@ -961,6 +983,7 @@ class NewMainActivity : AppCompatActivity(), SettingsChangeBus.Listener, PageCon
     }
 
     override fun onPause() {
+        (pageInstances[MusicPlayerPage.PAGE_ID] as? MusicPlayerPage)?.onHostActivityPaused()
         com.bd.casttv.dlna.PlaybackController.uiInForeground = false
         com.bd.casttv.dlna.PlaybackController.unregisterObserver(this)
         super.onPause()
@@ -1081,6 +1104,11 @@ class NewMainActivity : AppCompatActivity(), SettingsChangeBus.Listener, PageCon
                 focusTarget?.post { focusTarget.requestFocus() }
             }
             .start()
+    }
+
+    fun launchMusicAudioPicker(repoId: String) {
+        pendingMusicUploadRepoId = repoId
+        musicAudioDocumentLauncher.launch(arrayOf("audio/*", "application/octet-stream"))
     }
 
     fun openLauncherFunctionPage(pageId: String, triggerFocus: View?) {

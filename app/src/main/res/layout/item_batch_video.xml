@@ -3,7 +3,7 @@
   批量操作弹窗内的小视频卡片：
   - 顶部 16:9 小缩略图，左上角序号角标
   - 底部视频名称（最多两行，末尾省略号）
-  - 卡片整体可聚焦；选中/焦点态由 bg_favorites_dialog_video_card 暖黄边框体现
+  - 卡片整体可聚焦；选中/焦点态由使用方配置的背景表达
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/batchCardRoot"

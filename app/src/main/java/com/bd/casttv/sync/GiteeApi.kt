@@ -8,6 +8,7 @@ import org.json.JSONObject
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLDecoder
 import java.net.URLEncoder
 
 /**
@@ -62,6 +63,12 @@ object GiteeApi {
     private const val CONNECT_TIMEOUT = 15_000
     private const val READ_TIMEOUT = 30_000
     private const val TAG = "GiteeApi"
+
+    data class Repository(
+        val owner: String,
+        val repo: String,
+        val branch: String = "",
+    )
 
     /**
      * 获取文件内容和 sha。
@@ -259,6 +266,141 @@ object GiteeApi {
         }
     }
 
+    fun getFileResult(path: String, repository: Repository): ApiResult<FileResult> {
+        val url = contentsUrl(path, repository)
+        var conn: HttpURLConnection? = null
+        return try {
+            conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = CONNECT_TIMEOUT
+                readTimeout = READ_TIMEOUT
+                setRequestProperty("Accept", "application/json")
+                setAuthHeader()
+            }
+            SsdpDiagnostics.logCloudSync("请求前：GET ${redactToken(url)}，body=0B")
+            val code = conn.responseCode
+            if (code == 404) {
+                val errorBody = conn.readErrorBody().take(200)
+                SsdpDiagnostics.logCloudSync("请求结果：GET ${repository.repo}/$path 失败，HTTP $code：$errorBody")
+                return ApiResult.NotFound
+            }
+            if (code != 200) {
+                val errorBody = conn.readErrorBody().take(200)
+                return ApiResult.Error("GET ${repository.repo}/$path 失败，HTTP $code：$errorBody")
+            }
+            val body = conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            val json = parseFileObjectOrNull(body) ?: return ApiResult.NotFound
+            val contentB64 = json.optString("content", "").replace("\n", "")
+            val sha = json.optString("sha", "")
+            val content = if (contentB64.isBlank()) "" else String(Base64.decode(contentB64, Base64.DEFAULT), Charsets.UTF_8)
+            ApiResult.Success(FileResult(content = content, sha = sha))
+        } catch (e: Exception) {
+            ApiResult.Error("GET ${repository.repo}/$path 异常：${e.javaClass.simpleName}${e.message?.let { ": $it" }.orEmpty()}")
+        } finally {
+            conn?.disconnect()
+        }
+    }
+
+    fun putFileResult(path: String, content: String, sha: String?, repository: Repository, commitMessage: String = ""): ApiResult<Unit> {
+        val bytes = content.toByteArray(Charsets.UTF_8)
+        return putEncodedFileResult(
+            path = path,
+            contentBase64 = Base64.encodeToString(bytes, Base64.NO_WRAP),
+            sha = sha,
+            repository = repository,
+            commitMessage = commitMessage,
+            readTimeoutMs = READ_TIMEOUT,
+        )
+    }
+
+    fun putBinaryFileResult(path: String, bytes: ByteArray, sha: String?, repository: Repository, commitMessage: String = ""): ApiResult<Unit> {
+        if (bytes.isEmpty()) return ApiResult.Error("PUT ${repository.repo}/$path 失败：文件内容为空")
+        return putEncodedFileResult(
+            path = path,
+            contentBase64 = Base64.encodeToString(bytes, Base64.NO_WRAP),
+            sha = sha,
+            repository = repository,
+            commitMessage = commitMessage,
+            readTimeoutMs = 120_000,
+        )
+    }
+
+    fun publicRawUrl(repository: Repository, path: String): String {
+        val normalizedPath = path.trimStart('/')
+        val encodedBranch = encodeSegment(repository.branch.ifBlank { "master" })
+        return "https://gitee.com/${encodeSegment(repository.owner)}/${encodeSegment(repository.repo)}/raw/$encodedBranch/${encodePath(normalizedPath)}"
+    }
+
+    private fun putEncodedFileResult(
+        path: String,
+        contentBase64: String,
+        sha: String?,
+        repository: Repository,
+        commitMessage: String = "",
+        readTimeoutMs: Int = READ_TIMEOUT,
+    ): ApiResult<Unit> {
+        val normalizedSha = sha?.takeIf { it.isNotBlank() }
+        // Gitee Contents API 的 ref 查询参数仅用于 GET；创建/更新时分支必须放在 body.branch。
+        val url = contentsWriteUrl(path, repository)
+        var conn: HttpURLConnection? = null
+        return try {
+            val commitMsg = commitMessage.ifBlank {
+                "sync: ${if (normalizedSha == null) "create" else "update"} $path"
+            }
+            val json = JSONObject().apply {
+                put("message", commitMsg)
+                put("content", contentBase64)
+                if (normalizedSha != null) put("sha", normalizedSha)
+                if (repository.branch.isNotBlank()) put("branch", repository.branch)
+            }
+            val requestBody = json.toString().toByteArray(Charsets.UTF_8)
+            val method = if (normalizedSha == null) "POST" else "PUT"
+            conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                requestMethod = method
+                connectTimeout = CONNECT_TIMEOUT
+                readTimeout = readTimeoutMs
+                doInput = true
+                doOutput = true
+                setFixedLengthStreamingMode(requestBody.size)
+                setRequestProperty("Accept", "application/json")
+                setRequestProperty("Content-Type", "application/json")
+                setAuthHeader()
+            }
+            logHttpExchange(
+                stage = "写入仓库文件 $path",
+                method = method,
+                url = url,
+                headers = "Accept=application/json; Content-Type=application/json; Authorization=Bearer ***; User-Agent=casttv-receiver-android",
+                requestSummary = "body=${requestBody.size}B, branch=${repository.branch.ifBlank { "default" }}, sha=${normalizedSha?.take(8) ?: "none"}",
+            )
+            conn.outputStream.use { it.write(requestBody) }
+            val code = conn.responseCode
+            val responseBody = if (code in 200..299) {
+                conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            } else {
+                conn.readErrorBody()
+            }
+            logHttpExchange("写入仓库文件 $path", method, url, responseCode = code, responseBody = responseBody)
+            if (code in 200..201) {
+                ApiResult.Success(Unit)
+            } else {
+                ApiResult.Error("$method ${repository.repo}/$path 失败，HTTP $code：${sanitizeErrorBody(responseBody)}")
+            }
+        } catch (e: Exception) {
+            val method = conn?.requestMethod ?: if (normalizedSha == null) "POST" else "PUT"
+            val httpDetail = conn?.readHttpErrorSafely()
+            val exceptionMessage = "${e.javaClass.simpleName}${e.message?.let { ": $it" }.orEmpty()}"
+            val errorMsg = if (httpDetail.isNullOrBlank()) {
+                "$method ${repository.repo}/$path 异常：$exceptionMessage"
+            } else {
+                "$method ${repository.repo}/$path 异常：$exceptionMessage；$httpDetail"
+            }
+            ApiResult.Error(errorMsg)
+        } finally {
+            conn?.disconnect()
+        }
+    }
+
     private fun parseFileObjectOrNull(body: String): JSONObject? {
         return try {
             val trimmed = body.trim()
@@ -281,15 +423,27 @@ object GiteeApi {
         return "$BASE_URL/${encodePath(normalizedPath)}"
     }
 
+    private fun contentsUrl(path: String, repository: Repository): String {
+        val base = contentsWriteUrl(path, repository)
+        return if (repository.branch.isBlank()) base else "$base?ref=${encodeSegment(repository.branch)}"
+    }
+
+    private fun contentsWriteUrl(path: String, repository: Repository): String {
+        val normalizedPath = path.trimStart('/')
+        return "https://gitee.com/api/v5/repos/${encodeSegment(repository.owner)}/${encodeSegment(repository.repo)}/contents/${encodePath(normalizedPath)}"
+    }
+
     private fun rawUrl(path: String): String {
         val normalizedPath = path.trimStart('/')
         return "$RAW_BASE_URL/${encodePath(normalizedPath)}"
     }
 
     private fun encodePath(path: String): String {
-        return path.split("/").joinToString("/") { segment ->
-            URLEncoder.encode(segment, "UTF-8").replace("+", "%20")
-        }
+        return path.split("/").joinToString("/") { segment -> encodeSegment(segment) }
+    }
+
+    private fun encodeSegment(segment: String): String {
+        return URLEncoder.encode(segment, "UTF-8").replace("+", "%20")
     }
 
     private fun redactToken(url: String): String {
@@ -299,6 +453,7 @@ object GiteeApi {
     private fun HttpURLConnection.setAuthHeader() {
         // 统一通过 Bearer 请求头下发令牌；URL / 请求体不再携带明文 token。
         setRequestProperty("Authorization", "Bearer $accessToken")
+        setRequestProperty("User-Agent", "casttv-receiver-android")
     }
 
     private fun HttpURLConnection.readErrorBody(): String {
@@ -320,6 +475,360 @@ object GiteeApi {
     }
 
     // ===================== Releases API =====================
+
+    /**
+     * 将私有 Gitee Release 的浏览器下载地址转换成可供 Media3 播放的短期签名地址。
+     *
+     * Release 页面地址对私有仓库会直接返回 403，即使附带 Bearer；必须先走 Open API：
+     * release tag -> attach_files -> attachment download，再从 302 Location 取得 foruda 签名 URL。
+     */
+    fun resolvePlayableAssetUrl(assetUrl: String): ApiResult<String> {
+        val parsed = try {
+            URL(assetUrl)
+        } catch (e: Exception) {
+            return ApiResult.Error("音频下载地址无效：${e.javaClass.simpleName}")
+        }
+        val segments = parsed.path.split('/').filter { it.isNotBlank() }
+        if (!parsed.host.equals("gitee.com", ignoreCase = true) ||
+            segments.size < 6 || segments[2] != "releases" || segments[3] != "download"
+        ) {
+            return ApiResult.Success(assetUrl)
+        }
+
+        val decode: (String) -> String = { URLDecoder.decode(it, "UTF-8") }
+        val repository = Repository(owner = decode(segments[0]), repo = decode(segments[1]))
+        val tag = decode(segments[4])
+        val fileName = decode(segments.drop(5).joinToString("/"))
+        val releaseUrl = "${repositoryApiBase(repository)}/releases/tags/${encodeSegment(tag)}"
+
+        val releaseId = when (val release = getJsonObject(releaseUrl, "查询音乐 Release")) {
+            is ApiResult.Success -> release.value.optLong("id").takeIf { it > 0L }
+                ?: return ApiResult.Error("音乐 Release 响应缺少 id")
+            is ApiResult.Error -> return release
+            ApiResult.NotFound -> return ApiResult.Error("音乐 Release 不存在：$tag")
+        }
+
+        var matchedId = 0L
+        var page = 1
+        while (matchedId <= 0L) {
+            val listUrl = "${repositoryApiBase(repository)}/releases/$releaseId/attach_files?page=$page&per_page=100"
+            val attachments = when (val result = getJsonArray(listUrl, "查询音乐附件")) {
+                is ApiResult.Success -> result.value
+                is ApiResult.Error -> return result
+                ApiResult.NotFound -> return ApiResult.Error("音乐附件列表不存在")
+            }
+            for (i in 0 until attachments.length()) {
+                val attachment = attachments.optJSONObject(i) ?: continue
+                if (attachment.optString("name") == fileName) {
+                    matchedId = attachment.optLong("id")
+                    break
+                }
+            }
+            if (matchedId > 0L) break
+            if (attachments.length() < 100) {
+                return ApiResult.Error("音乐附件不存在：$fileName")
+            }
+            page++
+            if (page > 100) return ApiResult.Error("音乐附件数量过多，未找到：$fileName")
+        }
+
+        val apiDownloadUrl = "${repositoryApiBase(repository)}/releases/$releaseId/attach_files/$matchedId/download"
+        return resolveSignedDownloadUrl(apiDownloadUrl)
+    }
+
+    private fun getJsonObject(url: String, stage: String): ApiResult<JSONObject> {
+        var conn: HttpURLConnection? = null
+        return try {
+            conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = CONNECT_TIMEOUT
+                readTimeout = READ_TIMEOUT
+                setRequestProperty("Accept", "application/json")
+                setAuthHeader()
+            }
+            val code = conn.responseCode
+            if (code == 404) return ApiResult.NotFound
+            val body = if (code in 200..299) {
+                conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            } else {
+                conn.readErrorBody()
+            }
+            logHttpExchange(stage, "GET", url, responseCode = code, responseBody = body)
+            if (code !in 200..299) ApiResult.Error("$stage 失败，HTTP $code：${sanitizeErrorBody(body)}")
+            else parseFileObjectOrNull(body)?.let { ApiResult.Success(it) }
+                ?: ApiResult.Error("$stage 响应格式异常")
+        } catch (e: Exception) {
+            ApiResult.Error("$stage 异常：${e.javaClass.simpleName}${e.message?.let { ": $it" }.orEmpty()}")
+        } finally {
+            conn?.disconnect()
+        }
+    }
+
+    private fun getJsonArray(url: String, stage: String): ApiResult<JSONArray> {
+        var conn: HttpURLConnection? = null
+        return try {
+            conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = CONNECT_TIMEOUT
+                readTimeout = READ_TIMEOUT
+                setRequestProperty("Accept", "application/json")
+                setAuthHeader()
+            }
+            val code = conn.responseCode
+            if (code == 404) return ApiResult.NotFound
+            val body = if (code in 200..299) {
+                conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            } else {
+                conn.readErrorBody()
+            }
+            logHttpExchange(stage, "GET", url, responseCode = code, responseBody = body)
+            if (code !in 200..299) ApiResult.Error("$stage 失败，HTTP $code：${sanitizeErrorBody(body)}")
+            else try {
+                ApiResult.Success(JSONArray(body))
+            } catch (_: Exception) {
+                ApiResult.Error("$stage 响应格式异常")
+            }
+        } catch (e: Exception) {
+            ApiResult.Error("$stage 异常：${e.javaClass.simpleName}${e.message?.let { ": $it" }.orEmpty()}")
+        } finally {
+            conn?.disconnect()
+        }
+    }
+
+    private fun resolveSignedDownloadUrl(apiDownloadUrl: String): ApiResult<String> {
+        var conn: HttpURLConnection? = null
+        return try {
+            conn = (URL(apiDownloadUrl).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                instanceFollowRedirects = false
+                connectTimeout = CONNECT_TIMEOUT
+                readTimeout = READ_TIMEOUT
+                setRequestProperty("Accept", "application/octet-stream")
+                setRequestProperty("Range", "bytes=0-0")
+                setAuthHeader()
+            }
+            val code = conn.responseCode
+            if (code in listOf(301, 302, 303, 307, 308)) {
+                val location = conn.getHeaderField("Location")?.trim().orEmpty()
+                if (location.isBlank()) ApiResult.Error("音频下载重定向缺少 Location，HTTP $code")
+                else ApiResult.Success(URL(URL(apiDownloadUrl), location).toString())
+            } else if (code == 200 || code == 206) {
+                ApiResult.Success(apiDownloadUrl)
+            } else {
+                ApiResult.Error("获取音频下载地址失败，HTTP $code：${sanitizeErrorBody(conn.readErrorBody())}")
+            }
+        } catch (e: Exception) {
+            ApiResult.Error("获取音频下载地址异常：${e.javaClass.simpleName}${e.message?.let { ": $it" }.orEmpty()}")
+        } finally {
+            conn?.disconnect()
+        }
+    }
+
+    /**
+     * 上传较大的二进制文件到仓库固定 Release。Contents API 仅适合 playlist.json 等小文本，
+     * 音频文件改走 multipart Release 附件上传，避免 Base64 请求体大小限制。
+     */
+    fun uploadReleaseAssetResult(
+        fileName: String,
+        fileSize: Long,
+        inputStreamProvider: () -> java.io.InputStream?,
+        repository: Repository,
+        releaseTag: String = "music-library",
+    ): ApiResult<ReleaseAssetResult> {
+        if (fileSize <= 0L) return ApiResult.Error("上传附件失败：文件内容为空或大小未知")
+        val releaseId = when (val release = getOrCreateRelease(repository, releaseTag)) {
+            is ApiResult.Success -> release.value
+            is ApiResult.Error -> return release
+            ApiResult.NotFound -> return ApiResult.Error("创建音乐 Release 失败：仓库或分支不存在")
+        }
+        val boundary = "----CastTvMusic${System.currentTimeMillis()}"
+        val url = "${repositoryApiBase(repository)}/releases/$releaseId/attach_files"
+        val safeName = fileName.substringAfterLast('/').substringAfterLast('\\').replace('"', '_')
+        val encodedName = encodeSegment(safeName)
+        val mimeType = java.net.URLConnection.guessContentTypeFromName(safeName) ?: "application/octet-stream"
+        val preamble = buildString {
+            append("--$boundary\r\n")
+            append("Content-Disposition: form-data; name=\"file\"; filename=\"$safeName\"; filename*=UTF-8''$encodedName\r\n")
+            append("Content-Type: $mimeType\r\n\r\n")
+        }.toByteArray(Charsets.UTF_8)
+        val trailer = "\r\n--$boundary--\r\n".toByteArray(Charsets.UTF_8)
+        val contentLength = preamble.size.toLong() + fileSize + trailer.size.toLong()
+        var conn: HttpURLConnection? = null
+        return try {
+            conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = CONNECT_TIMEOUT
+                readTimeout = 300_000
+                doInput = true
+                doOutput = true
+                setFixedLengthStreamingMode(contentLength)
+                setRequestProperty("Accept", "application/json")
+                setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+                setAuthHeader()
+            }
+            logHttpExchange(
+                stage = "上传 Release 音频附件",
+                method = "POST",
+                url = url,
+                headers = "Accept=application/json; Content-Type=multipart/form-data; Authorization=Bearer ***; User-Agent=casttv-receiver-android",
+                requestSummary = "filename=$safeName, mime=$mimeType, fileSize=$fileSize, contentLength=$contentLength",
+            )
+            conn.outputStream.buffered(64 * 1024).use { output ->
+                output.write(preamble)
+                val input = inputStreamProvider() ?: throw java.io.IOException("无法打开待上传音频")
+                val copied = input.buffered(64 * 1024).use { it.copyTo(output, 64 * 1024) }
+                if (copied != fileSize) {
+                    throw java.io.IOException("音频读取长度发生变化：预期 $fileSize 字节，实际 $copied 字节")
+                }
+                output.write(trailer)
+            }
+            val code = conn.responseCode
+            val responseBody = if (code in 200..299) {
+                conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            } else {
+                conn.readErrorBody()
+            }
+            logHttpExchange("上传 Release 音频附件", "POST", url, responseCode = code, responseBody = responseBody)
+            if (code == 201) {
+                val json = JSONObject(responseBody)
+                val downloadUrl = json.optString("browser_download_url")
+                if (downloadUrl.isBlank()) {
+                    ApiResult.Error("附件上传成功但响应缺少下载地址，HTTP 201：${sanitizeErrorBody(responseBody)}")
+                } else {
+                    ApiResult.Success(ReleaseAssetResult(downloadUrl, json.optLong("id")))
+                }
+            } else {
+                ApiResult.Error("Release 附件上传失败，HTTP $code：${sanitizeErrorBody(responseBody)}")
+            }
+        } catch (e: Exception) {
+            val detail = conn?.readHttpErrorSafely()?.let(::sanitizeErrorBody)
+            ApiResult.Error("Release 附件上传异常：${e.javaClass.simpleName}${e.message?.let { ": $it" }.orEmpty()}${detail?.let { "；$it" }.orEmpty()}")
+        } finally {
+            conn?.disconnect()
+        }
+    }
+
+    private fun getOrCreateRelease(repository: Repository, tag: String): ApiResult<Long> {
+        val tagUrl = "${repositoryApiBase(repository)}/releases/tags/${encodeSegment(tag)}"
+        var conn: HttpURLConnection? = null
+        try {
+            conn = (URL(tagUrl).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = CONNECT_TIMEOUT
+                readTimeout = READ_TIMEOUT
+                setRequestProperty("Accept", "application/json")
+                setAuthHeader()
+            }
+            logHttpExchange(
+                stage = "查询音乐 Release",
+                method = "GET",
+                url = tagUrl,
+                headers = "Accept=application/json; Authorization=Bearer ***; User-Agent=casttv-receiver-android",
+            )
+            val code = conn.responseCode
+            val responseBody = if (code in 200..299) {
+                conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            } else {
+                conn.readErrorBody()
+            }
+            logHttpExchange("查询音乐 Release", "GET", tagUrl, responseCode = code, responseBody = responseBody)
+            if (code == 200) {
+                val releaseJson = parseFileObjectOrNull(responseBody)
+                val id = releaseJson?.optLong("id") ?: 0L
+                if (id > 0) return ApiResult.Success(id)
+                val normalized = responseBody.trim()
+                val releaseMissing = normalized.isBlank() || normalized == "null" || normalized == "[]"
+                if (!releaseMissing) {
+                    return ApiResult.Error("音乐 Release 响应缺少 id，HTTP 200：${sanitizeErrorBody(responseBody)}")
+                }
+                // Gitee 对“标签对应的 Release 不存在”返回 HTTP 200 + literal null，
+                // 与常见的 404 行为不同；按首次上传处理，继续走创建 Release。
+            } else if (code != 404) {
+                return ApiResult.Error("查询音乐 Release 失败，HTTP $code：${sanitizeErrorBody(responseBody)}")
+            }
+        } catch (e: Exception) {
+            return ApiResult.Error("查询音乐 Release 异常：${e.javaClass.simpleName}${e.message?.let { ": $it" }.orEmpty()}")
+        } finally {
+            conn?.disconnect()
+        }
+
+        val createUrl = "${repositoryApiBase(repository)}/releases"
+        return try {
+            val body = JSONObject().apply {
+                put("tag_name", tag)
+                put("name", "Music Library")
+                put("body", "casttv-receiver 音乐附件")
+                put("prerelease", false)
+                put("target_commitish", repository.branch.ifBlank { "master" })
+            }.toString().toByteArray(Charsets.UTF_8)
+            conn = (URL(createUrl).openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = CONNECT_TIMEOUT
+                readTimeout = READ_TIMEOUT
+                doInput = true
+                doOutput = true
+                setFixedLengthStreamingMode(body.size)
+                setRequestProperty("Accept", "application/json")
+                setRequestProperty("Content-Type", "application/json")
+                setAuthHeader()
+            }
+            logHttpExchange(
+                stage = "创建音乐 Release",
+                method = "POST",
+                url = createUrl,
+                headers = "Accept=application/json; Content-Type=application/json; Authorization=Bearer ***; User-Agent=casttv-receiver-android",
+                requestSummary = body.toString(Charsets.UTF_8),
+            )
+            conn.outputStream.use { it.write(body) }
+            val code = conn.responseCode
+            val responseBody = if (code in 200..299) {
+                conn.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+            } else {
+                conn.readErrorBody()
+            }
+            logHttpExchange("创建音乐 Release", "POST", createUrl, responseCode = code, responseBody = responseBody)
+            if (code == 201) {
+                val id = JSONObject(responseBody).optLong("id")
+                if (id > 0) ApiResult.Success(id) else ApiResult.Error("创建音乐 Release 成功但响应缺少 id，HTTP 201")
+            } else {
+                ApiResult.Error("创建音乐 Release 失败，HTTP $code：${sanitizeErrorBody(responseBody)}")
+            }
+        } catch (e: Exception) {
+            val detail = conn?.readHttpErrorSafely()?.let(::sanitizeErrorBody)
+            ApiResult.Error("创建音乐 Release 异常：${e.javaClass.simpleName}${e.message?.let { ": $it" }.orEmpty()}${detail?.let { "；$it" }.orEmpty()}")
+        } finally {
+            conn?.disconnect()
+        }
+    }
+
+    private fun logHttpExchange(
+        stage: String,
+        method: String,
+        url: String,
+        headers: String? = null,
+        requestSummary: String? = null,
+        responseCode: Int? = null,
+        responseBody: String? = null,
+    ) {
+        val message = buildString {
+            append("[$stage] method=$method, url=${redactToken(url)}")
+            headers?.let { append(", headers=$it") }
+            requestSummary?.let { append(", request=$it") }
+            responseCode?.let { append(", responseCode=$it") }
+            responseBody?.let { append(", responseBody=${sanitizeErrorBody(it)}") }
+        }
+        Log.i(TAG, message)
+        SsdpDiagnostics.logCloudSync(message)
+    }
+
+    private fun repositoryApiBase(repository: Repository): String =
+        "https://gitee.com/api/v5/repos/${encodeSegment(repository.owner)}/${encodeSegment(repository.repo)}"
+
+    private fun sanitizeErrorBody(body: String): String {
+        var safe = body.replace(accessToken, "***")
+        safe = safe.replace(Regex("(?i)(access_token[=\\\": ]+)[^&\\\"\\s]+"), "$1***")
+        return safe.take(4_000)
+    }
 
     private const val RELEASES_URL = "https://gitee.com/api/v5/repos/bdCasttv/video-source/releases"
 
@@ -398,6 +907,7 @@ object GiteeApi {
 
     data class FileResult(val content: String, val sha: String)
     data class BinaryFileResult(val bytes: ByteArray, val sha: String)
+    data class ReleaseAssetResult(val downloadUrl: String, val assetId: Long)
 
     sealed class ApiResult<out T> {
         data class Success<T>(val value: T) : ApiResult<T>()

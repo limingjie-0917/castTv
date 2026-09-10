@@ -238,6 +238,7 @@ class MoreFunctionsPage(
     private fun buildCards(): List<FunctionCard> {
         val cards = mutableListOf<FunctionCard>()
         cards += FunctionCard("watch_later", "稍后播放/推荐", intArrayOf(Color.rgb(255, 153, 102), Color.rgb(220, 93, 68)), Color.rgb(61, 53, 128), R.drawable.ic_more_watch_later)
+        cards += FunctionCard(MusicPlayerPage.PAGE_ID, "音乐", intArrayOf(Color.rgb(120, 195, 255), Color.rgb(75, 109, 224)), Color.rgb(44, 62, 154), R.drawable.ic_more_music)
         cards += FunctionCard("favorites", "我的收藏", intArrayOf(Color.rgb(255, 190, 88), Color.rgb(214, 109, 55)), Color.rgb(192, 87, 26), R.drawable.ic_more_favorites)
         if (settings.webParseEnabled) {
             cards += FunctionCard(Settings.PAGE_ID_WEB_PARSE, "网页解析播放", intArrayOf(Color.rgb(83, 190, 255), Color.rgb(42, 112, 214)), Color.rgb(26, 110, 110), R.drawable.ic_more_web_parse)

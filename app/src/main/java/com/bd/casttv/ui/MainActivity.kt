@@ -1588,6 +1588,30 @@ class MainActivity : AppCompatActivity(), PlaybackController.StateObserver,
     /** 修改设备名称弹窗：沿用设置弹窗的面板、标题条、输入框和按钮风格。 */
     private fun showDeviceNameEditDialog(settingsBinding: DialogSettingsBinding) {
         val dialogBinding = DialogDeviceNameEditBinding.inflate(layoutInflater)
+        val palette = ThemeManager.currentPalette(this)
+        dialogBinding.root.background = ThemeManager.dialogPanelBg(this, cornerRadiusDp = 18)
+        dialogBinding.dialogTitle.background = android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+            palette.dialogTitleGradient
+        ).apply { cornerRadius = dp(10).toFloat() }
+        dialogBinding.dialogTitle.setTextColor(Color.WHITE)
+        fun controlBackground(focused: Boolean) = android.graphics.drawable.GradientDrawable().apply {
+            val (strokeDp, strokeColor) = ThemeManager.strokeFor(this@MainActivity, focused)
+            cornerRadius = dp(10).toFloat()
+            setColor(Color.argb(52, 32, 34, 40))
+            setStroke(dp(strokeDp), strokeColor)
+        }
+        dialogBinding.nameInput.background = controlBackground(false)
+        dialogBinding.nameInput.setOnFocusChangeListener { view, hasFocus ->
+            view.background = controlBackground(hasFocus)
+        }
+        listOf(dialogBinding.randomBtn, dialogBinding.cancelBtn, dialogBinding.confirmBtn).forEach { button ->
+            button.setTextColor(Color.WHITE)
+            button.background = controlBackground(false)
+            button.setOnFocusChangeListener { view, hasFocus ->
+                view.background = controlBackground(hasFocus)
+            }
+        }
         dialogBinding.nameInput.setText(settings.deviceName.ifBlank { Settings.DEFAULT_DEVICE_NAME })
         dialogBinding.nameInput.setSelection(dialogBinding.nameInput.text?.length ?: 0)
         dialogBinding.randomBtn.setOnClickListener {

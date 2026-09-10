@@ -197,7 +197,7 @@ jobs:
           gh release upload "$TAG" "$APK" --clobber --repo "$GITHUB_REPOSITORY" || true
 
           GH_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${APK_NAME}"
-          GITEE_URL="https://gitee.com/bdCasttv/video-source/releases/download/${TAG}/casttv-v${VER}.apk"
+          GITEE_URL="https://gitee.com/limingjie_0917/video-source/releases/download/${TAG}/casttv-v${VER}.apk"
           ACTIONS_URL="https://github.com/${GITHUB_REPOSITORY}/actions"
 
           echo "=== Updating DownloadApk/latest.md ==="
