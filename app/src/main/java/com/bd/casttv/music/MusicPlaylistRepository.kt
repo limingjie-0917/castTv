@@ -17,6 +17,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLDecoder
 import java.net.URLEncoder
 import java.util.Locale
 
@@ -51,11 +52,132 @@ class MusicPlaylistRepository(context: Context) {
         )
     }
 
-    suspend fun loadLyrics(url: String?): List<MusicLrcLine> = withContext(Dispatchers.IO) {
-        if (url.isNullOrBlank()) return@withContext emptyList()
-        val text = runCatching { downloadText(url) }.getOrNull().orEmpty()
-        MusicLrcParser.parse(text)
+    /**
+     * 歌词优先级：playlist.json 指定地址 > LRCLIB 自动匹配 > 空歌词。
+     * 指定地址存在时严格使用该地址；仅当 lrc 字段为空时才访问 LRCLIB。
+     */
+    suspend fun loadLyrics(track: MusicTrack): List<MusicLrcLine> = withContext(Dispatchers.IO) {
+        if (!track.lrc.isNullOrBlank()) {
+            val text = runCatching { downloadText(track.lrc) }.getOrNull().orEmpty()
+            return@withContext MusicLrcParser.parse(text)
+        }
+        val syncedLyrics = runCatching { fetchLrclibSyncedLyrics(track.title, track.artist) }
+            .getOrNull()
+            .orEmpty()
+        MusicLrcParser.parse(syncedLyrics)
     }
+
+    suspend fun deleteTracks(tracksToDelete: List<MusicTrack>): MusicDeleteResult = withContext(Dispatchers.IO) {
+        val requested = tracksToDelete.distinctBy { "${it.repo}|${it.url}" }
+        if (requested.isEmpty()) return@withContext MusicDeleteResult(0, 0, emptyList())
+
+        var deletedCount = 0
+        val failures = mutableListOf<String>()
+        requested.groupBy { it.repo }.forEach { (repoId, tracks) ->
+            val repoConfig = MusicRepoCatalog.byId(repoId)
+            if (repoConfig == null) {
+                failures += "$repoId：未找到仓库配置"
+                return@forEach
+            }
+
+            val trackFiles = tracks.mapNotNull { track ->
+                releaseFileName(track.url)?.let { fileName -> track to fileName }
+                    ?: run {
+                        failures += "${track.title}：无法识别云端附件地址"
+                        null
+                    }
+            }
+            if (trackFiles.isEmpty()) return@forEach
+
+            val deleteResult = when (
+                val result = GiteeApi.deleteReleaseAssetsResult(
+                    fileNames = trackFiles.map { it.second }.toSet(),
+                    repository = repoConfig.repository,
+                    releaseTag = "music-library",
+                )
+            ) {
+                is GiteeApi.ApiResult.Success -> result.value
+                is GiteeApi.ApiResult.Error -> {
+                    failures += "${repoConfig.displayName}：${result.message}"
+                    return@forEach
+                }
+                GiteeApi.ApiResult.NotFound -> {
+                    failures += "${repoConfig.displayName}：音乐 Release 不存在"
+                    return@forEach
+                }
+            }
+
+            deleteResult.failedMessages.forEach { (fileName, reason) ->
+                val title = trackFiles.firstOrNull { it.second == fileName }?.first?.title ?: fileName
+                failures += "$title：附件删除失败（$reason）"
+            }
+            val removableTracks = trackFiles
+                .filter { it.second in deleteResult.deletedOrMissingFileNames }
+                .map { it.first }
+            if (removableTracks.isEmpty()) return@forEach
+
+            val playlistUpdateError = removeTracksFromPlaylistWithRetry(repoConfig, removableTracks.map { it.url }.toSet())
+            if (playlistUpdateError == null) {
+                deletedCount += removableTracks.size
+            } else {
+                failures += "${repoConfig.displayName}：附件已删除，但 playlist.json 更新失败（$playlistUpdateError）"
+            }
+        }
+        MusicDeleteResult(
+            requestedCount = requested.size,
+            deletedCount = deletedCount,
+            failedMessages = failures,
+        )
+    }
+
+    private fun removeTracksFromPlaylistWithRetry(repoConfig: MusicRepoConfig, urls: Set<String>): String? {
+        var lastError = "未知错误"
+        repeat(3) {
+            val current = when (val result = GiteeApi.getFileResult(repoConfig.playlistPath, repoConfig.repository)) {
+                is GiteeApi.ApiResult.Success -> result.value
+                is GiteeApi.ApiResult.NotFound -> return "playlist.json 不存在"
+                is GiteeApi.ApiResult.Error -> {
+                    lastError = result.message
+                    return@repeat
+                }
+            }
+            val parsed = when (val result = parsePlaylist(current.content, repoConfig)) {
+                is PlaylistParseResult.Success -> result.tracks
+                is PlaylistParseResult.Error -> return result.message
+            }
+            val retained = parsed.filterNot { it.url in urls }
+            if (retained.size == parsed.size) return null
+            val playlistJson = JSONArray().apply {
+                retained.forEach { track ->
+                    put(JSONObject().apply {
+                        put("title", track.title)
+                        put("artist", track.artist)
+                        put("url", track.url)
+                        track.cover?.takeIf { it.isNotBlank() }?.let { put("cover", it) }
+                        track.lrc?.takeIf { it.isNotBlank() }?.let { put("lrc", it) }
+                    })
+                }
+            }.toString(2)
+            when (
+                val update = GiteeApi.putFileResult(
+                    path = repoConfig.playlistPath,
+                    content = playlistJson,
+                    sha = current.sha,
+                    repository = repoConfig.repository,
+                    commitMessage = "chore: remove deleted music tracks",
+                )
+            ) {
+                is GiteeApi.ApiResult.Success -> return null
+                is GiteeApi.ApiResult.Error -> lastError = update.message
+                GiteeApi.ApiResult.NotFound -> lastError = "playlist.json 更新目标不存在"
+            }
+        }
+        return lastError
+    }
+
+    private fun releaseFileName(assetUrl: String): String? = runCatching {
+        URLDecoder.decode(URL(assetUrl).path.substringAfterLast('/'), "UTF-8").takeIf { it.isNotBlank() }
+    }.getOrNull()
 
     suspend fun uploadAudio(uri: Uri, repoConfig: MusicRepoConfig): MusicUploadResult = withContext(Dispatchers.IO) {
         try {
@@ -256,13 +378,69 @@ class MusicPlaylistRepository(context: Context) {
         return "${System.currentTimeMillis()}_${normalizedTitle}.$safeExt"
     }
 
-    private fun downloadText(url: String): String {
+    /** 参考 musicVM-android：先精确 get，未命中时用 search?q 回退。 */
+    private fun fetchLrclibSyncedLyrics(title: String, artist: String): String? {
+        val cleanTitle = cleanLyricsQuery(title)
+        val cleanArtist = artist.trim().takeUnless { it.equals("未知歌手", ignoreCase = true) }.orEmpty()
+        if (cleanTitle.isBlank()) return null
+
+        val exactUrl = buildString {
+            append("$LRCLIB_API/get?track_name=${encodeQuery(cleanTitle)}")
+            if (cleanArtist.isNotBlank()) append("&artist_name=${encodeQuery(cleanArtist)}")
+        }
+        runCatching {
+            val record = JSONObject(downloadText(exactUrl, LRCLIB_USER_AGENT))
+            record.optString("syncedLyrics").trim().takeIf { it.isNotBlank() }
+        }.getOrNull()?.let { return it }
+
+        val query = listOf(cleanTitle, cleanArtist).filter { it.isNotBlank() }.joinToString(" ")
+        val searchUrl = "$LRCLIB_API/search?q=${encodeQuery(query)}"
+        val results = runCatching {
+            JSONArray(downloadText(searchUrl, LRCLIB_USER_AGENT))
+        }.getOrNull() ?: return null
+
+        val targetTitle = normalizeLyricsMatch(cleanTitle)
+        val targetArtist = normalizeLyricsMatch(cleanArtist)
+        return (0 until results.length())
+            .mapNotNull { index -> results.optJSONObject(index) }
+            .filter { it.optString("syncedLyrics").isNotBlank() }
+            .maxByOrNull { record ->
+                val candidateTitle = normalizeLyricsMatch(record.optString("trackName"))
+                val candidateArtist = normalizeLyricsMatch(record.optString("artistName"))
+                var score = 0
+                if (candidateTitle == targetTitle) score += 8
+                else if (candidateTitle.contains(targetTitle) || targetTitle.contains(candidateTitle)) score += 4
+                if (targetArtist.isNotBlank()) {
+                    if (candidateArtist == targetArtist) score += 6
+                    else if (candidateArtist.contains(targetArtist) || targetArtist.contains(candidateArtist)) score += 3
+                }
+                score
+            }
+            ?.optString("syncedLyrics")
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+    }
+
+    private fun cleanLyricsQuery(value: String): String = value
+        .replace(Regex("(?i)\\s*[（(\\[].*?(official|lyrics?|audio|video|mv|伴奏|歌词).*?[）)\\]]"), " ")
+        .replace(Regex("(?i)\\s*[-–—]\\s*(topic|official)$"), " ")
+        .replace(Regex("\\s+"), " ")
+        .trim()
+
+    private fun normalizeLyricsMatch(value: String): String = value
+        .lowercase(Locale.ROOT)
+        .replace(Regex("[^\\p{L}\\p{N}]+"), "")
+
+    private fun encodeQuery(value: String): String = URLEncoder.encode(value, "UTF-8").replace("+", "%20")
+
+    private fun downloadText(url: String, userAgent: String? = null): String {
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
             connectTimeout = 10_000
             readTimeout = 15_000
             instanceFollowRedirects = true
             setRequestProperty("Accept", "application/json, text/plain, */*")
+            if (!userAgent.isNullOrBlank()) setRequestProperty("User-Agent", userAgent)
         }
         return try {
             val code = connection.responseCode
@@ -296,4 +474,9 @@ class MusicPlaylistRepository(context: Context) {
         val title: String,
         val artist: String,
     )
+
+    private companion object {
+        const val LRCLIB_API = "https://lrclib.net/api"
+        const val LRCLIB_USER_AGENT = "casttv-receiver/1.2 (Android TV; https://gitee.com/bdCasttv/casttv-receiver)"
+    }
 }

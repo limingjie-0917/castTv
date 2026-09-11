@@ -536,6 +536,75 @@ object GiteeApi {
         return resolveSignedDownloadUrl(apiDownloadUrl)
     }
 
+    /**
+     * 批量删除指定 Release 下的附件。文件已不存在（404）同样视为删除成功，
+     * 方便上层继续清理 playlist.json 中的失效记录。
+     */
+    fun deleteReleaseAssetsResult(
+        fileNames: Set<String>,
+        repository: Repository,
+        releaseTag: String,
+    ): ApiResult<ReleaseAssetDeleteResult> {
+        val targets = fileNames.map { it.trim() }.filter { it.isNotBlank() }.toSet()
+        if (targets.isEmpty()) return ApiResult.Success(ReleaseAssetDeleteResult(emptySet(), emptyMap()))
+
+        val releaseUrl = "${repositoryApiBase(repository)}/releases/tags/${encodeSegment(releaseTag)}"
+        val releaseId = when (val release = getJsonObject(releaseUrl, "查询待删除音乐 Release")) {
+            is ApiResult.Success -> release.value.optLong("id").takeIf { it > 0L }
+                ?: return ApiResult.Error("音乐 Release 响应缺少 id")
+            is ApiResult.Error -> return release
+            ApiResult.NotFound -> return ApiResult.Success(ReleaseAssetDeleteResult(targets, emptyMap()))
+        }
+
+        val attachmentIds = linkedMapOf<String, Long>()
+        var page = 1
+        while (attachmentIds.keys.containsAll(targets).not()) {
+            val listUrl = "${repositoryApiBase(repository)}/releases/$releaseId/attach_files?page=$page&per_page=100"
+            val attachments = when (val result = getJsonArray(listUrl, "查询待删除音乐附件")) {
+                is ApiResult.Success -> result.value
+                is ApiResult.Error -> return result
+                ApiResult.NotFound -> break
+            }
+            for (i in 0 until attachments.length()) {
+                val attachment = attachments.optJSONObject(i) ?: continue
+                val name = attachment.optString("name")
+                val id = attachment.optLong("id")
+                if (name in targets && id > 0L) attachmentIds[name] = id
+            }
+            if (attachments.length() < 100 || page >= 100) break
+            page++
+        }
+
+        val deletedOrMissing = targets.filterTo(linkedSetOf()) { it !in attachmentIds }
+        val failures = linkedMapOf<String, String>()
+        attachmentIds.forEach { (fileName, assetId) ->
+            var conn: HttpURLConnection? = null
+            try {
+                val deleteUrl = "${repositoryApiBase(repository)}/releases/$releaseId/attach_files/$assetId"
+                conn = (URL(deleteUrl).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "DELETE"
+                    connectTimeout = CONNECT_TIMEOUT
+                    readTimeout = READ_TIMEOUT
+                    setRequestProperty("Accept", "application/json")
+                    setAuthHeader()
+                }
+                val code = conn.responseCode
+                val body = if (code in 200..299) "" else conn.readErrorBody()
+                logHttpExchange("删除音乐附件", "DELETE", deleteUrl, responseCode = code, responseBody = body)
+                if (code in 200..299 || code == 404) {
+                    deletedOrMissing += fileName
+                } else {
+                    failures[fileName] = "HTTP $code：${sanitizeErrorBody(body)}"
+                }
+            } catch (e: Exception) {
+                failures[fileName] = "${e.javaClass.simpleName}${e.message?.let { ": $it" }.orEmpty()}"
+            } finally {
+                conn?.disconnect()
+            }
+        }
+        return ApiResult.Success(ReleaseAssetDeleteResult(deletedOrMissing, failures))
+    }
+
     private fun getJsonObject(url: String, stage: String): ApiResult<JSONObject> {
         var conn: HttpURLConnection? = null
         return try {
@@ -908,6 +977,10 @@ object GiteeApi {
     data class FileResult(val content: String, val sha: String)
     data class BinaryFileResult(val bytes: ByteArray, val sha: String)
     data class ReleaseAssetResult(val downloadUrl: String, val assetId: Long)
+    data class ReleaseAssetDeleteResult(
+        val deletedOrMissingFileNames: Set<String>,
+        val failedMessages: Map<String, String>,
+    )
 
     sealed class ApiResult<out T> {
         data class Success<T>(val value: T) : ApiResult<T>()

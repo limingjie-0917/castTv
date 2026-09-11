@@ -4,7 +4,14 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RadialGradient
+import android.graphics.RectF
+import android.graphics.Shader
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
@@ -341,9 +348,13 @@ class HomePage(context: Context) : BasePage(context), PlaybackController.StateOb
                     }
                 }
             }
-            val icon = ImageView(context).apply {
-                setImageResource(card.iconRes)
-                scaleType = ImageView.ScaleType.FIT_CENTER
+            val icon: View = if (card.pageId == MusicPlayerPage.PAGE_ID) {
+                OrangeMusicIconView(context).apply { contentDescription = "橘子音乐" }
+            } else {
+                ImageView(context).apply {
+                    setImageResource(card.iconRes)
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                }
             }
             item.addView(icon, LinearLayout.LayoutParams(dp(48), dp(48)).apply { gravity = Gravity.CENTER_HORIZONTAL })
             val label = TextView(context).apply {
@@ -1234,6 +1245,175 @@ class HomePage(context: Context) : BasePage(context), PlaybackController.StateOb
         setOnFocusChangeListener { v, hasFocus ->
             refresh(hasFocus)
             FocusFxHelper.applyFocusFxState(v, hasFocus, cornerRadiusDp = cornerRadiusDp)
+        }
+    }
+
+    /** 仅用于首页音乐入口的 Canvas 图标：暖橘果实与流线型音符融合。 */
+    private class OrangeMusicIconView(context: Context) : View(context) {
+        private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+        private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+        private val path = Path()
+        private val oval = RectF()
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val size = minOf(width, height).toFloat()
+            if (size <= 0f) return
+            val cx = width * 0.50f
+            val cy = height * 0.57f
+            val radius = size * 0.335f
+
+            // 柔和投影与暖橘渐变，保证 TV 远距离观看时仍有清晰立体轮廓。
+            fillPaint.shader = null
+            fillPaint.color = Color.argb(82, 17, 8, 1)
+            canvas.drawCircle(cx + size * 0.025f, cy + size * 0.055f, radius * 1.04f, fillPaint)
+            fillPaint.alpha = 255
+            fillPaint.shader = RadialGradient(
+                cx - radius * 0.42f,
+                cy - radius * 0.48f,
+                radius * 1.55f,
+                intArrayOf(Color.rgb(255, 193, 71), Color.rgb(255, 126, 24), Color.rgb(217, 68, 10)),
+                floatArrayOf(0f, 0.56f, 1f),
+                Shader.TileMode.CLAMP,
+            )
+            canvas.drawCircle(cx, cy, radius, fillPaint)
+            fillPaint.shader = null
+
+            strokePaint.strokeWidth = size * 0.030f
+            strokePaint.color = Color.argb(190, 158, 48, 5)
+            canvas.drawCircle(cx, cy, radius, strokePaint)
+
+            // 橘子表面的细腻高光和弧形纹理。
+            strokePaint.strokeWidth = size * 0.030f
+            strokePaint.color = Color.argb(105, 255, 244, 185)
+            oval.set(cx - radius * 0.70f, cy - radius * 0.66f, cx + radius * 0.12f, cy + radius * 0.10f)
+            canvas.drawArc(oval, 198f, 82f, false, strokePaint)
+            strokePaint.strokeWidth = size * 0.012f
+            strokePaint.color = Color.argb(52, 255, 222, 142)
+            oval.set(cx - radius * 0.80f, cy - radius * 0.50f, cx + radius * 0.78f, cy + radius * 0.74f)
+            canvas.drawArc(oval, 18f, 132f, false, strokePaint)
+
+            // 小叶片从果蒂向右上方舒展，使用贝塞尔曲线形成自然叶脉。
+            path.reset()
+            path.moveTo(cx - size * 0.025f, cy - radius * 0.86f)
+            path.cubicTo(cx + size * 0.08f, cy - radius * 1.30f, cx + size * 0.25f, cy - radius * 1.12f, cx + size * 0.30f, cy - radius * 0.84f)
+            path.cubicTo(cx + size * 0.18f, cy - radius * 0.70f, cx + size * 0.06f, cy - radius * 0.72f, cx - size * 0.025f, cy - radius * 0.86f)
+            path.close()
+            fillPaint.alpha = 255
+            fillPaint.shader = LinearGradient(
+                cx,
+                cy - radius * 1.20f,
+                cx + size * 0.28f,
+                cy - radius * 0.72f,
+                Color.rgb(132, 205, 75),
+                Color.rgb(49, 132, 55),
+                Shader.TileMode.CLAMP,
+            )
+            canvas.drawPath(path, fillPaint)
+            fillPaint.shader = null
+            strokePaint.strokeWidth = size * 0.012f
+            strokePaint.color = Color.argb(150, 35, 108, 44)
+            canvas.drawPath(path, strokePaint)
+            canvas.drawLine(
+                cx + size * 0.025f,
+                cy - radius * 0.88f,
+                cx + size * 0.235f,
+                cy - radius * 0.94f,
+                strokePaint,
+            )
+
+            // 果实中心嵌入奶油白音符，头部圆润、符杆清晰、旗帜自然上扬。
+            drawMusicNote(canvas, cx - size * 0.025f, cy + size * 0.020f, size * 0.46f)
+        }
+
+        private fun drawMusicNote(canvas: Canvas, cx: Float, cy: Float, noteSize: Float) {
+            path.reset()
+            path.moveTo(cx - noteSize * 0.36f, cy + noteSize * 0.22f)
+            path.cubicTo(
+                cx - noteSize * 0.42f,
+                cy + noteSize * 0.02f,
+                cx - noteSize * 0.18f,
+                cy - noteSize * 0.10f,
+                cx + noteSize * 0.02f,
+                cy - noteSize * 0.02f,
+            )
+            path.cubicTo(
+                cx + noteSize * 0.18f,
+                cy + noteSize * 0.05f,
+                cx + noteSize * 0.15f,
+                cy + noteSize * 0.25f,
+                cx - noteSize * 0.02f,
+                cy + noteSize * 0.34f,
+            )
+            path.cubicTo(
+                cx - noteSize * 0.20f,
+                cy + noteSize * 0.43f,
+                cx - noteSize * 0.37f,
+                cy + noteSize * 0.37f,
+                cx - noteSize * 0.36f,
+                cy + noteSize * 0.22f,
+            )
+            path.close()
+            path.moveTo(cx - noteSize * 0.015f, cy + noteSize * 0.10f)
+            path.lineTo(cx - noteSize * 0.015f, cy - noteSize * 0.50f)
+            path.cubicTo(
+                cx + noteSize * 0.23f,
+                cy - noteSize * 0.46f,
+                cx + noteSize * 0.44f,
+                cy - noteSize * 0.32f,
+                cx + noteSize * 0.45f,
+                cy - noteSize * 0.10f,
+            )
+            path.cubicTo(
+                cx + noteSize * 0.42f,
+                cy + noteSize * 0.01f,
+                cx + noteSize * 0.34f,
+                cy + noteSize * 0.08f,
+                cx + noteSize * 0.23f,
+                cy + noteSize * 0.12f,
+            )
+            path.cubicTo(
+                cx + noteSize * 0.29f,
+                cy - noteSize * 0.06f,
+                cx + noteSize * 0.20f,
+                cy - noteSize * 0.18f,
+                cx + noteSize * 0.08f,
+                cy - noteSize * 0.21f,
+            )
+            path.lineTo(cx + noteSize * 0.08f, cy + noteSize * 0.08f)
+            path.cubicTo(
+                cx + noteSize * 0.06f,
+                cy + noteSize * 0.12f,
+                cx + noteSize * 0.02f,
+                cy + noteSize * 0.13f,
+                cx - noteSize * 0.015f,
+                cy + noteSize * 0.10f,
+            )
+            path.close()
+
+            fillPaint.shader = null
+            fillPaint.color = Color.argb(88, 107, 35, 4)
+            canvas.save()
+            canvas.translate(noteSize * 0.035f, noteSize * 0.045f)
+            canvas.drawPath(path, fillPaint)
+            canvas.restore()
+
+            fillPaint.alpha = 255
+            fillPaint.shader = LinearGradient(
+                cx - noteSize * 0.28f,
+                cy - noteSize * 0.48f,
+                cx + noteSize * 0.30f,
+                cy + noteSize * 0.34f,
+                Color.rgb(255, 255, 243),
+                Color.rgb(255, 226, 157),
+                Shader.TileMode.CLAMP,
+            )
+            canvas.drawPath(path, fillPaint)
+            fillPaint.shader = null
         }
     }
 

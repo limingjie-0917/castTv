@@ -5,7 +5,11 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RectF
 import android.graphics.RenderEffect
 import android.graphics.Shader
 import android.graphics.Typeface
@@ -24,6 +28,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -85,6 +90,8 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
     private var uploadJob: Job? = null
     private var playbackPrepareJob: Job? = null
     private var uploadDialog: AlertDialog? = null
+    private var cloudSongsDialog: AlertDialog? = null
+    private var cloudDeleteJob: Job? = null
     private var uploadDialogActions: LinearLayout? = null
     private var uploadDialogLoading: LinearLayout? = null
     private var uploadDialogLoadingText: TextView? = null
@@ -95,7 +102,7 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
     private var playlist: List<MusicTrack> = emptyList()
     private var currentTrackIndex: Int = -1
     private var focusedListIndex: Int = 0
-    private var loopMode: MusicLoopMode = MusicLoopMode.OFF
+    private var loopMode: MusicLoopMode = MusicLoopMode.SHUFFLE
     private var lastLoadSummary: String = ""
 
     private val backdropA = AppCompatImageView(context).apply {
@@ -143,8 +150,8 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
         layoutManager = LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false)
         itemAnimator = null
         overScrollMode = View.OVER_SCROLL_NEVER
-        clipChildren = false
-        clipToPadding = false
+        clipChildren = true
+        clipToPadding = true
         isFocusable = false
         isFocusableInTouchMode = false
         descendantFocusability = ViewGroup.FOCUS_AFTER_DESCENDANTS
@@ -194,23 +201,14 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
         text = "--:--"
         gravity = Gravity.END
     }
-    private val progressBar = ProgressBar(context, null, android.R.attr.progressBarStyleHorizontal).apply {
-        max = 1000
-        progress = 0
-        progressDrawable = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = dp(999).toFloat()
-            setColor(Color.argb(110, 255, 255, 255))
-        }
-        progressTintList = android.content.res.ColorStateList.valueOf(warmColor())
-        progressBackgroundTintList = android.content.res.ColorStateList.valueOf(Color.argb(72, 255, 255, 255))
-        isFocusable = false
+    private val progressBar = PlaybackProgressView(context).apply {
+        setProgress(0f)
     }
 
     private val progressRunnable = object : Runnable {
         override fun run() {
             refreshPlaybackUi()
-            mainHandler.postDelayed(this, 300L)
+            mainHandler.postDelayed(this, 200L)
         }
     }
 
@@ -288,6 +286,10 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
         pauseAndReleasePlayer()
         cancelTransientJobs(cancelUpload = true)
         closeUploadDialog()
+        cloudDeleteJob?.cancel()
+        cloudDeleteJob = null
+        cloudSongsDialog?.dismiss()
+        cloudSongsDialog = null
         mainHandler.removeCallbacks(progressRunnable)
         pageScope.cancel()
         super.onDetachedFromWindow()
@@ -298,7 +300,10 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
         val palette = ThemeManager.currentPalette(context)
         coverView.setAccentColor(palette.accent)
         lyricsView.setAccentColor(palette.accent)
-        progressBar.progressTintList = android.content.res.ColorStateList.valueOf(palette.accent)
+        progressBar.setColors(
+            playedColor = palette.accent,
+            trackColor = Color.argb(72, 255, 255, 255),
+        )
         listHeaderTitle.setTextColor(Color.WHITE)
         listStatus.setTextColor(Color.argb(198, 255, 255, 255))
         cloudDataTitle.setTextColor(palette.accent)
@@ -322,7 +327,7 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
         )
         loadingView.indeterminateTintList = android.content.res.ColorStateList.valueOf(palette.accent)
         emptyView.setTextColor(Color.argb(210, 255, 255, 255))
-        refreshActionButtonVisual(loopButton, loopMode.iconRes, active = loopMode != MusicLoopMode.OFF)
+        refreshActionButtonVisual(loopButton, loopMode.iconRes, active = true)
         refreshActionButtonVisual(uploadButton, R.drawable.ic_music_upload, active = false)
         trackAdapter.notifyDataSetChanged()
     }
@@ -385,7 +390,7 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
         listContainer.addView(emptyView, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT, Gravity.CENTER))
         panel.addView(listContainer, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
         panel.addView(buildCloudDataSection(), LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
-            topMargin = dp(10)
+            topMargin = dp(6)
         })
         return panel
     }
@@ -393,12 +398,23 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
     private fun buildCloudDataSection(): View {
         val section = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
+            isFocusable = true
+            isClickable = true
             setPadding(dp(14), dp(10), dp(14), dp(10))
-            background = GradientDrawable().apply {
-                cornerRadius = dp(16).toFloat()
-                setColor(Color.argb(24, 255, 255, 255))
-                setStroke(dp(1), Color.argb(72, 220, 224, 232))
+            fun updateBackground(focused: Boolean) {
+                background = GradientDrawable().apply {
+                    cornerRadius = dp(16).toFloat()
+                    setColor(Color.argb(if (focused) 42 else 24, 255, 255, 255))
+                    setStroke(dp(if (focused) 2 else 1), if (focused) warmColor() else Color.argb(72, 220, 224, 232))
+                }
             }
+            updateBackground(false)
+            setOnFocusChangeListener { view, focused ->
+                updateBackground(focused)
+                cloudDataTitle.setTextColor(if (focused) warmColor() else Color.WHITE)
+                FocusFxHelper.applyFocusFxState(view, focused, cornerRadiusDp = 16)
+            }
+            setOnClickListener { showCloudSongsDialog() }
         }
         section.addView(cloudDataTitle, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         val repoDataRow = LinearLayout(context).apply {
@@ -443,29 +459,28 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
         }
         val metadataArea = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_VERTICAL
+            gravity = Gravity.CENTER
             clipChildren = true
             clipToPadding = true
+            songTitleView.gravity = Gravity.CENTER
+            artistView.gravity = Gravity.CENTER
             addView(songTitleView, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
             addView(artistView, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
                 topMargin = dp(8)
             })
         }
-        val topArea = object : LinearLayout(context) {
+        val topArea = object : FrameLayout(context) {
             override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
                 super.onSizeChanged(w, h, oldw, oldh)
                 if (h <= 0) return
-                coverArea.layoutParams = LinearLayout.LayoutParams(h, h)
+                coverArea.layoutParams = FrameLayout.LayoutParams(h, h, Gravity.START or Gravity.TOP)
             }
         }.apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
             clipChildren = true
             clipToPadding = true
-            addView(coverArea, LinearLayout.LayoutParams(1, LayoutParams.MATCH_PARENT))
-            addView(metadataArea, LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f).apply {
-                marginStart = dp(18)
-            })
+            // 歌曲信息以整个右侧区域为基准居中；封面不参与排版，叠加在左上角。
+            addView(metadataArea, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT, Gravity.CENTER))
+            addView(coverArea, FrameLayout.LayoutParams(1, LayoutParams.MATCH_PARENT, Gravity.START or Gravity.TOP))
         }
         panel.addView(topArea, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, 0, 0.32f))
 
@@ -499,7 +514,7 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
             button = loopButton,
             iconRes = { loopMode.iconRes },
             onClick = { cycleLoopMode() },
-            isActive = { loopMode != MusicLoopMode.OFF },
+            isActive = { true },
         )
         setupHeaderActionButton(
             button = uploadButton,
@@ -641,7 +656,7 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
             lyricsView.setLyrics(emptyList())
             progressCurrent.text = "00:00"
             progressTotal.text = "--:--"
-            progressBar.progress = 0
+            progressBar.setProgress(0f)
             coverView.setArtwork(null)
             updateBackdrop(null)
             stopCoverRotation()
@@ -657,7 +672,7 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
         lyricsLoadJob?.cancel()
         lyricsView.setLyrics(emptyList(), "歌词加载中…")
         lyricsLoadJob = pageScope.launch {
-            val lines = withContext(Dispatchers.IO) { playlistRepository.loadLyrics(track.lrc) }
+            val lines = playlistRepository.loadLyrics(track)
             if (track.url != currentTrack()?.url) return@launch
             lyricsView.setLyrics(lines)
             refreshPlaybackUi()
@@ -805,7 +820,7 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
 
     private fun updateLoopButton() {
         loopButton.text = loopMode.label
-        refreshActionButtonVisual(loopButton, loopMode.iconRes, active = loopMode != MusicLoopMode.OFF)
+        refreshActionButtonVisual(loopButton, loopMode.iconRes, active = true)
         loopButton.contentDescription = loopMode.label
     }
 
@@ -816,14 +831,12 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
                 val next = if (currentTrackIndex >= playlist.lastIndex) 0 else currentTrackIndex + 1
                 selectTrack(next, autoPlay = true)
             }
-            MusicLoopMode.OFF -> {
-                if (currentTrackIndex < playlist.lastIndex) {
-                    selectTrack(currentTrackIndex + 1, autoPlay = true)
-                } else {
-                    player?.pause()
-                    player?.seekTo(0)
-                    refreshPlaybackUi()
-                }
+            MusicLoopMode.SHUFFLE -> {
+                val next = playlist.indices
+                    .filter { it != currentTrackIndex }
+                    .randomOrNull()
+                    ?: currentTrackIndex
+                selectTrack(next, autoPlay = true)
             }
         }
     }
@@ -842,7 +855,12 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
         val position = exo?.currentPosition?.coerceAtLeast(0L) ?: 0L
         progressCurrent.text = formatTime(position)
         progressTotal.text = if (duration > 0) formatTime(duration) else "--:--"
-        progressBar.progress = if (duration > 0) ((position * 1000L / duration).toInt().coerceIn(0, 1000)) else 0
+        val progressFraction = if (duration > 0) {
+            (position.toDouble() / duration.toDouble()).toFloat().coerceIn(0f, 1f)
+        } else {
+            0f
+        }
+        progressBar.setProgress(progressFraction)
         lyricsView.updatePosition(position)
         if (exo?.isPlaying == true) startCoverRotation() else stopCoverRotation()
     }
@@ -930,6 +948,102 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
         return null
     }
 
+    /** 播放列表专用状态图标：使用贝塞尔 Path 绘制圆角三角形，避免尖锐顶角。 */
+    private class RoundedPlaybackIconView(context: Context) : View(context) {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+        private val path = Path()
+        private val barRect = RectF()
+        private var playing = false
+
+        fun setPlaybackState(isPlaying: Boolean, color: Int) {
+            playing = isPlaying
+            paint.color = color
+            invalidate()
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            if (width <= 0 || height <= 0) return
+            val w = width.toFloat()
+            val h = height.toFloat()
+            if (playing) {
+                // 暂停态同步使用圆角矩形，保持与圆角播放图标一致的视觉语言。
+                val barWidth = w * 0.20f
+                val radius = barWidth * 0.46f
+                barRect.set(w * 0.25f, h * 0.20f, w * 0.25f + barWidth, h * 0.80f)
+                canvas.drawRoundRect(barRect, radius, radius, paint)
+                barRect.set(w * 0.55f, h * 0.20f, w * 0.55f + barWidth, h * 0.80f)
+                canvas.drawRoundRect(barRect, radius, radius, paint)
+                return
+            }
+
+            // 三个顶角均以三次贝塞尔曲线收圆；主体略向右偏，保证视觉居中。
+            path.reset()
+            path.moveTo(w * 0.36f, h * 0.21f)
+            path.cubicTo(w * 0.28f, h * 0.16f, w * 0.22f, h * 0.23f, w * 0.22f, h * 0.33f)
+            path.lineTo(w * 0.22f, h * 0.67f)
+            path.cubicTo(w * 0.22f, h * 0.77f, w * 0.28f, h * 0.84f, w * 0.36f, h * 0.79f)
+            path.lineTo(w * 0.73f, h * 0.59f)
+            path.cubicTo(w * 0.84f, h * 0.53f, w * 0.84f, h * 0.47f, w * 0.73f, h * 0.41f)
+            path.lineTo(w * 0.36f, h * 0.21f)
+            path.close()
+            canvas.drawPath(path, paint)
+        }
+    }
+
+    /**
+     * 自绘播放进度条。系统 ProgressBar 在替换为单层 GradientDrawable 后，
+     * 不再区分 background/progress 图层，导致数值变化但已播放区域不可见。
+     */
+    private class PlaybackProgressView(context: Context) : View(context) {
+        private val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+        private val playedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+        private val drawRect = RectF()
+        private var progressFraction = 0f
+
+        init {
+            isFocusable = false
+            setColors(
+                playedColor = Color.rgb(245, 196, 81),
+                trackColor = Color.argb(72, 255, 255, 255),
+            )
+        }
+
+        fun setColors(playedColor: Int, trackColor: Int) {
+            playedPaint.color = playedColor
+            trackPaint.color = trackColor
+            invalidate()
+        }
+
+        fun setProgress(fraction: Float) {
+            val normalized = fraction.coerceIn(0f, 1f)
+            if (progressFraction == normalized) return
+            progressFraction = normalized
+            postInvalidateOnAnimation()
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val contentWidth = (width - paddingLeft - paddingRight).toFloat()
+            val contentHeight = (height - paddingTop - paddingBottom).toFloat()
+            if (contentWidth <= 0f || contentHeight <= 0f) return
+            val left = paddingLeft.toFloat()
+            val top = paddingTop.toFloat()
+            val right = left + contentWidth
+            val bottom = top + contentHeight
+            val trackRadius = contentHeight / 2f
+
+            drawRect.set(left, top, right, bottom)
+            canvas.drawRoundRect(drawRect, trackRadius, trackRadius, trackPaint)
+
+            if (progressFraction <= 0f) return
+            val playedRight = left + contentWidth * progressFraction
+            val playedRadius = minOf(trackRadius, (playedRight - left) / 2f)
+            drawRect.set(left, top, playedRight, bottom)
+            canvas.drawRoundRect(drawRect, playedRadius, playedRadius, playedPaint)
+        }
+    }
+
     private inner class HeaderActionButton(initialText: String = "") : LinearLayout(context) {
         private val iconView = AppCompatImageView(context).apply {
             isFocusable = false
@@ -983,7 +1097,7 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
                 clipChildren = false
                 clipToPadding = false
             }
-            val icon = ImageView(parent.context).apply { id = View.generateViewId() }
+            val icon = RoundedPlaybackIconView(parent.context).apply { id = View.generateViewId() }
             val textColumn = LinearLayout(parent.context).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -1025,7 +1139,7 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
 
     private inner class TrackViewHolder(
         itemView: LinearLayout,
-        private val iconView: ImageView,
+        private val iconView: RoundedPlaybackIconView,
         private val titleView: TextView,
         private val artistTextView: TextView,
     ) : RecyclerView.ViewHolder(itemView) {
@@ -1037,9 +1151,9 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
             val accent = warmColor()
             titleView.setTextColor(if (isCurrent) accent else Color.WHITE)
             artistTextView.setTextColor(if (isCurrent) accent else Color.argb(186, 255, 255, 255))
-            iconView.setImageResource(if (isPlaying) R.drawable.ic_music_pause else R.drawable.ic_music_play)
-            iconView.imageTintList = android.content.res.ColorStateList.valueOf(
-                if (isCurrent) accent else Color.argb(186, 255, 255, 255),
+            iconView.setPlaybackState(
+                isPlaying = isPlaying,
+                color = if (isCurrent) accent else Color.argb(186, 255, 255, 255),
             )
             refreshBackground(itemView, isCurrent, itemView.isFocused)
 
@@ -1134,6 +1248,207 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
         } else {
             selectTrack(position, autoPlay = true)
         }
+    }
+
+    private fun showCloudSongsDialog() {
+        if (cloudDeleteJob?.isActive == true) {
+            toast("云端歌曲删除中，请稍候")
+            return
+        }
+        cloudSongsDialog?.takeIf { it.isShowing }?.let {
+            it.window?.decorView?.requestFocus()
+            return
+        }
+        if (playlist.isEmpty()) {
+            toast("暂无云端歌曲")
+            return
+        }
+
+        val selectedUrls = linkedSetOf<String>()
+        val palette = ThemeManager.currentPalette(context)
+        val panel = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            background = ThemeManager.dialogPanelBg(context, cornerRadiusDp = 18)
+            setPadding(dp(20), dp(18), dp(20), dp(18))
+            clipChildren = false
+            clipToPadding = false
+        }
+        val header = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(8), dp(14), dp(8))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                palette.dialogTitleGradient,
+            ).apply { cornerRadius = dp(10).toFloat() }
+        }
+        header.addView(ClippedImageView(context).apply {
+            setImageResource(R.drawable.sticker_shinchan)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setCircle(true)
+            foreground = ContextCompat.getDrawable(context, R.drawable.fg_sticker_circle_border)
+        }, LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginEnd = dp(14) })
+        header.addView(TextView(context).apply {
+            text = "云端歌曲"
+            textSize = 22f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER_VERTICAL
+        }, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+        panel.addView(header, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        val summary = TextView(context).apply {
+            text = "共 ${playlist.size} 首，可多选后从云端彻底删除"
+            textSize = 14f
+            setTextColor(Color.argb(206, 255, 255, 255))
+            setPadding(0, dp(12), 0, dp(10))
+        }
+        panel.addView(summary)
+
+        val rows = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        val focusables = mutableListOf<View>()
+        lateinit var deleteButton: TextView
+        playlist.forEachIndexed { index, track ->
+            val indicator = CloudSelectionIndicator(context)
+            val title = TextView(context).apply {
+                text = track.title
+                textSize = 16f
+                typeface = Typeface.DEFAULT_BOLD
+                setTextColor(Color.WHITE)
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+            }
+            val artist = TextView(context).apply {
+                text = "歌手：${track.artist}"
+                textSize = 13f
+                setTextColor(Color.argb(182, 255, 255, 255))
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+            }
+            val texts = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(title, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+                addView(artist, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
+                    topMargin = dp(3)
+                })
+            }
+            val row = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                isFocusable = true
+                isClickable = true
+                setPadding(dp(14), dp(10), dp(14), dp(10))
+                background = cloudSongRowBackground(false, false)
+                addView(indicator, LinearLayout.LayoutParams(dp(24), dp(24)).apply { marginEnd = dp(14) })
+                addView(texts, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+                setOnClickListener {
+                    if (!selectedUrls.add(track.url)) selectedUrls.remove(track.url)
+                    indicator.checked = track.url in selectedUrls
+                    background = cloudSongRowBackground(hasFocus(), indicator.checked)
+                    deleteButton.text = "删除选中（${selectedUrls.size}）"
+                    deleteButton.isEnabled = selectedUrls.isNotEmpty()
+                    deleteButton.alpha = if (selectedUrls.isNotEmpty()) 1f else 0.5f
+                }
+                setOnFocusChangeListener { view, focused ->
+                    background = cloudSongRowBackground(focused, indicator.checked)
+                    title.setTextColor(if (focused) warmColor() else Color.WHITE)
+                    FocusFxHelper.applyFocusFxState(view, focused, cornerRadiusDp = 14)
+                }
+            }
+            rows.addView(row, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(64)).apply {
+                if (index > 0) topMargin = dp(6)
+            })
+            focusables += row
+        }
+        val maxListHeight = minOf(
+            dp(320),
+            (resources.displayMetrics.heightPixels - dp(310)).coerceAtLeast(dp(150)),
+        )
+        panel.addView(ScrollView(context).apply {
+            isFillViewport = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            clipChildren = true
+            clipToPadding = true
+            addView(rows, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, maxListHeight))
+
+        val actions = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+            setPadding(0, dp(16), 0, 0)
+        }
+        lateinit var dialog: AlertDialog
+        val cancelButton = dialogButton("取消") { dialog.dismiss() }
+        deleteButton = dialogButton("删除选中（0）") {
+            val selectedTracks = playlist.filter { it.url in selectedUrls }
+            if (selectedTracks.isNotEmpty()) showDeleteConfirmation(dialog, panel, selectedTracks)
+        }.apply {
+            isEnabled = false
+            alpha = 0.5f
+        }
+        actions.addView(cancelButton, LinearLayout.LayoutParams(dp(150), dp(48)))
+        actions.addView(deleteButton, LinearLayout.LayoutParams(dp(190), dp(48)).apply { marginStart = dp(12) })
+        panel.addView(actions)
+        focusables += cancelButton
+        focusables += deleteButton
+
+        dialog = AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog).setView(panel).create().also { created ->
+            cloudSongsDialog = created
+            created.setOnShowListener { focusables.firstOrNull()?.requestFocus() }
+            created.setOnDismissListener { if (cloudSongsDialog === created) cloudSongsDialog = null }
+            created.show()
+            created.window?.apply {
+                setGravity(Gravity.CENTER)
+                setBackgroundDrawableResource(android.R.color.transparent)
+                setLayout(dp(560), WindowManager.LayoutParams.WRAP_CONTENT)
+            }
+        }
+    }
+
+    private fun showDeleteConfirmation(parentDialog: AlertDialog, panel: LinearLayout, tracks: List<MusicTrack>) {
+        AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog)
+            .setTitle("确认彻底删除？")
+            .setMessage("将删除选中的 ${tracks.size} 首歌曲及其云端音频文件，此操作不可恢复。")
+            .setNegativeButton("取消", null)
+            .setPositiveButton("确认删除") { _, _ -> performCloudDelete(parentDialog, panel, tracks) }
+            .show()
+    }
+
+    private fun performCloudDelete(dialog: AlertDialog, panel: LinearLayout, tracks: List<MusicTrack>) {
+        dialog.setCancelable(false)
+        dialog.setCanceledOnTouchOutside(false)
+        panel.removeAllViews()
+        panel.gravity = Gravity.CENTER
+        panel.addView(ProgressBar(context, null, android.R.attr.progressBarStyleLarge).apply {
+            isIndeterminate = true
+            indeterminateTintList = android.content.res.ColorStateList.valueOf(warmColor())
+        }, LinearLayout.LayoutParams(dp(56), dp(56)).apply { gravity = Gravity.CENTER_HORIZONTAL })
+        panel.addView(TextView(context).apply {
+            text = "正在从云端彻底删除 ${tracks.size} 首歌曲…"
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            setPadding(0, dp(14), 0, 0)
+        }, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+
+        cloudDeleteJob = pageScope.launch {
+            val result = withContext(Dispatchers.IO) { playlistRepository.deleteTracks(tracks) }
+            val message = when {
+                result.isCompleteSuccess -> "已从云端删除 ${result.deletedCount} 首歌曲"
+                result.deletedCount > 0 -> "已删除 ${result.deletedCount}/${result.requestedCount} 首；${result.failedMessages.firstOrNull().orEmpty()}"
+                else -> "删除失败：${result.failedMessages.firstOrNull() ?: "未知错误"}"
+            }
+            toast(message)
+            dialog.dismiss()
+            cloudDeleteJob = null
+            loadPlaylist(showLoading = false, preserveUrl = currentTrack()?.url)
+        }
+    }
+
+    private fun cloudSongRowBackground(focused: Boolean, selected: Boolean): GradientDrawable = GradientDrawable().apply {
+        cornerRadius = dp(14).toFloat()
+        setColor(Color.argb(if (focused) 38 else 18, 255, 255, 255))
+        val stroke = if (focused || selected) warmColor() else Color.argb(82, 210, 214, 222)
+        setStroke(dp(if (focused) 2 else 1), stroke)
     }
 
     private fun showUploadRepoDialog() {
@@ -1273,18 +1588,20 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
         isClickable = true
         setTextColor(Color.WHITE)
         background = GradientDrawable().apply {
-            cornerRadius = dp(18).toFloat()
-            setColor(Color.argb(18, 255, 255, 255))
-            setStroke(dp(1), Color.argb(110, 210, 214, 222))
+            val (strokeDp, strokeColor) = ThemeManager.strokeFor(context, false)
+            cornerRadius = dp(10).toFloat()
+            setColor(Color.argb(52, 32, 34, 40))
+            setStroke(dp(strokeDp), strokeColor)
         }
         setOnFocusChangeListener { v, hasFocus ->
             background = GradientDrawable().apply {
-                cornerRadius = dp(18).toFloat()
-                setColor(Color.argb(if (hasFocus) 34 else 18, 255, 255, 255))
-                setStroke(dp(if (hasFocus) 2 else 1), if (hasFocus) warmColor() else Color.argb(110, 210, 214, 222))
+                val (strokeDp, strokeColor) = ThemeManager.strokeFor(context, hasFocus)
+                cornerRadius = dp(10).toFloat()
+                setColor(Color.argb(52, 32, 34, 40))
+                setStroke(dp(strokeDp), strokeColor)
             }
             setTextColor(if (hasFocus) warmColor() else Color.WHITE)
-            FocusFxHelper.applyFocusFxState(v, hasFocus, cornerRadiusDp = 18)
+            FocusFxHelper.applyFocusFxState(v, hasFocus, cornerRadiusDp = 10)
         }
         setOnClickListener { click() }
         setOnKeyListener { v, keyCode, event ->
@@ -1368,6 +1685,31 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
         val minutes = (totalSeconds % 3600L) / 60L
         val seconds = totalSeconds % 60L
         return if (hours > 0) "%d:%02d:%02d".format(hours, minutes, seconds) else "%02d:%02d".format(minutes, seconds)
+    }
+
+    private inner class CloudSelectionIndicator(context: Context) : View(context) {
+        var checked: Boolean = false
+            set(value) {
+                field = value
+                invalidate()
+            }
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+        private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = dp(2).toFloat()
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val radius = (minOf(width, height) / 2f) - dp(2)
+            strokePaint.color = warmColor()
+            canvas.drawCircle(width / 2f, height / 2f, radius, strokePaint)
+            if (checked) {
+                paint.color = warmColor()
+                val innerRadius = (radius - strokePaint.strokeWidth - dp(3)).coerceAtLeast(dp(3).toFloat())
+                canvas.drawCircle(width / 2f, height / 2f, innerRadius, paint)
+            }
+        }
     }
 
     private fun warmColor(): Int = ThemeManager.currentPalette(context).accent

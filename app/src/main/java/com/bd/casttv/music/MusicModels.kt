@@ -58,13 +58,13 @@ enum class MusicLoopMode(
     val label: String,
     val iconRes: Int,
 ) {
-    OFF("顺序播放", R.drawable.ic_music_repeat_off),
+    SHUFFLE("随机播放", R.drawable.ic_music_shuffle),
     ALL("循环播放", R.drawable.ic_music_repeat_all),
     ;
 
     fun next(): MusicLoopMode = when (this) {
-        OFF -> ALL
-        ALL -> OFF
+        SHUFFLE -> ALL
+        ALL -> SHUFFLE
     }
 }
 
@@ -73,6 +73,14 @@ data class MusicPlaylistLoadResult(
     val skippedRepos: List<String>,
     val repoTrackCounts: Map<String, Int>,
 )
+
+data class MusicDeleteResult(
+    val requestedCount: Int,
+    val deletedCount: Int,
+    val failedMessages: List<String>,
+) {
+    val isCompleteSuccess: Boolean get() = deletedCount == requestedCount && failedMessages.isEmpty()
+}
 
 sealed class MusicUploadResult {
     data class Success(
