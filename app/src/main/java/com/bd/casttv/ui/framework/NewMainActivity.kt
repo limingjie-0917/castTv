@@ -129,12 +129,12 @@ class NewMainActivity : AppCompatActivity(), SettingsChangeBus.Listener, PageCon
     private val overlayBlockedFocusability = mutableMapOf<ViewGroup, Int>()
     private var overlaySwallowNextBackUp = false
     private var pendingMusicUploadRepoId: String? = null
-    private val musicAudioDocumentLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+    private val musicAudioDocumentLauncher = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         val repoId = pendingMusicUploadRepoId
         pendingMusicUploadRepoId = null
         val musicPage = getPage(MusicPlayerPage.PAGE_ID) as? MusicPlayerPage
         if (repoId != null) {
-            musicPage?.onMusicAudioDocumentResult(uri, repoId)
+            musicPage?.onMusicAudioDocumentResult(uris ?: emptyList(), repoId)
         }
     }
 

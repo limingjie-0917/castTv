@@ -22,9 +22,11 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.view.WindowManager
 import android.view.animation.LinearInterpolator
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -95,12 +97,18 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
     private var uploadDialogActions: LinearLayout? = null
     private var uploadDialogLoading: LinearLayout? = null
     private var uploadDialogLoadingText: TextView? = null
+    private var uploadDialogCancelButton: TextView? = null
+    private var pendingBatchCancel: Boolean = false
     private var playlistReloadRequired = false
     private var coverRotationAnimator: ObjectAnimator? = null
     private var showingBackdropA = true
 
+    private var allPlaylist: List<MusicTrack> = emptyList()
     private var playlist: List<MusicTrack> = emptyList()
+    private var selectedArtist: String? = null
+    private var lastSkippedRepos: List<String> = emptyList()
     private var currentTrackIndex: Int = -1
+    private var activeTrack: MusicTrack? = null
     private var focusedListIndex: Int = 0
     private var loopMode: MusicLoopMode = MusicLoopMode.SHUFFLE
     private var lastLoadSummary: String = ""
@@ -123,17 +131,26 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
 
     private val listHeaderTitle = TextView(context).apply {
         text = "播放列表"
-        textSize = 24f
+        textSize = 18f
         typeface = Typeface.DEFAULT_BOLD
         setTextColor(Color.WHITE)
         ellipsize = TextUtils.TruncateAt.END
         maxLines = 1
+    }
+    private val headerDivider = View(context)
+    private val artistTabBottomDivider = View(context)
+    private val artistTabRow = LinearLayout(context).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        clipChildren = false
+        clipToPadding = false
     }
     private val listStatus = TextView(context).apply {
         textSize = 12f
         setTextColor(Color.argb(190, 255, 255, 255))
         ellipsize = TextUtils.TruncateAt.END
         maxLines = 2
+        gravity = Gravity.START
         visibility = View.GONE
     }
     private val cloudDataTitle = TextView(context).apply {
@@ -144,7 +161,7 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
     }
     private val cloudRepoRows = linkedMapOf<String, TextView>()
     private val loopButton = HeaderActionButton()
-    private val uploadButton = HeaderActionButton("上传")
+    private val uploadButton = HeaderActionButton()
 
     private val trackRecycler = RecyclerView(context).apply {
         layoutManager = LinearLayoutManager(context, LinearLayoutManager.VERTICAL, false)
@@ -173,7 +190,9 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
         clipChildren = false
         clipToPadding = false
     }
-    private val coverView = MusicCoverArtView(context)
+    private val coverView = MusicCoverArtView(context).apply {
+        setAccentColor(ThemeManager.accentColor(context))
+    }
     private val songTitleView = TextView(context).apply {
         textSize = 31f
         typeface = Typeface.DEFAULT_BOLD
@@ -305,6 +324,9 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
             trackColor = Color.argb(72, 255, 255, 255),
         )
         listHeaderTitle.setTextColor(Color.WHITE)
+        val dividerColor = themedDividerColor()
+        headerDivider.setBackgroundColor(dividerColor)
+        artistTabBottomDivider.setBackgroundColor(dividerColor)
         listStatus.setTextColor(Color.argb(198, 255, 255, 255))
         cloudDataTitle.setTextColor(palette.accent)
         cloudRepoRows.values.forEach { it.setTextColor(Color.argb(218, 255, 255, 255)) }
@@ -327,9 +349,10 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
         )
         loadingView.indeterminateTintList = android.content.res.ColorStateList.valueOf(palette.accent)
         emptyView.setTextColor(Color.argb(210, 255, 255, 255))
-        refreshActionButtonVisual(loopButton, loopMode.iconRes, active = true)
-        refreshActionButtonVisual(uploadButton, R.drawable.ic_music_upload, active = false)
+        refreshActionButtonVisual(loopButton, loopMode.iconRes)
+        refreshActionButtonVisual(uploadButton, R.drawable.ic_music_upload)
         trackAdapter.notifyDataSetChanged()
+        rebuildArtistTabs()
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -353,7 +376,7 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
     private fun buildLeftPanel(): View {
         val panel = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(16), dp(16), dp(12))
+            setPadding(dp(16), dp(10), dp(16), dp(12))
             background = ThemeManager.dialogPanelBg(context, 28)
             clipChildren = false
             clipToPadding = false
@@ -370,13 +393,34 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
             clipChildren = false
             clipToPadding = false
         }
-        actionRow.addView(loopButton, LinearLayout.LayoutParams(dp(96), dp(44)))
-        actionRow.addView(uploadButton, LinearLayout.LayoutParams(dp(80), dp(44)).apply { marginStart = dp(6) })
+        actionRow.addView(loopButton, LinearLayout.LayoutParams(dp(34), dp(32)))
+        actionRow.addView(uploadButton, LinearLayout.LayoutParams(dp(34), dp(32)).apply { marginStart = dp(5) })
         headerRow.addView(listHeaderTitle, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
         headerRow.addView(actionRow)
         panel.addView(headerRow, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        panel.addView(headerDivider, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(1)).apply {
+            topMargin = dp(5)
+        })
+        val artistTabViewport = FrameLayout(context).apply {
+            clipChildren = true
+            clipToPadding = true
+            clipToOutline = true
+            outlineProvider = ViewOutlineProvider.BOUNDS
+        }
+        artistTabViewport.addView(HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            clipChildren = true
+            clipToPadding = false
+            addView(artistTabRow, FrameLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
+        }, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        panel.addView(artistTabViewport, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(38)).apply {
+            topMargin = dp(4)
+        })
+        panel.addView(artistTabBottomDivider, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(1)))
+        rebuildArtistTabs()
         panel.addView(listStatus, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
-            topMargin = dp(6)
+            topMargin = dp(5)
         })
 
         val listContainer = FrameLayout(context).apply {
@@ -384,7 +428,7 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
             clipToPadding = false
         }
         listContainer.addView(trackRecycler, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT).apply {
-            topMargin = dp(16)
+            topMargin = dp(8)
         })
         listContainer.addView(loadingView, FrameLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT, Gravity.CENTER))
         listContainer.addView(emptyView, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT, Gravity.CENTER))
@@ -514,29 +558,27 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
             button = loopButton,
             iconRes = { loopMode.iconRes },
             onClick = { cycleLoopMode() },
-            isActive = { true },
         )
         setupHeaderActionButton(
             button = uploadButton,
             iconRes = { R.drawable.ic_music_upload },
             onClick = { showUploadRepoDialog() },
-            isActive = { false },
         )
+        uploadButton.contentDescription = "上传音乐"
     }
 
     private fun setupHeaderActionButton(
         button: HeaderActionButton,
         iconRes: () -> Int,
         onClick: () -> Unit,
-        isActive: () -> Boolean,
     ) {
         button.setOnFocusChangeListener { v, hasFocus ->
-            refreshActionButtonVisual(button, iconRes(), active = isActive())
-            FocusFxHelper.applyFocusFxState(v, hasFocus, cornerRadiusDp = 22)
+            refreshActionButtonVisual(button, iconRes())
+            FocusFxHelper.applyFocusFxState(v, hasFocus, cornerRadiusDp = 10)
         }
         button.setOnClickListener { onClick() }
         button.setOnKeyListener { view, keyCode, event -> handleTopActionKey(view, keyCode, event) }
-        refreshActionButtonVisual(button, iconRes(), active = isActive())
+        refreshActionButtonVisual(button, iconRes())
     }
 
     private fun handleTopActionKey(view: View, keyCode: Int, event: KeyEvent): Boolean {
@@ -561,25 +603,14 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
         }
     }
 
-    private fun refreshActionButtonVisual(button: HeaderActionButton, iconRes: Int, active: Boolean) {
+    private fun refreshActionButtonVisual(button: HeaderActionButton, iconRes: Int) {
         val focused = button.isFocused
-        val accent = warmColor()
-        val contentColor = when {
-            active -> Color.WHITE
-            focused -> accent
-            else -> Color.argb(220, 255, 255, 255)
-        }
-        button.setContentVisual(iconRes, contentColor)
+        val (strokeDp, strokeColor) = ThemeManager.strokeFor(context, focused)
+        button.setContentVisual(iconRes, Color.argb(220, 255, 255, 255))
         button.background = GradientDrawable().apply {
-            cornerRadius = dp(22).toFloat()
-            setColor(
-                when {
-                    active -> Color.argb(if (focused) 96 else 70, Color.red(accent), Color.green(accent), Color.blue(accent))
-                    focused -> Color.argb(42, 255, 255, 255)
-                    else -> Color.argb(18, 255, 255, 255)
-                }
-            )
-            setStroke(dp(if (focused) 2 else 1), if (focused || active) accent else Color.argb(118, 210, 214, 222))
+            cornerRadius = dp(10).toFloat()
+            setColor(Color.argb(52, 32, 34, 40))
+            setStroke(dp(strokeDp), strokeColor)
         }
     }
 
@@ -594,45 +625,154 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
     }
 
     private fun applyPlaylistResult(result: MusicPlaylistLoadResult, preserveUrl: String?) {
-        playlist = result.tracks
+        allPlaylist = result.tracks
+        lastSkippedRepos = result.skippedRepos
+        val artists = distinctArtists()
+        if (selectedArtist != null && artists.none { it.equals(selectedArtist, ignoreCase = true) }) {
+            selectedArtist = null
+        }
+        rebuildArtistTabs()
+        MusicRepoCatalog.repos.forEachIndexed { index, repo ->
+            val count = result.repoTrackCounts[repo.id] ?: 0
+            cloudRepoRows[repo.id]?.text = "music${index + 1}  $count 首"
+        }
+        applyArtistFilter(selectedArtist, preserveUrl)
+    }
+
+    private fun distinctArtists(): List<String> {
+        val uniqueArtists = mutableListOf<String>()
+        allPlaylist.forEach { track ->
+            val artist = track.artist.trim().ifBlank { "未知歌手" }
+            if (uniqueArtists.none { it.equals(artist, ignoreCase = true) }) uniqueArtists += artist
+        }
+        val mergedKeywords = mutableListOf<String>()
+        uniqueArtists
+            .sortedWith(compareBy<String> { it.length }.then(String.CASE_INSENSITIVE_ORDER))
+            .forEach { artist ->
+                if (mergedKeywords.none { keyword -> artist.contains(keyword, ignoreCase = true) }) {
+                    mergedKeywords += artist
+                }
+            }
+        return mergedKeywords.sortedWith(String.CASE_INSENSITIVE_ORDER)
+    }
+
+    private fun rebuildArtistTabs() {
+        artistTabRow.removeAllViews()
+        val tabs = listOf<String?>(null) + distinctArtists()
+        tabs.forEachIndexed { index, artist ->
+            if (index > 0) {
+                artistTabRow.addView(View(context).apply {
+                    setBackgroundColor(themedDividerColor())
+                }, LinearLayout.LayoutParams(dp(1), dp(18)).apply {
+                    marginStart = dp(7)
+                    marginEnd = dp(7)
+                })
+            }
+            val selected = if (artist == null) selectedArtist == null else artist.equals(selectedArtist, ignoreCase = true)
+            val tab = TextView(context).apply {
+                text = artist ?: "全部"
+                textSize = 13f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+                includeFontPadding = false
+                isFocusable = true
+                isClickable = true
+                setPadding(dp(14), 0, dp(14), 0)
+                setTextColor(if (selected) warmColor() else Color.argb(210, 255, 255, 255))
+                background = artistTabBackground(selected, false)
+                setOnClickListener {
+                    val preserveUrl = currentTrack()?.url
+                    selectedArtist = artist
+                    rebuildArtistTabs()
+                    requestArtistTabFocus(index)
+                    applyArtistFilter(artist, preserveUrl)
+                }
+                setOnFocusChangeListener { view, focused ->
+                    background = artistTabBackground(selected, focused)
+                    setTextColor(
+                        when {
+                            selected || focused -> warmColor()
+                            else -> Color.argb(210, 255, 255, 255)
+                        }
+                    )
+                    FocusFxHelper.applyFocusFxState(view, focused, cornerRadiusDp = 6)
+                }
+            }
+            artistTabRow.addView(tab, LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, dp(32)))
+        }
+    }
+
+    private fun requestArtistTabFocus(tabIndex: Int) {
+        val childIndex = tabIndex * 2
+        val tab = artistTabRow.getChildAt(childIndex) ?: return
+        if (!tab.requestFocus()) {
+            artistTabRow.post { artistTabRow.getChildAt(childIndex)?.requestFocus() }
+        }
+    }
+
+    private fun artistTabBackground(selected: Boolean, focused: Boolean): GradientDrawable = GradientDrawable().apply {
+        val accent = warmColor()
+        cornerRadius = dp(if (focused) 6 else 14).toFloat()
+        setColor(
+            when {
+                focused -> Color.TRANSPARENT
+                selected -> Color.argb(54, Color.red(accent), Color.green(accent), Color.blue(accent))
+                else -> Color.argb(18, 255, 255, 255)
+            }
+        )
+        if (focused) setStroke(dp(1), accent)
+    }
+
+    private fun themedDividerColor(): Int {
+        val accent = warmColor()
+        return Color.argb(90, Color.red(accent), Color.green(accent), Color.blue(accent))
+    }
+
+    private fun applyArtistFilter(artist: String?, preserveUrl: String?) {
+        playlist = if (artist == null) {
+            allPlaylist
+        } else {
+            allPlaylist.filter {
+                it.artist.trim().ifBlank { "未知歌手" }.contains(artist, ignoreCase = true)
+            }
+        }
         trackAdapter.notifyDataSetChanged()
         loadingView.visibility = View.GONE
         emptyView.visibility = if (playlist.isEmpty()) View.VISIBLE else View.GONE
         trackRecycler.visibility = if (playlist.isEmpty()) View.GONE else View.VISIBLE
         lastLoadSummary = when {
-            playlist.isEmpty() && result.skippedRepos.isNotEmpty() -> result.skippedRepos.joinToString("\n")
-            result.skippedRepos.isNotEmpty() -> "已加载 ${playlist.size} 首，跳过 ${result.skippedRepos.size} 个仓库"
+            allPlaylist.isEmpty() && lastSkippedRepos.isNotEmpty() -> lastSkippedRepos.joinToString("\n")
+            lastSkippedRepos.isNotEmpty() -> "共 ${playlist.size} 首歌曲，跳过 ${lastSkippedRepos.size} 个仓库"
             else -> "共 ${playlist.size} 首歌曲"
         }
         updateListStatus(lastLoadSummary)
-        MusicRepoCatalog.repos.forEachIndexed { index, repo ->
-            val count = result.repoTrackCounts[repo.id] ?: 0
-            cloudRepoRows[repo.id]?.text = "music${index + 1}  $count 首"
-        }
+
+        val playingUrl = player?.currentMediaItem?.localConfiguration?.uri?.toString()
+        val activeUrl = activeTrack?.url ?: preserveUrl
+        val resolvedActiveTrack = activeUrl?.let { url -> allPlaylist.firstOrNull { it.url == url } }
+            ?: allPlaylist.firstOrNull()
+        activeTrack = resolvedActiveTrack
 
         if (playlist.isEmpty()) {
-            emptyView.text = if (result.skippedRepos.isNotEmpty()) {
-                "暂无可播放歌曲\n${result.skippedRepos.first()}"
-            } else {
-                "暂无歌曲"
+            emptyView.text = when {
+                allPlaylist.isEmpty() && lastSkippedRepos.isNotEmpty() -> "暂无可播放歌曲\n${lastSkippedRepos.first()}"
+                artist != null -> "暂无该歌手歌曲"
+                else -> "暂无歌曲"
             }
             currentTrackIndex = -1
             focusedListIndex = 0
-            bindTrack(null)
+            if (resolvedActiveTrack == null) bindTrack(null)
+            refreshPlaybackUi()
             return
         }
 
-        val playingUrl = player?.currentMediaItem?.localConfiguration?.uri?.toString()
-        val targetUrl = playingUrl ?: preserveUrl
-        val restoreIndex = targetUrl?.let { url -> playlist.indexOfFirst { it.url == url } }?.takeIf { it >= 0 }
-            ?: currentTrackIndex.takeIf { it in playlist.indices }
-            ?: 0
-        if (playingUrl != null && playlist.none { it.url == playingUrl }) {
-            pauseAndReleasePlayer()
-        }
-        currentTrackIndex = restoreIndex
+        currentTrackIndex = resolvedActiveTrack?.let { active ->
+            playlist.indexOfFirst { it.url == active.url }
+        } ?: -1
         focusedListIndex = focusedListIndex.coerceIn(0, playlist.lastIndex)
-        bindTrack(playlist[currentTrackIndex], refreshArtwork = true)
+        if (resolvedActiveTrack != null && playingUrl == null) {
+            bindTrack(resolvedActiveTrack, refreshArtwork = true)
+        }
         restoreListFocusIfNeeded()
         refreshPlaybackUi()
     }
@@ -757,6 +897,7 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
         val existingPlayer = player
         val trackChanged = currentTrack()?.url != track.url || existingPlayer?.currentMediaItem == null
         currentTrackIndex = index
+        activeTrack = track
         focusedListIndex = index
         bindTrack(track, refreshArtwork = trackChanged)
         trackAdapter.notifyDataSetChanged()
@@ -819,8 +960,7 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
     }
 
     private fun updateLoopButton() {
-        loopButton.text = loopMode.label
-        refreshActionButtonVisual(loopButton, loopMode.iconRes, active = true)
+        refreshActionButtonVisual(loopButton, loopMode.iconRes)
         loopButton.contentDescription = loopMode.label
     }
 
@@ -937,7 +1077,7 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
         trackRecycler.post { trackRecycler.scrollToPosition(index) }
     }
 
-    private fun currentTrack(): MusicTrack? = playlist.getOrNull(currentTrackIndex)
+    private fun currentTrack(): MusicTrack? = activeTrack
 
     private fun findRowViewForFocus(index: Int): View? {
         if (playlist.isEmpty()) return null
@@ -1044,45 +1184,123 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
         }
     }
 
-    private inner class HeaderActionButton(initialText: String = "") : LinearLayout(context) {
-        private val iconView = AppCompatImageView(context).apply {
-            isFocusable = false
-            isClickable = false
-            scaleType = ImageView.ScaleType.CENTER_INSIDE
-        }
-        private val labelView = TextView(context).apply {
-            textSize = 14f
-            typeface = Typeface.DEFAULT_BOLD
-            gravity = Gravity.CENTER_VERTICAL
-            includeFontPadding = false
+    private inner class HeaderActionButton : FrameLayout(context) {
+        private val iconView = HeaderActionIconView(context).apply {
             isFocusable = false
             isClickable = false
         }
-
-        var text: CharSequence
-            get() = labelView.text
-            set(value) {
-                labelView.text = value
-            }
 
         init {
-            orientation = HORIZONTAL
-            gravity = Gravity.CENTER
             isFocusable = true
             isClickable = true
             descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
-            setPadding(dp(3), 0, dp(3), 0)
-            addView(iconView, LinearLayout.LayoutParams(dp(18), dp(18)))
-            addView(labelView, LinearLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
-                marginStart = dp(1)
-            })
-            text = initialText
+            addView(iconView, FrameLayout.LayoutParams(dp(21), dp(21), Gravity.CENTER))
         }
 
         fun setContentVisual(iconRes: Int, color: Int) {
-            iconView.setImageResource(iconRes)
-            iconView.setColorFilter(color)
-            labelView.setTextColor(color)
+            iconView.setIcon(iconRes, color)
+        }
+    }
+
+    private inner class HeaderActionIconView(context: Context) : View(context) {
+        private var iconRes: Int = R.drawable.ic_music_shuffle
+        private var iconColor: Int = Color.WHITE
+        private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = resources.displayMetrics.density * 2.35f
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+        private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+        private val path = Path()
+
+        fun setIcon(iconRes: Int, color: Int) {
+            this.iconRes = iconRes
+            iconColor = color
+            invalidate()
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            strokePaint.color = iconColor
+            fillPaint.color = iconColor
+            when (iconRes) {
+                R.drawable.ic_music_repeat_all -> drawRepeat(canvas)
+                R.drawable.ic_music_upload -> drawUpload(canvas)
+                else -> drawShuffle(canvas)
+            }
+        }
+
+        private fun drawShuffle(canvas: Canvas) {
+            val w = width.toFloat()
+            val h = height.toFloat()
+            path.reset()
+            path.moveTo(w * 0.14f, h * 0.28f)
+            path.cubicTo(w * 0.34f, h * 0.28f, w * 0.44f, h * 0.72f, w * 0.68f, h * 0.72f)
+            path.lineTo(w * 0.75f, h * 0.72f)
+            canvas.drawPath(path, strokePaint)
+            drawArrowHead(canvas, w * 0.86f, h * 0.72f, pointingRight = true)
+
+            path.reset()
+            path.moveTo(w * 0.14f, h * 0.72f)
+            path.cubicTo(w * 0.34f, h * 0.72f, w * 0.44f, h * 0.28f, w * 0.68f, h * 0.28f)
+            path.lineTo(w * 0.75f, h * 0.28f)
+            canvas.drawPath(path, strokePaint)
+            drawArrowHead(canvas, w * 0.86f, h * 0.28f, pointingRight = true)
+        }
+
+        private fun drawRepeat(canvas: Canvas) {
+            val w = width.toFloat()
+            val h = height.toFloat()
+            path.reset()
+            path.moveTo(w * 0.22f, h * 0.36f)
+            path.cubicTo(w * 0.28f, h * 0.24f, w * 0.40f, h * 0.22f, w * 0.55f, h * 0.22f)
+            path.lineTo(w * 0.74f, h * 0.22f)
+            canvas.drawPath(path, strokePaint)
+            drawArrowHead(canvas, w * 0.84f, h * 0.22f, pointingRight = true)
+
+            path.reset()
+            path.moveTo(w * 0.78f, h * 0.64f)
+            path.cubicTo(w * 0.72f, h * 0.76f, w * 0.60f, h * 0.78f, w * 0.45f, h * 0.78f)
+            path.lineTo(w * 0.26f, h * 0.78f)
+            canvas.drawPath(path, strokePaint)
+            drawArrowHead(canvas, w * 0.16f, h * 0.78f, pointingRight = false)
+        }
+
+        private fun drawUpload(canvas: Canvas) {
+            val w = width.toFloat()
+            val h = height.toFloat()
+
+            // 上半部分：完整的云朵轮廓。
+            path.reset()
+            path.moveTo(w * 0.27f, h * 0.50f)
+            path.cubicTo(w * 0.16f, h * 0.50f, w * 0.12f, h * 0.41f, w * 0.18f, h * 0.33f)
+            path.cubicTo(w * 0.19f, h * 0.24f, w * 0.28f, h * 0.19f, w * 0.37f, h * 0.22f)
+            path.cubicTo(w * 0.44f, h * 0.10f, w * 0.61f, h * 0.11f, w * 0.68f, h * 0.26f)
+            path.cubicTo(w * 0.80f, h * 0.24f, w * 0.88f, h * 0.32f, w * 0.86f, h * 0.41f)
+            path.cubicTo(w * 0.92f, h * 0.45f, w * 0.86f, h * 0.50f, w * 0.77f, h * 0.50f)
+            path.lineTo(w * 0.27f, h * 0.50f)
+            canvas.drawPath(path, strokePaint)
+
+            // 下半部分：与云朵分离的向上箭头，明确表达“上传到云端”。
+            path.reset()
+            path.moveTo(w * 0.52f, h * 0.88f)
+            path.lineTo(w * 0.52f, h * 0.59f)
+            path.moveTo(w * 0.38f, h * 0.72f)
+            path.lineTo(w * 0.52f, h * 0.58f)
+            path.lineTo(w * 0.66f, h * 0.72f)
+            canvas.drawPath(path, strokePaint)
+        }
+
+        private fun drawArrowHead(canvas: Canvas, tipX: Float, tipY: Float, pointingRight: Boolean) {
+            val direction = if (pointingRight) -1f else 1f
+            val size = minOf(width, height) * 0.14f
+            path.reset()
+            path.moveTo(tipX, tipY)
+            path.lineTo(tipX + direction * size, tipY - size * 0.72f)
+            path.lineTo(tipX + direction * size, tipY + size * 0.72f)
+            path.close()
+            canvas.drawPath(path, fillPaint)
         }
     }
 
@@ -1259,13 +1477,12 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
             it.window?.decorView?.requestFocus()
             return
         }
-        if (playlist.isEmpty()) {
+        if (allPlaylist.isEmpty()) {
             toast("暂无云端歌曲")
             return
         }
 
         val selectedUrls = linkedSetOf<String>()
-        val palette = ThemeManager.currentPalette(context)
         val panel = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             background = ThemeManager.dialogPanelBg(context, cornerRadiusDp = 18)
@@ -1277,10 +1494,7 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(12), dp(8), dp(14), dp(8))
-            background = GradientDrawable(
-                GradientDrawable.Orientation.LEFT_RIGHT,
-                palette.dialogTitleGradient,
-            ).apply { cornerRadius = dp(10).toFloat() }
+            background = null
         }
         header.addView(ClippedImageView(context).apply {
             setImageResource(R.drawable.sticker_shinchan)
@@ -1297,17 +1511,22 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
         }, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
         panel.addView(header, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         val summary = TextView(context).apply {
-            text = "共 ${playlist.size} 首，可多选后从云端彻底删除"
+            text = "共 ${allPlaylist.size} 首，可多选后从云端彻底删除"
             textSize = 14f
             setTextColor(Color.argb(206, 255, 255, 255))
             setPadding(0, dp(12), 0, dp(10))
         }
         panel.addView(summary)
 
-        val rows = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        val rows = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(6), dp(8), dp(6))
+            clipChildren = false
+            clipToPadding = false
+        }
         val focusables = mutableListOf<View>()
         lateinit var deleteButton: TextView
-        playlist.forEachIndexed { index, track ->
+        allPlaylist.forEachIndexed { index, track ->
             val indicator = CloudSelectionIndicator(context)
             val title = TextView(context).apply {
                 text = track.title
@@ -1336,6 +1555,8 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
                 gravity = Gravity.CENTER_VERTICAL
                 isFocusable = true
                 isClickable = true
+                clipChildren = false
+                clipToPadding = false
                 setPadding(dp(14), dp(10), dp(14), dp(10))
                 background = cloudSongRowBackground(false, false)
                 addView(indicator, LinearLayout.LayoutParams(dp(24), dp(24)).apply { marginEnd = dp(14) })
@@ -1366,8 +1587,10 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
         panel.addView(ScrollView(context).apply {
             isFillViewport = false
             overScrollMode = View.OVER_SCROLL_NEVER
-            clipChildren = true
-            clipToPadding = true
+            clipChildren = false
+            clipToPadding = false
+            clipToOutline = true
+            outlineProvider = ViewOutlineProvider.BOUNDS
             addView(rows, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, maxListHeight))
 
@@ -1379,7 +1602,7 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
         lateinit var dialog: AlertDialog
         val cancelButton = dialogButton("取消") { dialog.dismiss() }
         deleteButton = dialogButton("删除选中（0）") {
-            val selectedTracks = playlist.filter { it.url in selectedUrls }
+            val selectedTracks = allPlaylist.filter { it.url in selectedUrls }
             if (selectedTracks.isNotEmpty()) showDeleteConfirmation(dialog, panel, selectedTracks)
         }.apply {
             isEnabled = false
@@ -1405,12 +1628,69 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
     }
 
     private fun showDeleteConfirmation(parentDialog: AlertDialog, panel: LinearLayout, tracks: List<MusicTrack>) {
-        AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog)
-            .setTitle("确认彻底删除？")
-            .setMessage("将删除选中的 ${tracks.size} 首歌曲及其云端音频文件，此操作不可恢复。")
-            .setNegativeButton("取消", null)
-            .setPositiveButton("确认删除") { _, _ -> performCloudDelete(parentDialog, panel, tracks) }
-            .show()
+        val palette = ThemeManager.currentPalette(context)
+        val confirmPanel = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            background = ThemeManager.dialogPanelBg(context, cornerRadiusDp = 18)
+            setPadding(dp(20), dp(18), dp(20), dp(18))
+            clipChildren = false
+            clipToPadding = false
+        }
+        val header = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(12), dp(8), dp(14), dp(8))
+            background = GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                palette.dialogTitleGradient,
+            ).apply { cornerRadius = dp(10).toFloat() }
+        }
+        header.addView(ClippedImageView(context).apply {
+            setImageResource(R.drawable.sticker_shinchan)
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            setCircle(true)
+            foreground = ContextCompat.getDrawable(context, R.drawable.fg_sticker_circle_border)
+        }, LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginEnd = dp(14) })
+        header.addView(TextView(context).apply {
+            text = "确认彻底删除？"
+            textSize = 22f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER_VERTICAL
+        }, LinearLayout.LayoutParams(0, LayoutParams.WRAP_CONTENT, 1f))
+        confirmPanel.addView(header, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        confirmPanel.addView(TextView(context).apply {
+            text = "将删除选中的 ${tracks.size} 首歌曲及其云端音频文件，此操作不可恢复。"
+            textSize = 15f
+            setTextColor(Color.argb(206, 255, 255, 255))
+            setPadding(0, dp(14), 0, 0)
+        }, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+
+        lateinit var confirmDialog: AlertDialog
+        val actions = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+            setPadding(0, dp(20), 0, 0)
+        }
+        val cancelButton = dialogButton("取消") { confirmDialog.dismiss() }
+        val confirmButton = dialogButton("确认删除") {
+            confirmDialog.dismiss()
+            performCloudDelete(parentDialog, panel, tracks)
+        }
+        actions.addView(cancelButton, LinearLayout.LayoutParams(dp(140), dp(48)))
+        actions.addView(confirmButton, LinearLayout.LayoutParams(dp(168), dp(48)).apply { marginStart = dp(12) })
+        confirmPanel.addView(actions, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+
+        confirmDialog = AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog)
+            .setView(confirmPanel)
+            .create()
+        confirmDialog.setOnShowListener { cancelButton.requestFocus() }
+        confirmDialog.show()
+        confirmDialog.window?.apply {
+            setGravity(Gravity.CENTER)
+            setBackgroundDrawableResource(android.R.color.transparent)
+            setLayout(dp(520), WindowManager.LayoutParams.WRAP_CONTENT)
+        }
     }
 
     private fun performCloudDelete(dialog: AlertDialog, panel: LinearLayout, tracks: List<MusicTrack>) {
@@ -1520,6 +1800,13 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
             addView(loadingText, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
         }
         uploadDialogLoading = loading
+        val batchCancel = dialogButton("取消剩余") {
+            pendingBatchCancel = true
+            uploadDialogLoadingText?.text = "正在结束当前文件…"
+            uploadDialogCancelButton?.isEnabled = false
+            uploadDialogCancelButton?.alpha = 0.5f
+        }.apply { visibility = View.GONE }
+        uploadDialogCancelButton = batchCancel
 
         lateinit var dialog: AlertDialog
         val focusables = mutableListOf<View>()
@@ -1539,6 +1826,9 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
         focusables += cancel
         panel.addView(actions)
         panel.addView(loading, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        panel.addView(batchCancel, LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(44)).apply {
+            topMargin = dp(14)
+        })
 
         dialog = AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog).setView(panel).create().also { created ->
             uploadDialog = created
@@ -1549,6 +1839,7 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
                     uploadDialogActions = null
                     uploadDialogLoading = null
                     uploadDialogLoadingText = null
+                    uploadDialogCancelButton = null
                     // 无论取消、上传成功或失败，关闭弹窗后都重新拉取三个仓库，
                     // 由同一次结果同时更新播放列表与云端歌曲数量。
                     if (isAttachedToWindow) {
@@ -1570,6 +1861,20 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
         uploadDialogActions?.visibility = View.GONE
         uploadDialogLoading?.visibility = View.VISIBLE
         uploadDialogLoadingText?.text = "正在上传到 ${repoConfig.displayName}…"
+        uploadDialog?.setCancelable(false)
+        uploadDialog?.setCanceledOnTouchOutside(false)
+    }
+
+    private fun setUploadDialogProgress(text: String, showCancel: Boolean) {
+        if (uploadDialog?.isShowing != true) showUploadRepoDialog()
+        uploadDialogActions?.visibility = View.GONE
+        uploadDialogLoading?.visibility = View.VISIBLE
+        uploadDialogLoadingText?.text = text
+        uploadDialogCancelButton?.let {
+            it.visibility = if (showCancel) View.VISIBLE else View.GONE
+            it.isEnabled = showCancel
+            it.alpha = if (showCancel) 1f else 0.5f
+        }
         uploadDialog?.setCancelable(false)
         uploadDialog?.setCanceledOnTouchOutside(false)
     }
@@ -1624,44 +1929,76 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
         activity.launchMusicAudioPicker(repoConfig.id)
     }
 
-    fun onMusicAudioDocumentResult(uri: android.net.Uri?, repoId: String) {
+    fun onMusicAudioDocumentResult(uris: List<android.net.Uri>, repoId: String) {
         val repoConfig = MusicRepoCatalog.byId(repoId) ?: run {
             closeUploadDialog()
             toast("上传失败：目标仓库不存在")
             return
         }
-        if (uri == null) {
+        if (uris.isEmpty()) {
             toast("已取消选择")
             return
         }
         val activity = context as? NewMainActivity
-        runCatching {
-            activity?.contentResolver?.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        uris.forEach { uri ->
+            runCatching {
+                activity?.contentResolver?.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
         }
-        setUploadDialogLoading(repoConfig)
-        startUpload(uri, repoConfig)
+        startBatchUpload(uris, repoConfig)
+    }
+
+    private fun startBatchUpload(uris: List<android.net.Uri>, repoConfig: MusicRepoConfig) {
+        if (uploadJob?.isActive == true) return
+        pendingBatchCancel = false
+        val total = uris.size
+        setUploadDialogProgress("准备上传 $total 首歌曲…", showCancel = total > 1)
+        uploadJob = pageScope.launch {
+            var successCount = 0
+            var partialCount = 0
+            val failures = mutableListOf<String>()
+            var cancelledAfter = -1
+            uris.forEachIndexed { index, uri ->
+                if (pendingBatchCancel) {
+                    cancelledAfter = index
+                    return@forEachIndexed
+                }
+                val displayName = runCatching { playlistRepository.displayNameOf(uri) }.getOrNull().orEmpty()
+                    .ifBlank { "音频文件 ${index + 1}" }
+                setUploadDialogProgress(
+                    "第 ${index + 1}/$total 首：$displayName\n正在上传到 ${repoConfig.displayName}…",
+                    showCancel = total > 1 && index < total - 1,
+                )
+                val result = withContext(Dispatchers.IO) { playlistRepository.uploadAudio(uri, repoConfig) }
+                when (result) {
+                    is MusicUploadResult.Success -> successCount++
+                    is MusicUploadResult.PartialSuccess -> {
+                        partialCount++
+                        failures += "$displayName（部分成功：${result.message.ifBlank { "回写失败" }}）"
+                    }
+                    is MusicUploadResult.Error -> {
+                        failures += "$displayName（${result.message.ifBlank { "未知原因" }}）"
+                    }
+                }
+            }
+            val skipped = if (cancelledAfter in 0 until total) total - cancelledAfter else 0
+            val summary = buildString {
+                append("上传结束：成功 $successCount")
+                if (partialCount > 0) append("，部分成功 $partialCount")
+                val failCount = failures.size - partialCount
+                if (failCount > 0) append("，失败 $failCount")
+                if (skipped > 0) append("，已跳过 $skipped")
+            }
+            val detail = failures.take(2).joinToString("；")
+            toast(if (detail.isBlank()) summary else "$summary\n$detail")
+            uploadJob = null
+            pendingBatchCancel = false
+            closeUploadDialog()
+        }
     }
 
     private fun startUpload(uri: android.net.Uri, repoConfig: MusicRepoConfig) {
-        if (uploadJob?.isActive == true) return
-        uploadJob = pageScope.launch {
-            when (val result = withContext(Dispatchers.IO) { playlistRepository.uploadAudio(uri, repoConfig) }) {
-                is MusicUploadResult.Success -> {
-                    closeUploadDialog()
-                    toast("上传成功")
-                }
-                is MusicUploadResult.PartialSuccess -> {
-                    closeUploadDialog()
-                    toast("部分成功：${result.message}")
-                }
-                is MusicUploadResult.Error -> {
-                    closeUploadDialog()
-                    val reason = result.message.ifBlank { "未知原因" }
-                    toast("上传失败：$reason")
-                    restoreListContentState()
-                }
-            }
-        }
+        startBatchUpload(listOf(uri), repoConfig)
     }
 
     private fun downloadBitmap(url: String?): Bitmap? {

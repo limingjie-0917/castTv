@@ -312,6 +312,9 @@ class MusicPlaylistRepository(context: Context) {
         return PlaylistParseResult.Success(tracks)
     }
 
+    /** 供外部 UI 显示的本地文件名（优先 DISPLAY_NAME，回退到 URI path）。 */
+    fun displayNameOf(uri: Uri): String = resolveDisplayName(uri)
+
     private fun resolveDisplayName(uri: Uri): String {
         contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
             if (cursor.moveToFirst()) {

@@ -8,6 +8,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
@@ -30,6 +31,8 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import com.bd.casttv.R
+import com.bd.casttv.ui.framework.FocusFxHelper
+import com.bd.casttv.util.ThemeManager
 import org.json.JSONObject
 import kotlin.math.abs
 
@@ -414,38 +417,16 @@ class ResourceSniffDialog(
                 clipChildren = false
                 clipToPadding = false
             }
-            actionBar.addView(TextView(context).apply {
-                text = "请在页面加载完成后，点击【开始解析】"
-                textSize = 12f
-                setTextColor(Color.argb(200, 255, 255, 255))
-                gravity = Gravity.START or Gravity.CENTER_VERTICAL
-            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            actionBar.addView(TextView(context).apply {
-                text = "开始解析"
-                textSize = 16f
-                typeface = Typeface.DEFAULT_BOLD
-                setTextColor(Color.WHITE)
-                gravity = Gravity.CENTER
-                isFocusable = true
-                isClickable = true
-                setPadding(dp(24), dp(8), dp(24), dp(8))
-                val warm = Color.rgb(245, 196, 81)
-                background = android.graphics.drawable.GradientDrawable().apply {
-                    cornerRadius = dp(10).toFloat()
-                    setColor(Color.argb(52, 32, 34, 40))
-                    setStroke(dp(1), Color.argb(170, 210, 214, 222))
-                }
-                setOnClickListener { captureAndParse() }
-                setOnFocusChangeListener { _, hasFocus ->
-                    background = android.graphics.drawable.GradientDrawable().apply {
-                        cornerRadius = dp(10).toFloat()
-                        setColor(Color.argb(52, 32, 34, 40))
-                        setStroke(dp(if (hasFocus) 3 else 1), if (hasFocus) warm else Color.argb(170, 210, 214, 222))
-                    }
-                    scaleX = if (hasFocus) 1.05f else 1f
-                    scaleY = if (hasFocus) 1.05f else 1f
-                }
-            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+
+            val actionButtonParams = LinearLayout.LayoutParams(dp(36), dp(36)).apply {
+                marginStart = dp(8)
+            }
+            actionBar.addView(dialogIconButton("‹") { webView?.goBack() }, actionButtonParams)
+            actionBar.addView(dialogIconButton("›") { webView?.goForward() }, LinearLayout.LayoutParams(actionButtonParams))
+            actionBar.addView(dialogTextButton("开始解析") { captureAndParse() }, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                dp(36)
+            ).apply {
                 marginStart = dp(8)
             })
             container.addView(actionBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
@@ -729,6 +710,37 @@ class ResourceSniffDialog(
             setColor(Color.argb(90, 22, 24, 30))
             setStroke(dp(1), Color.argb(60, 255, 255, 255))
         }
+    }
+
+    private fun dialogTextButton(label: String, click: () -> Unit): TextView =
+        dialogIconButton(label, click).apply {
+            textSize = 15f
+            setPadding(dp(14), 0, dp(14), 0)
+        }
+
+    private fun dialogIconButton(label: String, click: () -> Unit): TextView = TextView(context).apply {
+        text = label
+        textSize = 22f
+        typeface = Typeface.DEFAULT_BOLD
+        gravity = Gravity.CENTER
+        isFocusable = true
+        isClickable = true
+
+        fun refresh(focused: Boolean) {
+            setTextColor(Color.argb(235, 245, 245, 245))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(8).toFloat()
+                setColor(Color.argb(52, 32, 34, 40))
+                ThemeManager.strokeFor(context, focused).let { setStroke(dp(it.first), it.second) }
+            }
+        }
+
+        refresh(false)
+        setOnFocusChangeListener { view, focused ->
+            refresh(focused)
+            FocusFxHelper.applyFocusFxState(view, focused, cornerRadiusDp = 8)
+        }
+        setOnClickListener { click() }
     }
 
     private fun dp(value: Int): Int {

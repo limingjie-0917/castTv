@@ -79,7 +79,7 @@ class MusicCoverArtView @JvmOverloads constructor(
         canvas.drawCircle(cx, cy, radius * 0.98f, strokePaint)
     }
 
-    /** 深色渐变底图：一个主音符配合右侧两个错落的小音符，全部使用 Path 绘制。 */
+    /** 蓝紫渐变圆盘：一个暖黄色主音符配合右侧两个错落的小音符，全部使用 Path 绘制。 */
     private fun drawMusicNoteFallback(canvas: Canvas, cx: Float, cy: Float, radius: Float) {
         discPaint.style = Paint.Style.FILL
         discPaint.shader = LinearGradient(
@@ -88,9 +88,9 @@ class MusicCoverArtView @JvmOverloads constructor(
             discRect.right,
             discRect.bottom,
             intArrayOf(
-                Color.rgb(26, 34, 44),
-                blendColor(Color.rgb(10, 17, 25), accentColor, 0.22f),
-                Color.rgb(5, 10, 16),
+                Color.rgb(29, 96, 226),
+                Color.rgb(76, 65, 211),
+                Color.rgb(125, 47, 184),
             ),
             floatArrayOf(0f, 0.52f, 1f),
             Shader.TileMode.CLAMP,
@@ -98,31 +98,28 @@ class MusicCoverArtView @JvmOverloads constructor(
         canvas.drawCircle(cx, cy, radius * 0.92f, discPaint)
         discPaint.shader = null
 
-        // 柔和光晕让音符与深色背景自然融合，不产生生硬的纯色块。
+        // 蓝紫光晕叠加在渐变圆盘上，强化唱片中心的纵深感。
         discPaint.shader = RadialGradient(
-            cx - radius * 0.22f,
-            cy - radius * 0.18f,
-            radius * 1.05f,
+            cx - radius * 0.24f,
+            cy - radius * 0.22f,
+            radius * 1.04f,
             intArrayOf(
-                withAlpha(blendColor(accentColor, Color.WHITE, 0.18f), 82),
-                withAlpha(accentColor, 24),
+                Color.argb(118, 111, 166, 255),
+                Color.argb(46, 102, 70, 218),
                 Color.TRANSPARENT,
             ),
-            floatArrayOf(0f, 0.56f, 1f),
+            floatArrayOf(0f, 0.58f, 1f),
             Shader.TileMode.CLAMP,
         )
         canvas.drawCircle(cx, cy, radius * 0.92f, discPaint)
         discPaint.shader = null
 
-        val primary = blendColor(accentColor, Color.WHITE, 0.30f)
         drawSingleNote(
             canvas = canvas,
             centerX = cx - radius * 0.22f,
             centerY = cy + radius * 0.04f,
             size = radius * 0.92f,
             rotation = -7f,
-            color = primary,
-            alpha = 255,
         )
         drawSingleNote(
             canvas = canvas,
@@ -130,8 +127,6 @@ class MusicCoverArtView @JvmOverloads constructor(
             centerY = cy - radius * 0.31f,
             size = radius * 0.34f,
             rotation = 11f,
-            color = blendColor(primary, Color.WHITE, 0.22f),
-            alpha = 222,
         )
         drawSingleNote(
             canvas = canvas,
@@ -139,8 +134,6 @@ class MusicCoverArtView @JvmOverloads constructor(
             centerY = cy + radius * 0.30f,
             size = radius * 0.27f,
             rotation = -13f,
-            color = blendColor(accentColor, Color.WHITE, 0.48f),
-            alpha = 190,
         )
     }
 
@@ -154,8 +147,6 @@ class MusicCoverArtView @JvmOverloads constructor(
         centerY: Float,
         size: Float,
         rotation: Float,
-        @ColorInt color: Int,
-        alpha: Int,
     ) {
         val path = Path().apply {
             // 椭圆音符头：略向左倾斜，通过不对称贝塞尔形成更柔和的轮廓。
@@ -189,51 +180,16 @@ class MusicCoverArtView @JvmOverloads constructor(
 
         // 一层轻微偏移阴影提升层次，仍保持电视端远距离观看时的清晰边缘。
         notePaint.shader = null
-        notePaint.color = Color.argb((alpha * 0.32f).toInt(), 0, 0, 0)
+        notePaint.color = Color.argb(82, 0, 0, 0)
         canvas.save()
         canvas.translate(size * 0.035f, size * 0.045f)
         canvas.drawPath(path, notePaint)
         canvas.restore()
 
-        notePaint.shader = LinearGradient(
-            -size * 0.32f,
-            -size * 0.55f,
-            size * 0.45f,
-            size * 0.42f,
-            withAlpha(blendColor(color, Color.WHITE, 0.24f), alpha),
-            withAlpha(color, alpha),
-            Shader.TileMode.CLAMP,
-        )
-        canvas.drawPath(path, notePaint)
+        // 主音符与两个小音符统一直接使用主题 accentColor；避免 Shader 覆盖 Paint.color。
         notePaint.shader = null
-
-        // 音符头上的窄高光强调圆润质感。
-        val highlight = Path().apply {
-            moveTo(-0.27f * size, 0.20f * size)
-            cubicTo(-0.23f * size, 0.10f * size, -0.11f * size, 0.07f * size, -0.02f * size, 0.09f * size)
-            cubicTo(-0.12f * size, 0.09f * size, -0.20f * size, 0.14f * size, -0.27f * size, 0.20f * size)
-            close()
-        }
-        notePaint.color = Color.argb((alpha * 0.34f).toInt(), 255, 255, 255)
-        canvas.drawPath(highlight, notePaint)
+        notePaint.color = accentColor
+        canvas.drawPath(path, notePaint)
         canvas.restore()
     }
-
-    @ColorInt
-    private fun blendColor(@ColorInt from: Int, @ColorInt to: Int, amount: Float): Int {
-        val ratio = amount.coerceIn(0f, 1f)
-        return Color.rgb(
-            (Color.red(from) + (Color.red(to) - Color.red(from)) * ratio).toInt(),
-            (Color.green(from) + (Color.green(to) - Color.green(from)) * ratio).toInt(),
-            (Color.blue(from) + (Color.blue(to) - Color.blue(from)) * ratio).toInt(),
-        )
-    }
-
-    @ColorInt
-    private fun withAlpha(@ColorInt color: Int, alpha: Int): Int = Color.argb(
-        alpha.coerceIn(0, 255),
-        Color.red(color),
-        Color.green(color),
-        Color.blue(color),
-    )
 }
