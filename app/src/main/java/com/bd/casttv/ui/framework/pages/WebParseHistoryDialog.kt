@@ -193,7 +193,7 @@ class WebParseHistoryDialog(
         } else {
             dialog = AlertDialog.Builder(context, R.style.Theme_CastTV_Dialog).setView(panel).create().also { d ->
                 bindBoundary(panel, focusRows)
-                d.setOnShowListener { focusRows.firstOrNull()?.requestFocus() }
+                d.setOnShowListener { panel.post { focusRows.firstOrNull()?.requestFocus() } }
                 d.show()
                 d.window?.apply {
                     setGravity(Gravity.CENTER)

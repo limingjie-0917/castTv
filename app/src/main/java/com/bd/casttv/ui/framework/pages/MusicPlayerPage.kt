@@ -406,10 +406,12 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
             clipToPadding = true
             clipToOutline = true
             outlineProvider = ViewOutlineProvider.BOUNDS
+            isFocusable = false
         }
         artistTabViewport.addView(HorizontalScrollView(context).apply {
             isHorizontalScrollBarEnabled = false
             overScrollMode = View.OVER_SCROLL_NEVER
+            isFocusable = false
             clipChildren = true
             clipToPadding = false
             addView(artistTabRow, FrameLayout.LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
@@ -496,7 +498,19 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
             clipToPadding = true
         }
         coverRotator.addView(coverView, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
-        val coverArea = FrameLayout(context).apply {
+        val coverArea = object : FrameLayout(context) {
+            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                val h = View.MeasureSpec.getSize(heightMeasureSpec)
+                if (h > 0) {
+                    super.onMeasure(
+                        View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY),
+                        View.MeasureSpec.makeMeasureSpec(h, View.MeasureSpec.EXACTLY),
+                    )
+                } else {
+                    super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+                }
+            }
+        }.apply {
             clipChildren = true
             clipToPadding = true
             addView(coverRotator, FrameLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -513,13 +527,7 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
                 topMargin = dp(8)
             })
         }
-        val topArea = object : FrameLayout(context) {
-            override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
-                super.onSizeChanged(w, h, oldw, oldh)
-                if (h <= 0) return
-                coverArea.layoutParams = FrameLayout.LayoutParams(h, h, Gravity.START or Gravity.TOP)
-            }
-        }.apply {
+        val topArea = FrameLayout(context).apply {
             clipChildren = true
             clipToPadding = true
             // 歌曲信息以整个右侧区域为基准居中；封面不参与排版，叠加在左上角。
@@ -589,15 +597,15 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
                 true
             }
             KeyEvent.KEYCODE_DPAD_DOWN -> {
-                val target = findRowViewForFocus(focusedListIndex)
-                    ?: findRowViewForFocus(currentTrackIndex)
-                if (target == null) {
-                    BoundaryFocusHandler.shake(view)
-                    true
+                val tab = findArtistTabForFocus()
+                if (tab != null) {
+                    tab.requestFocus()
                 } else {
-                    target.requestFocus()
-                    true
+                    val target = findRowViewForFocus(focusedListIndex)
+                        ?: findRowViewForFocus(currentTrackIndex)
+                    if (target == null) BoundaryFocusHandler.shake(view) else target.requestFocus()
                 }
+                true
             }
             else -> false
         }
@@ -1079,6 +1087,16 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
 
     private fun currentTrack(): MusicTrack? = activeTrack
 
+    /** 查找当前选中的歌手 tab（或默认「全部」tab），供 DPAD 导航跳转使用。 */
+    private fun findArtistTabForFocus(): View? {
+        if (artistTabRow.childCount == 0) return null
+        val artists = distinctArtists()
+        val tabIndex = if (selectedArtist == null) 0
+            else artists.indexOfFirst { it.equals(selectedArtist, ignoreCase = true) }
+                .let { if (it < 0) 0 else it + 1 }
+        return artistTabRow.getChildAt(tabIndex * 2) ?: artistTabRow.getChildAt(0)
+    }
+
     private fun findRowViewForFocus(index: Int): View? {
         if (playlist.isEmpty()) return null
         val safeIndex = index.coerceIn(0, playlist.lastIndex)
@@ -1421,7 +1439,8 @@ class MusicPlayerPage(context: Context) : BasePage(context) {
         return when (keyCode) {
             KeyEvent.KEYCODE_DPAD_UP -> {
                 if (position == 0) {
-                    loopButton.requestFocus()
+                    val tab = findArtistTabForFocus()
+                    if (tab != null) tab.requestFocus() else loopButton.requestFocus()
                 } else {
                     focusTrackRow(position - 1)
                 }

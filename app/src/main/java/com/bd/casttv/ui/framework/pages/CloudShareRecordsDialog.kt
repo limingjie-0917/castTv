@@ -109,8 +109,8 @@ class CloudShareRecordsDialog(
         }
         val scroll = ScrollView(context).apply {
             overScrollMode = ScrollView.OVER_SCROLL_NEVER
-            clipChildren = true
-            clipToPadding = true
+            clipChildren = false
+            clipToPadding = false
             setPadding(dp(8), dp(8), dp(8), dp(8))
             addView(listContainer, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
         }
@@ -156,7 +156,7 @@ class CloudShareRecordsDialog(
             d.setOnShowListener {
                 cancelButton.requestFocus()
                 // 拉取云端数据
-                fetchCloudData(statusView, loadingBar, listContainer, scroll, focusRows, selectAllButton, deselectButton, downloadButton, deleteButton)
+                fetchCloudData(panel, statusView, loadingBar, listContainer, scroll, focusRows, selectAllButton, deselectButton, downloadButton, deleteButton, cancelButton)
             }
             d.show()
             d.window?.apply {
@@ -168,6 +168,7 @@ class CloudShareRecordsDialog(
     }
 
     private fun fetchCloudData(
+        root: ViewGroup,
         statusView: TextView,
         loadingBar: ProgressBar,
         listContainer: LinearLayout,
@@ -176,7 +177,8 @@ class CloudShareRecordsDialog(
         selectAllButton: View,
         deselectButton: View,
         downloadButton: View,
-        deleteButton: View
+        deleteButton: View,
+        cancelButton: View
     ) {
         CoroutineScope(Dispatchers.Main).launch {
             val myCreatorId = withContext(Dispatchers.IO) { CreatorIdProvider.get(context) }
@@ -206,8 +208,8 @@ class CloudShareRecordsDialog(
                     groupMap.clear()
                     fillGroupViews(listContainer, groups, myCreatorId, focusRows, downloadButton, deleteButton)
 
-                    val allFocusable = focusRows + listOf(selectAllButton, deselectButton, deleteButton, downloadButton)
-                    bindBoundary(scroll, allFocusable)
+                    val allFocusable = focusRows + listOf(selectAllButton, deselectButton, deleteButton, downloadButton, cancelButton)
+                    bindBoundary(root, allFocusable)
 
                     updateActionButtons(downloadButton, deleteButton)
                 }
@@ -297,8 +299,8 @@ class CloudShareRecordsDialog(
                 focusRows.add(row)
                 container.addView(row, LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
-                    dp(if (record.pageType.isBlank()) 66 else 86)
-                ).apply { topMargin = dp(6) })
+                    dp(if (record.pageType.isBlank()) 76 else 96)
+                ).apply { topMargin = dp(8) })
             }
         }
     }
